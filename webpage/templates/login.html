@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block body %}
+<main class="login-shell">
+    <section class="hero-panel">
+        <div class="brand-lockup">
+            <div class="brand-mark" aria-hidden="true">
+                <span class="brand-orbit brand-orbit-a"></span>
+                <span class="brand-orbit brand-orbit-b"></span>
+                <span class="brand-core"></span>
+            </div>
+            <div>
+                <p class="eyebrow">Gateway Control Plane</p>
+                <h1>{{ product_name }}</h1>
+            </div>
+        </div>
+
+        <div class="hero-copy">
+            <p class="lead">
+                Unified monitoring, sensor acquisition, forwarding intelligence, and edge
+                configuration in one gateway console.
+            </p>
+            <p class="supporting">
+                Designed for network detection now, and built to expand into industrial
+                telemetry, protocol setup, transport security, and site operations without
+                fragmenting the platform.
+            </p>
+        </div>
+
+        <div class="hero-surface">
+            <div class="signal-grid" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+
+            <div class="metric-strip">
+                {% for metric in hero_metrics %}
+                <article class="metric-card">
+                    <span>{{ metric.label }}</span>
+                    <strong>{{ metric.value }}</strong>
+                </article>
+                {% endfor %}
+            </div>
+
+            <div class="feature-list">
+                <div class="feature-item">
+                    <span class="feature-dot"></span>
+                    <div>
+                        <h2>Live continuity analytics</h2>
+                        <p>Track outages, delays, recovery, queue growth, and gateway health.</p>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-dot"></span>
+                    <div>
+                        <h2>Protocol and sensor setup</h2>
+                        <p>Configure serial ports, Modbus RTU, MQTTS, HTTPS, mTLS, and device mappings.</p>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-dot"></span>
+                    <div>
+                        <h2>Future-ready control plane</h2>
+                        <p>Built to support both your current sensors and generic expansions later.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="auth-panel">
+        <div class="auth-card">
+            <div class="auth-head">
+                <div>
+                    <p class="eyebrow">Secure Access</p>
+                    <h2>Sign in to the gateway</h2>
+                </div>
+                <div class="status-pill">
+                    <span class="status-dot"></span>
+                    Local console ready
+                </div>
+            </div>
+
+            <form class="auth-form">
+                <label class="field">
+                    <span>Username</span>
+                    <input type="text" name="username" placeholder="admin" autocomplete="username">
+                </label>
+
+                <label class="field">
+                    <span>Password</span>
+                    <input type="password" name="password" placeholder="Enter your password" autocomplete="current-password">
+                </label>
+
+                <div class="form-row">
+                    <label class="checkbox">
+                        <input type="checkbox" name="remember">
+                        <span>Keep this console trusted</span>
+                    </label>
+                    <a href="#" class="text-link">Need help?</a>
+                </div>
+
+                <button type="submit" class="primary-action">Enter Control Plane</button>
+            </form>
+
+            <div class="auth-foot">
+                <div class="info-chip">Analytics</div>
+                <div class="info-chip">Configuration</div>
+                <div class="info-chip">Secure Transport</div>
+            </div>
+        </div>
+    </section>
+</main>
+{% endblock %}
