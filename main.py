@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
+import secrets
 
 from fastapi import FastAPI
+from starlette.middleware.sessions import SessionMiddleware
 import uvicorn
 
 from analytics_engine.runtime import AnalyticsRuntime
@@ -12,6 +14,7 @@ runtime = AnalyticsRuntime()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    app.state.session_nonce = secrets.token_urlsafe(16)
     runtime.start()
     app.state.runtime = runtime
     try:
@@ -21,6 +24,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="MetaCrust Edge Gateway", lifespan=lifespan)
+app.add_middleware(SessionMiddleware, secret_key="metacrust-edge-gateway-dev-session-key")
 configure_webpage(app)
 
 

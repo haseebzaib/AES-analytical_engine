@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block body %}
+<main class="dashboard-shell" data-dashboard-shell>
+    <aside class="dashboard-sidebar">
+        <div class="sidebar-brand">
+            <button
+                type="button"
+                class="brand-mark sidebar-orb-toggle"
+                data-sidebar-toggle
+                aria-expanded="true"
+                aria-label="Collapse sidebar"
+            >
+                <span class="brand-orbit brand-orbit-a"></span>
+                <span class="brand-orbit brand-orbit-b"></span>
+                <span class="brand-core"></span>
+                <span class="sidebar-orb-icon sidebar-orb-icon-open" aria-hidden="true"></span>
+                <span class="sidebar-orb-icon sidebar-orb-icon-closed" aria-hidden="true"></span>
+            </button>
+            <div>
+                <p class="eyebrow">Control Plane</p>
+                <h2 class="sidebar-title">{{ product_name }}</h2>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav" aria-label="Primary">
+            {% for section in primary_sections %}
+            <a href="#" class="nav-item{% if loop.first %} is-current{% endif %}" data-label="{{ section.label }}">
+                <span class="nav-label-full">{{ section.label }}</span>
+                <span class="nav-label-compact">{{ section.compact }}</span>
+            </a>
+            {% endfor %}
+        </nav>
+    </aside>
+
+    <section class="dashboard-main">
+        <header class="dashboard-topbar">
+            <div>
+                <p class="eyebrow">Current Gateway State</p>
+                <h1 class="dashboard-heading">Overview</h1>
+            </div>
+
+            <div class="topbar-actions">
+                <form method="post" action="/logout">
+                    <button type="submit" class="ghost-action">Logout</button>
+                </form>
+            </div>
+        </header>
+
+        <section class="overview-grid">
+            <article class="gateway-stage-card">
+                <div class="hero-band-copy">
+                    <p class="hero-band-eyebrow">Gateway</p>
+                </div>
+
+                <div class="status-chip-row">
+                    {% for chip in status_chips %}
+                    <div class="overview-chip">
+                        <span>{{ chip.label }}</span>
+                        <strong>{{ chip.value }}</strong>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="gateway-stage-visual" aria-hidden="true">
+                    <div class="gateway-halo"></div>
+                    <div class="gateway-unit">
+                        <span class="gateway-led"></span>
+                        <span class="gateway-slot"></span>
+                        <span class="gateway-slot"></span>
+                        <span class="gateway-slot"></span>
+                        <span class="gateway-slot is-wide"></span>
+                    </div>
+                    <div class="gateway-link gateway-link-left"></div>
+                    <div class="gateway-link gateway-link-right"></div>
+                    <div class="gateway-port port-ethernet">ETH</div>
+                    <div class="gateway-port port-wifi">WIFI</div>
+                </div>
+            </article>
+
+            <article class="connectivity-card">
+                <p class="hero-band-eyebrow">Interfaces</p>
+                <h2>Interface status</h2>
+                <div class="connectivity-list">
+                {% for item in connectivity_items %}
+                <article class="connectivity-item">
+                    <div class="connectivity-meta">
+                        <span>{{ item.label }}</span>
+                        <div class="connectivity-state">
+                            <span class="connectivity-badge is-{{ item.tone }}"></span>
+                            <strong>{{ item.state }}</strong>
+                        </div>
+                    </div>
+                    <p>{{ item.detail }}</p>
+                </article>
+                {% endfor %}
+                </div>
+            </article>
+        </section>
+
+        <section class="domain-grid">
+            {% for card in domain_cards %}
+            <article class="domain-card">
+                <h3>{{ card.title }}</h3>
+                <p>{{ card.description }}</p>
+            </article>
+            {% endfor %}
+        </section>
+    </section>
+</main>
+{% endblock %}
