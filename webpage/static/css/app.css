@@ -77,7 +77,7 @@ body::after {
 .hero-panel {
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
+    justify-content: center;
     padding: 2rem;
 }
 
@@ -145,164 +145,22 @@ h2 {
     font-size: 1.15rem;
 }
 
-.hero-copy {
-    max-width: 44rem;
-}
-
-.lead {
-    margin: 0 0 1.2rem;
-    font-size: clamp(1.1rem, 2vw, 1.55rem);
-    line-height: 1.5;
-    color: rgba(242, 239, 232, 0.94);
-}
-
-.supporting {
-    margin: 0;
-    max-width: 38rem;
-    color: var(--muted);
-    font-size: 1rem;
-    line-height: 1.7;
-}
-
-.hero-surface {
+.hero-stage {
     position: relative;
-    overflow: hidden;
+    display: grid;
     margin-top: 2.5rem;
-    padding: 1.5rem;
-    border-radius: 2rem;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: var(--shadow);
-    backdrop-filter: blur(18px);
+    pointer-events: none;
 }
 
-.signal-grid {
-    position: absolute;
-    inset: 0;
-    opacity: 0.9;
-}
-
-.signal-grid span {
-    position: absolute;
-    border-radius: 999px;
-    background: linear-gradient(90deg, transparent, rgba(57, 208, 200, 0.28), transparent);
-    animation: signalPulse 9s linear infinite;
-}
-
-.signal-grid span:nth-child(1) {
-    top: 18%;
-    left: -12%;
-    width: 60%;
-    height: 1px;
-}
-
-.signal-grid span:nth-child(2) {
-    top: 34%;
-    right: -18%;
-    width: 68%;
-    height: 1px;
-    animation-delay: -2s;
-}
-
-.signal-grid span:nth-child(3) {
-    top: 58%;
-    left: -8%;
-    width: 58%;
-    height: 1px;
-    animation-delay: -4s;
-}
-
-.signal-grid span:nth-child(4) {
-    top: 10%;
-    right: 18%;
-    width: 1px;
-    height: 55%;
-    background: linear-gradient(180deg, transparent, rgba(240, 166, 75, 0.26), transparent);
-    animation-delay: -1s;
-}
-
-.signal-grid span:nth-child(5) {
-    top: 30%;
-    left: 42%;
-    width: 1px;
-    height: 48%;
-    background: linear-gradient(180deg, transparent, rgba(57, 208, 200, 0.26), transparent);
-    animation-delay: -5s;
-}
-
-.signal-grid span:nth-child(6) {
-    bottom: 8%;
-    left: 18%;
-    width: 36%;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(240, 166, 75, 0.24), transparent);
-    animation-delay: -3s;
-}
-
-.metric-strip,
-.feature-list {
-    position: relative;
-    z-index: 1;
-}
-
-.metric-strip {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 1rem;
-    margin-bottom: 1.4rem;
-}
-
-.metric-card {
-    display: grid;
-    gap: 0.45rem;
-    padding: 1rem 1.05rem;
-    border-radius: 1.2rem;
-    background: rgba(5, 15, 20, 0.52);
-    border: 1px solid rgba(255, 255, 255, 0.09);
-}
-
-.metric-card span {
-    color: var(--muted);
-    font-size: 0.88rem;
-}
-
-.metric-card strong {
-    font-size: 1.85rem;
-    font-weight: 600;
-    color: #fff7eb;
-}
-
-.feature-list {
-    display: grid;
-    gap: 1rem;
-}
-
-.feature-item {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 0.9rem;
-    align-items: start;
-    padding: 1rem 0;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.feature-item:first-child {
-    border-top: none;
-}
-
-.feature-item p {
-    margin: 0.35rem 0 0;
-    color: var(--muted);
-    line-height: 1.55;
-}
-
-.feature-dot {
-    width: 0.8rem;
-    height: 0.8rem;
-    margin-top: 0.22rem;
-    border-radius: 999px;
-    background: linear-gradient(160deg, var(--accent), var(--accent-cool));
-    box-shadow: 0 0 18px rgba(57, 208, 200, 0.38);
+.hero-stage-line {
+    font-family: var(--font-display);
+    font-size: clamp(4rem, 11vw, 8.5rem);
+    font-weight: 700;
+    line-height: 0.88;
+    letter-spacing: 0.04em;
+    color: rgba(255, 255, 255, 0.045);
+    text-shadow: 0 0 24px rgba(57, 208, 200, 0.08);
+    transform: translateX(-0.02em);
 }
 
 .auth-panel {
@@ -496,10 +354,6 @@ h2 {
 @media (max-width: 720px) {
     h1 {
         font-size: 2.6rem;
-    }
-
-    .metric-strip {
-        grid-template-columns: 1fr;
     }
 
     .auth-head,

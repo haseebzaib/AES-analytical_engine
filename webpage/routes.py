@@ -20,10 +20,6 @@ async def login_page(request: Request) -> HTMLResponse:
         {
             "product_name": "MetaCrust Edge Gateway",
             "page_title": "Secure Access",
-            "hero_metrics": [
-                {"label": "Runtime state", "value": str(runtime_snapshot.get("runtime_state", "idle")).title()},
-                {"label": "Workers online", "value": str(runtime_snapshot.get("worker_count", 0))},
-                {"label": "Gateway modes", "value": "2"},
-            ],
+            "runtime_state": str(runtime_snapshot.get("runtime_state", "idle")).title(),
         },
     )

@@ -14,61 +14,9 @@
                 <h1>{{ product_name }}</h1>
             </div>
         </div>
-
-        <div class="hero-copy">
-            <p class="lead">
-                Unified monitoring, sensor acquisition, forwarding intelligence, and edge
-                configuration in one gateway console.
-            </p>
-            <p class="supporting">
-                Designed for network detection now, and built to expand into industrial
-                telemetry, protocol setup, transport security, and site operations without
-                fragmenting the platform.
-            </p>
-        </div>
-
-        <div class="hero-surface">
-            <div class="signal-grid" aria-hidden="true">
-                <span></span>
-                <span></span>
-                <span></span>
-                <span></span>
-                <span></span>
-                <span></span>
-            </div>
-
-            <div class="metric-strip">
-                {% for metric in hero_metrics %}
-                <article class="metric-card">
-                    <span>{{ metric.label }}</span>
-                    <strong>{{ metric.value }}</strong>
-                </article>
-                {% endfor %}
-            </div>
-
-            <div class="feature-list">
-                <div class="feature-item">
-                    <span class="feature-dot"></span>
-                    <div>
-                        <h2>Live continuity analytics</h2>
-                        <p>Track outages, delays, recovery, queue growth, and gateway health.</p>
-                    </div>
-                </div>
-                <div class="feature-item">
-                    <span class="feature-dot"></span>
-                    <div>
-                        <h2>Protocol and sensor setup</h2>
-                        <p>Configure serial ports, Modbus RTU, MQTTS, HTTPS, mTLS, and device mappings.</p>
-                    </div>
-                </div>
-                <div class="feature-item">
-                    <span class="feature-dot"></span>
-                    <div>
-                        <h2>Future-ready control plane</h2>
-                        <p>Built to support both your current sensors and generic expansions later.</p>
-                    </div>
-                </div>
-            </div>
+        <div class="hero-stage" aria-hidden="true">
+            <span class="hero-stage-line">WELCOME</span>
+            <span class="hero-stage-line">BACK</span>
         </div>
     </section>
 
