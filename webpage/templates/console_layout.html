@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block body %}
+<main class="dashboard-shell" data-dashboard-shell>
+    <aside class="dashboard-sidebar">
+        <div class="sidebar-brand">
+            <button
+                type="button"
+                class="brand-mark sidebar-orb-toggle"
+                data-sidebar-toggle
+                aria-expanded="true"
+                aria-label="Collapse sidebar"
+            >
+                <span class="brand-orbit brand-orbit-a"></span>
+                <span class="brand-orbit brand-orbit-b"></span>
+                <span class="brand-core"></span>
+                <span class="sidebar-orb-icon sidebar-orb-icon-open" aria-hidden="true"></span>
+                <span class="sidebar-orb-icon sidebar-orb-icon-closed" aria-hidden="true"></span>
+            </button>
+            <div>
+                <p class="eyebrow">Control Plane</p>
+                <h2 class="sidebar-title">{{ product_name }}</h2>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav" aria-label="Primary">
+            {% for section in primary_sections %}
+            <a
+                href="{{ section.href }}"
+                class="nav-item{% if section.active %} is-current{% endif %}{% if section.disabled %} is-disabled{% endif %}"
+                data-label="{{ section.label }}"
+                {% if section.disabled %}aria-disabled="true"{% endif %}
+            >
+                <span class="nav-label-full">{{ section.label }}</span>
+                <span class="nav-label-compact">{{ section.compact }}</span>
+            </a>
+            {% endfor %}
+        </nav>
+    </aside>
+
+    <section class="dashboard-main">
+        <header class="dashboard-topbar">
+            <div>
+                <p class="eyebrow">{% block page_eyebrow %}{% endblock %}</p>
+                <h1 class="dashboard-heading">{% block page_title %}{% endblock %}</h1>
+            </div>
+
+            <div class="topbar-actions">
+                {% block page_actions %}{% endblock %}
+                <form method="post" action="/logout">
+                    <button type="submit" class="ghost-action">Logout</button>
+                </form>
+            </div>
+        </header>
+
+        {% block console_content %}{% endblock %}
+    </section>
+</main>
+{% endblock %}

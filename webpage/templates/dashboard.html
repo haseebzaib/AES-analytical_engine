@@ -1,52 +1,9 @@
-{% extends "base.html" %}
+{% extends "console_layout.html" %}
 
-{% block body %}
-<main class="dashboard-shell" data-dashboard-shell>
-    <aside class="dashboard-sidebar">
-        <div class="sidebar-brand">
-            <button
-                type="button"
-                class="brand-mark sidebar-orb-toggle"
-                data-sidebar-toggle
-                aria-expanded="true"
-                aria-label="Collapse sidebar"
-            >
-                <span class="brand-orbit brand-orbit-a"></span>
-                <span class="brand-orbit brand-orbit-b"></span>
-                <span class="brand-core"></span>
-                <span class="sidebar-orb-icon sidebar-orb-icon-open" aria-hidden="true"></span>
-                <span class="sidebar-orb-icon sidebar-orb-icon-closed" aria-hidden="true"></span>
-            </button>
-            <div>
-                <p class="eyebrow">Control Plane</p>
-                <h2 class="sidebar-title">{{ product_name }}</h2>
-            </div>
-        </div>
+{% block page_eyebrow %}Current Gateway State{% endblock %}
+{% block page_title %}Overview{% endblock %}
 
-        <nav class="sidebar-nav" aria-label="Primary">
-            {% for section in primary_sections %}
-            <a href="#" class="nav-item{% if loop.first %} is-current{% endif %}" data-label="{{ section.label }}">
-                <span class="nav-label-full">{{ section.label }}</span>
-                <span class="nav-label-compact">{{ section.compact }}</span>
-            </a>
-            {% endfor %}
-        </nav>
-    </aside>
-
-    <section class="dashboard-main">
-        <header class="dashboard-topbar">
-            <div>
-                <p class="eyebrow">Current Gateway State</p>
-                <h1 class="dashboard-heading">Overview</h1>
-            </div>
-
-            <div class="topbar-actions">
-                <form method="post" action="/logout">
-                    <button type="submit" class="ghost-action">Logout</button>
-                </form>
-            </div>
-        </header>
-
+{% block console_content %}
         <section class="overview-grid">
             <article class="gateway-stage-card">
                 <div class="hero-band-copy">
@@ -106,6 +63,4 @@
             </article>
             {% endfor %}
         </section>
-    </section>
-</main>
 {% endblock %}
