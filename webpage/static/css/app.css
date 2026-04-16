@@ -732,6 +732,11 @@ h2 {
     box-shadow: 0 0 14px rgba(98, 211, 158, 0.65);
 }
 
+.gateway-led.is-offline {
+    background: rgba(255, 255, 255, 0.22);
+    box-shadow: none;
+}
+
 .gateway-slot {
     height: 3.2rem;
     border-radius: 0.85rem;
@@ -749,6 +754,10 @@ h2 {
     width: 24%;
     height: 2px;
     background: linear-gradient(90deg, transparent, rgba(57, 208, 200, 0.4), transparent);
+}
+
+.gateway-link.is-inactive {
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
 }
 
 .gateway-link-left {
@@ -769,6 +778,11 @@ h2 {
     color: #dce9e8;
     font-size: 0.82rem;
     letter-spacing: 0.08em;
+}
+
+.gateway-port.is-active {
+    border-color: rgba(57, 208, 200, 0.32);
+    box-shadow: 0 0 20px rgba(57, 208, 200, 0.14);
 }
 
 .port-ethernet {
@@ -834,6 +848,11 @@ h2 {
     box-shadow: 0 0 14px rgba(240, 166, 75, 0.45);
 }
 
+.connectivity-badge.is-inactive {
+    background: rgba(255, 255, 255, 0.22);
+    box-shadow: none;
+}
+
 .domain-grid {
     display: flex;
     flex-wrap: wrap;
@@ -853,6 +872,155 @@ h2 {
 .domain-card h3 {
     margin: 0 0 0.55rem;
     font-family: var(--font-display);
+}
+
+.network-shell {
+    width: min(100%, 98rem);
+    margin-top: 1.4rem;
+    display: grid;
+    gap: 1rem;
+    align-content: start;
+}
+
+.network-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.network-summary-card {
+    padding: 1.1rem 1.15rem;
+    border-radius: 1.35rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(6, 17, 23, 0.62);
+}
+
+.network-summary-card h2 {
+    margin-top: 0.15rem;
+    font-size: clamp(1.4rem, 2vw, 1.9rem);
+}
+
+.network-summary-card p:last-child {
+    margin: 0.45rem 0 0;
+    color: var(--muted);
+}
+
+.network-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.network-action-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.network-apply-action {
+    width: auto;
+    min-width: 12rem;
+    padding-inline: 1.3rem;
+}
+
+.network-runtime-card {
+    padding: 1.1rem 1.15rem;
+    border-radius: 1.35rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(6, 17, 23, 0.62);
+}
+
+.network-runtime-card.is-hidden {
+    display: none;
+}
+
+.network-runtime-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.9rem;
+}
+
+.network-runtime-item {
+    padding: 0.95rem 1rem;
+    border-radius: 1rem;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.network-runtime-item span {
+    display: block;
+    color: var(--muted);
+    font-size: 0.82rem;
+}
+
+.network-runtime-item strong {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 1.05rem;
+}
+
+.network-runtime-item p {
+    margin: 0.35rem 0 0;
+    color: var(--muted);
+}
+
+.network-form {
+    display: grid;
+    gap: 1rem;
+}
+
+.network-feedback {
+    min-height: 1rem;
+}
+
+.wifi-tabs {
+    margin-top: -0.1rem;
+    margin-bottom: 0.1rem;
+}
+
+.wifi-subpanel {
+    display: grid;
+    gap: 1rem;
+}
+
+.wifi-subpanel.is-hidden {
+    display: none;
+}
+
+.settings-note {
+    padding: 1rem 1.05rem;
+    border-radius: 1.25rem;
+    border: 1px solid rgba(240, 166, 75, 0.18);
+    background: linear-gradient(135deg, rgba(240, 166, 75, 0.08), rgba(57, 208, 200, 0.05));
+}
+
+.settings-note strong {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-family: var(--font-display);
+    font-size: 1rem;
+}
+
+.settings-note p {
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.55;
+}
+
+.field.is-hidden,
+[data-network-visible-when].is-hidden {
+    display: none;
+}
+
+.network-disabled-panel {
+    opacity: 0.86;
+}
+
+.is-muted {
+    opacity: 0.68;
 }
 
 .system-shell {
@@ -993,6 +1161,10 @@ h2 {
     grid-column: span 2;
 }
 
+.settings-grid-span-3 {
+    grid-column: 1 / -1;
+}
+
 .checkbox-field {
     display: flex;
     align-items: center;
@@ -1015,6 +1187,12 @@ h2 {
 .checkbox-field span {
     font-size: 0.92rem;
     line-height: 1.4;
+}
+
+.settings-inline-note {
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.55;
 }
 
 .system-save {
@@ -1083,7 +1261,9 @@ h2 {
     }
 
     .dashboard-shell,
-    .overview-grid {
+    .overview-grid,
+    .network-summary-grid,
+    .network-runtime-grid {
         grid-template-columns: 1fr;
     }
 
@@ -1098,6 +1278,15 @@ h2 {
     }
 
     .system-tabs {
+        width: 100%;
+    }
+
+    .network-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .network-action-row {
         width: 100%;
     }
 

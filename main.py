@@ -7,22 +7,28 @@ from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 import uvicorn
 
+from analytics_engine.network_settings_store import NetworkSettingsStore
 from analytics_engine.runtime import AnalyticsRuntime
 from analytics_engine.settings_store import SettingsStore
 from webpage.app import configure_webpage
 
 
 runtime = AnalyticsRuntime()
-storage_root = Path(os.environ.get("METACRUST_STORAGE_ROOT", "/opt/gateway/software_storage"))
+gateway_root = Path(os.environ.get("METACRUST_GATEWAY_ROOT", "/opt/gateway"))
+storage_root = Path(os.environ.get("METACRUST_STORAGE_ROOT", str(gateway_root / "software_storage")))
 settings_store = SettingsStore(storage_root)
+network_settings_store = NetworkSettingsStore(gateway_root=gateway_root, storage_root=storage_root)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.session_nonce = secrets.token_urlsafe(16)
+    network_settings_store.ensure_initialized()
     runtime.start()
     app.state.runtime = runtime
+    app.state.gateway_root = gateway_root
     app.state.settings_store = settings_store
+    app.state.network_settings_store = network_settings_store
     try:
         yield
     finally:

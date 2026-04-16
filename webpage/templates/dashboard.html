@@ -4,7 +4,7 @@
 {% block page_title %}Overview{% endblock %}
 
 {% block console_content %}
-        <section class="overview-grid">
+        <section class="overview-grid" data-overview-shell>
             <article class="gateway-stage-card">
                 <div class="hero-band-copy">
                     <p class="hero-band-eyebrow">Gateway</p>
@@ -14,7 +14,7 @@
                     {% for chip in status_chips %}
                     <div class="overview-chip">
                         <span>{{ chip.label }}</span>
-                        <strong>{{ chip.value }}</strong>
+                        <strong data-overview-chip="{{ chip.label|lower|replace(' ', '-') }}">{{ chip.value }}</strong>
                     </div>
                     {% endfor %}
                 </div>
@@ -22,16 +22,16 @@
                 <div class="gateway-stage-visual" aria-hidden="true">
                     <div class="gateway-halo"></div>
                     <div class="gateway-unit">
-                        <span class="gateway-led"></span>
+                        <span class="gateway-led{% if not overview_visual.gateway_online %} is-offline{% endif %}" data-overview-led></span>
                         <span class="gateway-slot"></span>
                         <span class="gateway-slot"></span>
                         <span class="gateway-slot"></span>
                         <span class="gateway-slot is-wide"></span>
                     </div>
-                    <div class="gateway-link gateway-link-left"></div>
-                    <div class="gateway-link gateway-link-right"></div>
-                    <div class="gateway-port port-ethernet">ETH</div>
-                    <div class="gateway-port port-wifi">WIFI</div>
+                    <div class="gateway-link gateway-link-left{% if not overview_visual.ethernet_active %} is-inactive{% endif %}" data-overview-eth-link></div>
+                    <div class="gateway-link gateway-link-right{% if not overview_visual.wifi_active %} is-inactive{% endif %}" data-overview-wifi-link></div>
+                    <div class="gateway-port port-ethernet{% if overview_visual.ethernet_active %} is-active{% endif %}" data-overview-eth-port>ETH</div>
+                    <div class="gateway-port port-wifi{% if overview_visual.wifi_active %} is-active{% endif %}" data-overview-wifi-port>WIFI</div>
                 </div>
             </article>
 
@@ -40,15 +40,15 @@
                 <h2>Interface status</h2>
                 <div class="connectivity-list">
                 {% for item in connectivity_items %}
-                <article class="connectivity-item">
+                <article class="connectivity-item" data-overview-item="{{ item.label|lower|replace(' ', '-') }}">
                     <div class="connectivity-meta">
                         <span>{{ item.label }}</span>
                         <div class="connectivity-state">
-                            <span class="connectivity-badge is-{{ item.tone }}"></span>
-                            <strong>{{ item.state }}</strong>
+                            <span class="connectivity-badge is-{{ item.tone }}" data-overview-badge></span>
+                            <strong data-overview-state>{{ item.state }}</strong>
                         </div>
                     </div>
-                    <p>{{ item.detail }}</p>
+                    <p data-overview-detail>{{ item.detail }}</p>
                 </article>
                 {% endfor %}
                 </div>

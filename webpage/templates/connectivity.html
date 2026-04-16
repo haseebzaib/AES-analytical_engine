@@ -1,0 +1,506 @@
+{% extends "console_layout.html" %}
+
+{% block page_eyebrow %}Gateway Networking{% endblock %}
+{% block page_title %}Connectivity{% endblock %}
+
+{% block console_content %}
+{% set net = network_settings.network %}
+<section class="network-shell" data-connectivity-shell>
+    <div class="network-toolbar">
+        <div class="system-tabs" role="tablist" aria-label="Connectivity sections">
+            {% for tab in connectivity_tabs %}
+            <button
+                type="button"
+                class="system-tab{% if tab.active %} is-current{% endif %}{% if tab.disabled %} is-disabled{% endif %}"
+                data-network-tab="{{ tab.id }}"
+                role="tab"
+                aria-selected="{{ 'true' if tab.active else 'false' }}"
+                {% if tab.disabled %}disabled{% endif %}
+            >
+                {{ tab.label }}
+            </button>
+            {% endfor %}
+        </div>
+
+        <div class="network-action-row">
+            <button type="button" class="ghost-action" data-network-runtime-toggle>Show Runtime State</button>
+            <button type="button" class="ghost-action" data-network-revert>Revert Pending Changes</button>
+            <button type="button" class="ghost-action" data-network-save>Save</button>
+            <button type="button" class="primary-action network-apply-action" data-network-save-apply>Save and Apply</button>
+        </div>
+    </div>
+
+    <article class="network-runtime-card is-hidden" data-network-runtime-panel>
+        <div class="network-runtime-grid">
+            <div class="network-runtime-item">
+                <span>Ethernet</span>
+                <strong data-runtime-ethernet-status>{{ 'Link up' if network_state.ethernet.link_up else 'Link down' }}</strong>
+                <p data-runtime-ethernet-address>{{ network_state.ethernet.address or 'No address assigned' }}</p>
+            </div>
+            <div class="network-runtime-item">
+                <span>Wi-Fi Client</span>
+                <strong data-runtime-wifi-status>{{ 'Connected' if network_state.wifi_client.connected_ssid else 'Disconnected' }}</strong>
+                <p data-runtime-wifi-detail>{{ network_state.wifi_client.connected_ssid or network_state.wifi_client.address or 'No active SSID' }}</p>
+            </div>
+            <div class="network-runtime-item">
+                <span>Wi-Fi AP</span>
+                <strong data-runtime-ap-status>{{ 'Enabled' if network_state.wifi_ap.enabled else 'Disabled' }}</strong>
+                <p data-runtime-ap-detail>{{ network_state.wifi_ap.clients }} client(s)</p>
+            </div>
+            <div class="network-runtime-item">
+                <span>Apply Status</span>
+                <strong data-runtime-apply-status>{{ apply_result.status|replace('_', ' ')|title }}</strong>
+                <p data-runtime-apply-timestamp>{{ apply_result.timestamp or 'No apply run yet' }}</p>
+            </div>
+        </div>
+    </article>
+
+    <form class="network-form" data-network-form>
+        <section class="system-panel system-panel-wide" data-network-panel="ethernet">
+            <div class="system-panel-head">
+                <div>
+                    <p class="hero-band-eyebrow">Ethernet</p>
+                    <h2>eth0 uplink profile</h2>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-grid settings-grid-three">
+                    <label class="field checkbox-field">
+                        <span>Enable Ethernet</span>
+                        <input type="checkbox" name="ethernet_enabled" {% if net.ethernet.enabled %}checked{% endif %}>
+                    </label>
+
+                    <label class="field">
+                        <span>Interface</span>
+                        <select name="ethernet_interface">
+                            <option value="eth0" {% if net.ethernet.interface == 'eth0' %}selected{% endif %}>eth0</option>
+                        </select>
+                    </label>
+
+                    <label class="field">
+                        <span>Role</span>
+                        <select name="ethernet_role">
+                            <option value="uplink" {% if net.ethernet.role == 'uplink' %}selected{% endif %}>Uplink</option>
+                        </select>
+                    </label>
+
+                    <label class="field checkbox-field">
+                        <span>Use DHCP</span>
+                        <input type="checkbox" name="ethernet_dhcp" {% if net.ethernet.dhcp %}checked{% endif %}>
+                    </label>
+
+                    <label class="field">
+                        <span>Route metric</span>
+                        <input type="number" name="ethernet_route_metric" value="{{ net.ethernet.route_metric }}" min="1" step="1">
+                    </label>
+
+                    <label class="field">
+                        <span>MTU</span>
+                        <input type="number" name="ethernet_mtu" value="{{ net.ethernet.mtu }}" min="576" step="1">
+                    </label>
+
+                    <label class="field checkbox-field">
+                        <span>Allow as uplink</span>
+                        <input type="checkbox" name="ethernet_uplink_allowed" {% if net.ethernet.uplink_allowed %}checked{% endif %}>
+                    </label>
+
+                    <label class="field checkbox-field">
+                        <span>Allow downstream use</span>
+                        <input type="checkbox" name="ethernet_downstream_allowed" {% if net.ethernet.downstream_allowed %}checked{% endif %}>
+                    </label>
+                </div>
+            </div>
+
+            <div class="settings-section" data-network-visible-when="ethernet-static">
+                <div class="settings-section-head">
+                    <div>
+                        <p class="hero-band-eyebrow">Static Addressing</p>
+                        <h3>Manual Ethernet addressing</h3>
+                    </div>
+                </div>
+
+                <div class="settings-grid settings-grid-three">
+                    <label class="field">
+                        <span>Static address</span>
+                        <input type="text" name="ethernet_static_address" value="{{ net.ethernet.static_address }}" placeholder="192.168.1.20/24">
+                    </label>
+
+                    <label class="field">
+                        <span>Static gateway</span>
+                        <input type="text" name="ethernet_static_gateway" value="{{ net.ethernet.static_gateway }}" placeholder="192.168.1.1">
+                    </label>
+
+                    <label class="field">
+                        <span>DNS servers</span>
+                        <input type="text" name="ethernet_static_dns" value="{{ net.ethernet.static_dns|join(', ') }}" placeholder="1.1.1.1, 8.8.8.8">
+                    </label>
+                </div>
+            </div>
+        </section>
+
+        <section class="system-panel system-panel-wide is-hidden" data-network-panel="wifi">
+            <div class="system-panel-head">
+                <div>
+                    <p class="hero-band-eyebrow">Wi-Fi</p>
+                    <h2>Wireless network settings</h2>
+                </div>
+                <button type="button" class="ghost-action" data-network-scan>Scan Wi-Fi</button>
+            </div>
+
+            <div class="system-tabs wifi-tabs" role="tablist" aria-label="Wi-Fi sections">
+                <button type="button" class="system-tab is-current" data-wifi-subtab="client" aria-selected="true">Client</button>
+                <button type="button" class="system-tab" data-wifi-subtab="ap" aria-selected="false">Access Point</button>
+            </div>
+
+            <div class="wifi-subpanel" data-wifi-subpanel="client">
+                <div class="settings-section">
+                    <div class="settings-section-head">
+                        <div>
+                            <p class="hero-band-eyebrow">Wi-Fi Client</p>
+                            <h3>Client connection</h3>
+                        </div>
+                    </div>
+
+                    <div class="settings-grid settings-grid-three">
+                        <label class="field checkbox-field">
+                            <span>Enable Wi-Fi client</span>
+                            <input type="checkbox" name="wifi_client_enabled" {% if net.wifi_client.enabled %}checked{% endif %}>
+                        </label>
+
+                        <label class="field">
+                            <span>Interface</span>
+                            <select name="wifi_client_interface">
+                                <option value="wlan0" {% if net.wifi_client.interface == 'wlan0' %}selected{% endif %}>wlan0</option>
+                            </select>
+                        </label>
+
+                        <label class="field checkbox-field">
+                            <span>Auto connect</span>
+                            <input type="checkbox" name="wifi_client_auto_connect" {% if net.wifi_client.auto_connect %}checked{% endif %}>
+                        </label>
+
+                        <label class="field settings-grid-span-2">
+                            <span>SSID</span>
+                            <input type="text" name="wifi_client_ssid" value="{{ net.wifi_client.ssid }}" placeholder="Office Wi-Fi">
+                        </label>
+
+                        <label class="field checkbox-field">
+                            <span>Hidden SSID</span>
+                            <input type="checkbox" name="wifi_client_hidden_ssid" {% if net.wifi_client.hidden_ssid %}checked{% endif %}>
+                        </label>
+
+                        <label class="field">
+                            <span>Security</span>
+                            <select name="wifi_client_security">
+                                <option value="wpa2-psk" {% if net.wifi_client.security == 'wpa2-psk' %}selected{% endif %}>WPA2-PSK</option>
+                                <option value="wpa2-wpa3" {% if net.wifi_client.security == 'wpa2-wpa3' %}selected{% endif %}>WPA2/WPA3 Mixed</option>
+                                <option value="wpa3-sae" {% if net.wifi_client.security == 'wpa3-sae' %}selected{% endif %}>WPA3-SAE</option>
+                                <option value="open" {% if net.wifi_client.security == 'open' %}selected{% endif %}>Open</option>
+                            </select>
+                        </label>
+
+                        <label class="field settings-grid-span-2">
+                            <span>Passphrase</span>
+                            <input type="password" name="wifi_client_passphrase" value="{{ net.wifi_client.passphrase }}">
+                        </label>
+
+                        <label class="field">
+                            <span>Country code</span>
+                            <input type="text" name="wifi_client_country_code" value="{{ net.wifi_client.country_code }}" maxlength="2">
+                        </label>
+
+                        <label class="field">
+                            <span>Band</span>
+                            <select name="wifi_client_band">
+                                <option value="auto" {% if net.wifi_client.band == 'auto' %}selected{% endif %}>Auto</option>
+                                <option value="2.4ghz" {% if net.wifi_client.band == '2.4ghz' %}selected{% endif %}>2.4 GHz</option>
+                                <option value="5ghz" {% if net.wifi_client.band == '5ghz' %}selected{% endif %}>5 GHz</option>
+                            </select>
+                        </label>
+
+                        <label class="field">
+                            <span>Route metric</span>
+                            <input type="number" name="wifi_client_route_metric" value="{{ net.wifi_client.route_metric }}" min="1" step="1">
+                        </label>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <div class="settings-section-head">
+                        <div>
+                            <p class="hero-band-eyebrow">Client Addressing</p>
+                            <h3>Wi-Fi client IP settings</h3>
+                        </div>
+                    </div>
+
+                    <div class="settings-grid settings-grid-three">
+                        <label class="field checkbox-field">
+                            <span>Use DHCP</span>
+                            <input type="checkbox" name="wifi_client_dhcp" {% if net.wifi_client.dhcp %}checked{% endif %}>
+                        </label>
+
+                        <label class="field settings-grid-span-2" data-network-visible-when="wifi-client-static">
+                            <span>Static address</span>
+                            <input type="text" name="wifi_client_static_address" value="{{ net.wifi_client.static_address }}" placeholder="192.168.10.20/24">
+                        </label>
+
+                        <label class="field" data-network-visible-when="wifi-client-static">
+                            <span>Static gateway</span>
+                            <input type="text" name="wifi_client_static_gateway" value="{{ net.wifi_client.static_gateway }}" placeholder="192.168.10.1">
+                        </label>
+
+                        <label class="field settings-grid-span-2" data-network-visible-when="wifi-client-static">
+                            <span>DNS servers</span>
+                            <input type="text" name="wifi_client_static_dns" value="{{ net.wifi_client.static_dns|join(', ') }}" placeholder="1.1.1.1, 8.8.8.8">
+                        </label>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <div class="settings-section-head">
+                        <div>
+                            <p class="hero-band-eyebrow">Available Networks</p>
+                            <h3>Wi-Fi scan results</h3>
+                        </div>
+                    </div>
+                    <div class="settings-note is-hidden" data-network-scan-message></div>
+                    <div class="settings-grid settings-grid-three" data-network-scan-results>
+                        <p class="settings-inline-note">Run a scan to list SSIDs visible to `wlan0`.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="wifi-subpanel is-hidden" data-wifi-subpanel="ap">
+                <div class="settings-section">
+                    <div class="settings-section-head">
+                        <div>
+                            <p class="hero-band-eyebrow">Wi-Fi Access Point</p>
+                            <h3>Access point</h3>
+                        </div>
+                    </div>
+
+                    <div class="settings-grid settings-grid-three">
+                        <label class="field checkbox-field">
+                            <span>Enable Wi-Fi AP</span>
+                            <input type="checkbox" name="wifi_ap_enabled" {% if net.wifi_ap.enabled %}checked{% endif %}>
+                        </label>
+
+                        <label class="field">
+                            <span>Interface</span>
+                            <select name="wifi_ap_interface">
+                                <option value="wlan0" {% if net.wifi_ap.interface == 'wlan0' %}selected{% endif %}>wlan0</option>
+                            </select>
+                        </label>
+
+                        <label class="field">
+                            <span>Shared uplink</span>
+                            <select name="wifi_ap_shared_uplink_mode">
+                                <option value="auto" {% if net.wifi_ap.shared_uplink_mode == 'auto' %}selected{% endif %}>Auto</option>
+                                <option value="ethernet" {% if net.wifi_ap.shared_uplink_mode in ['ethernet', 'eth0'] %}selected{% endif %}>Ethernet</option>
+                            </select>
+                        </label>
+
+                        <label class="field settings-grid-span-2">
+                            <span>SSID</span>
+                            <input type="text" name="wifi_ap_ssid" value="{{ net.wifi_ap.ssid }}" placeholder="Gateway-Setup">
+                        </label>
+
+                        <label class="field">
+                            <span>Security</span>
+                            <select name="wifi_ap_security">
+                                <option value="wpa2-psk" {% if net.wifi_ap.security == 'wpa2-psk' %}selected{% endif %}>WPA2-PSK</option>
+                                <option value="open" {% if net.wifi_ap.security == 'open' %}selected{% endif %}>Open</option>
+                            </select>
+                        </label>
+
+                        <label class="field settings-grid-span-2">
+                            <span>Passphrase</span>
+                            <input type="password" name="wifi_ap_passphrase" value="{{ net.wifi_ap.passphrase }}">
+                        </label>
+
+                        <label class="field">
+                            <span>Country code</span>
+                            <input type="text" name="wifi_ap_country_code" value="{{ net.wifi_ap.country_code }}" maxlength="2">
+                        </label>
+
+                        <label class="field">
+                            <span>Band</span>
+                            <select name="wifi_ap_band">
+                                <option value="2.4ghz" {% if net.wifi_ap.band == '2.4ghz' %}selected{% endif %}>2.4 GHz</option>
+                                <option value="5ghz" {% if net.wifi_ap.band == '5ghz' %}selected{% endif %}>5 GHz</option>
+                                <option value="auto" {% if net.wifi_ap.band == 'auto' %}selected{% endif %}>Auto</option>
+                            </select>
+                        </label>
+
+                        <label class="field">
+                            <span>Channel</span>
+                            <input type="text" name="wifi_ap_channel" value="{{ net.wifi_ap.channel }}" placeholder="auto">
+                        </label>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <div class="settings-section-head">
+                        <div>
+                            <p class="hero-band-eyebrow">AP Addressing</p>
+                            <h3>Hotspot subnet and sharing</h3>
+                        </div>
+                    </div>
+
+                    <div class="settings-grid settings-grid-three">
+                        <label class="field">
+                            <span>Subnet CIDR</span>
+                            <input type="text" name="wifi_ap_subnet_cidr" value="{{ net.wifi_ap.subnet_cidr }}" placeholder="192.168.50.1/24">
+                        </label>
+
+                        <label class="field checkbox-field">
+                            <span>DHCP server</span>
+                            <input type="checkbox" name="wifi_ap_dhcp_server_enabled" {% if net.wifi_ap.dhcp_server_enabled %}checked{% endif %}>
+                        </label>
+
+                        <label class="field checkbox-field">
+                            <span>NAT enabled</span>
+                            <input type="checkbox" name="wifi_ap_nat_enabled" {% if net.wifi_ap.nat_enabled %}checked{% endif %}>
+                        </label>
+
+                        <label class="field" data-network-visible-when="wifi-ap-dhcp">
+                            <span>DHCP range start</span>
+                            <input type="text" name="wifi_ap_dhcp_range_start" value="{{ net.wifi_ap.dhcp_range_start }}" placeholder="192.168.50.100">
+                        </label>
+
+                        <label class="field" data-network-visible-when="wifi-ap-dhcp">
+                            <span>DHCP range end</span>
+                            <input type="text" name="wifi_ap_dhcp_range_end" value="{{ net.wifi_ap.dhcp_range_end }}" placeholder="192.168.50.180">
+                        </label>
+
+                        <label class="field checkbox-field">
+                            <span>Client isolation</span>
+                            <input type="checkbox" name="wifi_ap_client_isolation" {% if net.wifi_ap.client_isolation %}checked{% endif %}>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="system-panel system-panel-wide is-hidden network-disabled-panel" data-network-panel="cellular">
+            <div class="system-panel-head">
+                <div>
+                    <p class="hero-band-eyebrow">Cellular</p>
+                    <h2>Cellular settings</h2>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-grid settings-grid-three is-muted">
+                    <label class="field">
+                        <span>Active modem id</span>
+                        <input type="text" value="{{ net.cellular.active_modem_id }}" disabled>
+                    </label>
+                    <label class="field">
+                        <span>Backend</span>
+                        <input type="text" value="" disabled>
+                    </label>
+                    <label class="field">
+                        <span>Data interface</span>
+                        <input type="text" value="ppp0" disabled>
+                    </label>
+                    <label class="field">
+                        <span>Control device</span>
+                        <input type="text" value="" disabled>
+                    </label>
+                    <label class="field">
+                        <span>APN</span>
+                        <input type="text" value="" disabled>
+                    </label>
+                    <label class="field">
+                        <span>Route metric</span>
+                        <input type="text" value="" disabled>
+                    </label>
+                </div>
+            </div>
+        </section>
+
+        <section class="system-panel system-panel-wide is-hidden" data-network-panel="policy">
+            <div class="system-panel-head">
+                <div>
+                    <p class="hero-band-eyebrow">Uplink Policy</p>
+                    <h2>Failover and route preference</h2>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-head">
+                    <div>
+                        <p class="hero-band-eyebrow">Priority</p>
+                        <h3>Preferred uplink order</h3>
+                    </div>
+                </div>
+
+                <div class="settings-grid settings-grid-three">
+                    <label class="field">
+                        <span>Priority slot 1</span>
+                        <select name="policy_uplink_priority_1">
+                            {% for value in ['eth0', 'wifi_client', 'cellular'] %}
+                            <option value="{{ value }}" {% if net.policy.uplink_priority[0] == value %}selected{% endif %}>{{ value }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+
+                    <label class="field">
+                        <span>Priority slot 2</span>
+                        <select name="policy_uplink_priority_2">
+                            {% for value in ['eth0', 'wifi_client', 'cellular'] %}
+                            <option value="{{ value }}" {% if net.policy.uplink_priority[1] == value %}selected{% endif %}>{{ value }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+
+                    <label class="field">
+                        <span>Priority slot 3</span>
+                        <select name="policy_uplink_priority_3">
+                            {% for value in ['eth0', 'wifi_client', 'cellular'] %}
+                            <option value="{{ value }}" {% if net.policy.uplink_priority[2] == value %}selected{% endif %}>{{ value }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+
+                    <label class="field checkbox-field">
+                        <span>Fail back to higher priority uplink</span>
+                        <input type="checkbox" name="policy_failback_enabled" {% if net.policy.failback_enabled %}checked{% endif %}>
+                    </label>
+
+                    <label class="field">
+                        <span>Stable seconds before switch</span>
+                        <input type="number" name="policy_stable_seconds_before_switch" value="{{ net.policy.stable_seconds_before_switch }}" min="0" step="1">
+                    </label>
+
+                    <label class="field checkbox-field">
+                        <span>Require connectivity check</span>
+                        <input type="checkbox" name="policy_require_connectivity_check" {% if net.policy.require_connectivity_check %}checked{% endif %}>
+                    </label>
+
+                    <label class="field">
+                        <span>Fail count threshold</span>
+                        <input type="number" name="policy_fail_count_threshold" value="{{ net.policy.fail_count_threshold }}" min="1" step="1">
+                    </label>
+
+                    <label class="field">
+                        <span>Recover count threshold</span>
+                        <input type="number" name="policy_recover_count_threshold" value="{{ net.policy.recover_count_threshold }}" min="1" step="1">
+                    </label>
+
+                    <label class="field settings-grid-span-3">
+                        <span>Connectivity targets</span>
+                        <input type="text" name="policy_connectivity_targets" value="{{ net.policy.connectivity_targets|join(', ') }}" placeholder="1.1.1.1, 8.8.8.8">
+                    </label>
+                </div>
+
+                <p class="settings-inline-note">Connectivity checks use the listed target IPs. The monitor switches only after the configured stable time and fail/recover thresholds are satisfied.</p>
+            </div>
+        </section>
+
+        <p class="form-error network-feedback" data-network-message></p>
+    </form>
+</section>
+{% endblock %}
