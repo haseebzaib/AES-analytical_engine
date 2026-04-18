@@ -104,6 +104,7 @@ def _overview_status_payload(network_state: dict[str, object]) -> dict[str, obje
 def _primary_sections(active_label: str) -> list[dict[str, object]]:
     items = [
         ("Overview", "Over", "/dashboard"),
+        ("Monitor", "Mon", "/monitor"),
         ("Insights", "Info", "#"),
         ("Field Interfaces", "Field", "#"),
         ("Network Intelligence", "Net", "#"),
@@ -362,6 +363,22 @@ async def dashboard_page(request: Request) -> HTMLResponse:
                     "description": "Gateway access, certificates, keys, firewall policy, and trust controls.",
                 },
             ],
+        },
+    )
+
+
+@router.get("/monitor", response_class=HTMLResponse)
+async def monitor_page(request: Request) -> HTMLResponse:
+    if not _is_authenticated(request):
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+
+    return templates.TemplateResponse(
+        request,
+        "monitor.html",
+        {
+            "product_name": "MetaCrust Edge Gateway",
+            "page_title": "Monitor",
+            "primary_sections": _primary_sections("Monitor"),
         },
     )
 

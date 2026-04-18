@@ -691,6 +691,207 @@ document.addEventListener("DOMContentLoaded", () => {
         window.setInterval(refreshRuntimeState, 5000);
     }
 
+    const monitorShell = document.querySelector("[data-monitor-shell]");
+    if (monitorShell) {
+        const drawSparkline = (container, data, opts = {}) => {
+            if (!container || !Array.isArray(data) || data.length < 2) return;
+            const { stroke = "#39d0c8", min: minOverride, max: maxOverride } = opts;
+            const W = container.clientWidth || 300;
+            const H = container.clientHeight || 72;
+            const pad = 3;
+            const uH = H - pad * 2;
+            const uW = W - pad * 2;
+            const minV = minOverride !== undefined ? minOverride : Math.min(...data);
+            const maxV = maxOverride !== undefined ? maxOverride : Math.max(...data);
+            const range = maxV - minV || 1;
+            const toX = (i) => pad + (i / (data.length - 1)) * uW;
+            const toY = (v) => pad + uH - ((v - minV) / range) * uH;
+            const pts = data.map((v, i) => `${toX(i)},${toY(v)}`).join(" ");
+            const gradId = `sg${stroke.replace(/[^a-z0-9]/gi, "")}`;
+            container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="${stroke}" stop-opacity="0.32"/>
+                        <stop offset="100%" stop-color="${stroke}" stop-opacity="0.03"/>
+                    </linearGradient>
+                </defs>
+                <path d="M ${toX(0)},${toY(data[0])} L ${pts} L ${toX(data.length - 1)},${H} L ${toX(0)},${H} Z" fill="url(#${gradId})"/>
+                <polyline points="${pts}" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>`;
+        };
+
+        const drawDualSparkline = (container, rxData, txData) => {
+            if (!container || !Array.isArray(rxData) || rxData.length < 2) return;
+            const W = container.clientWidth || 300;
+            const H = container.clientHeight || 72;
+            const pad = 3;
+            const uH = H - pad * 2;
+            const uW = W - pad * 2;
+            const allVals = [...rxData, ...(Array.isArray(txData) ? txData : [])];
+            const maxV = Math.max(1, ...allVals);
+            const toX = (i) => pad + (i / (rxData.length - 1)) * uW;
+            const toY = (v) => pad + uH - (v / maxV) * uH;
+            const rxPts = rxData.map((v, i) => `${toX(i)},${toY(v)}`).join(" ");
+            const txPts = Array.isArray(txData) && txData.length >= 2
+                ? txData.map((v, i) => `${toX(i)},${toY(v)}`).join(" ") : null;
+            container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="sg_netrx" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#a97df0" stop-opacity="0.28"/>
+                        <stop offset="100%" stop-color="#a97df0" stop-opacity="0.02"/>
+                    </linearGradient>
+                </defs>
+                <path d="M ${toX(0)},${toY(rxData[0])} L ${rxPts} L ${toX(rxData.length - 1)},${H} L ${toX(0)},${H} Z" fill="url(#sg_netrx)"/>
+                <polyline points="${rxPts}" fill="none" stroke="#a97df0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                ${txPts ? `<polyline points="${txPts}" fill="none" stroke="#f0a64b" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 3"/>` : ""}
+            </svg>`;
+        };
+
+        const fmtBps = (bps) => {
+            if (bps >= 1048576) return `${(bps / 1048576).toFixed(1)} MB/s`;
+            if (bps >= 1024) return `${(bps / 1024).toFixed(1)} KB/s`;
+            return `${Math.round(bps)} B/s`;
+        };
+
+        const fmtBytes = (b) => {
+            if (b >= 1073741824) return `${(b / 1073741824).toFixed(1)} GB`;
+            if (b >= 1048576) return `${(b / 1048576).toFixed(0)} MB`;
+            return `${Math.round(b / 1024)} KB`;
+        };
+
+        const setKpiBar = (name, pct) => {
+            const bar = monitorShell.querySelector(`[data-kpi-bar="${name}"]`);
+            if (!bar) return;
+            bar.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+            if (name === "temp") {
+                bar.classList.toggle("is-warm", pct >= 50 && pct < 70);
+                bar.classList.toggle("is-hot", pct >= 70);
+            }
+        };
+
+        const applyCurrentMetrics = (m) => {
+            if (!m?.cpu) return;
+
+            // CPU — m.cpu.total_percent, m.cpu.per_core: [{core, usage_percent}]
+            const cpuPct = m.cpu.total_percent ?? 0;
+            const perCore = Array.isArray(m.cpu.per_core) ? m.cpu.per_core : [];
+            const cpuVal = monitorShell.querySelector("[data-kpi-value=\"cpu\"]");
+            const cpuSub = monitorShell.querySelector("[data-kpi-sub=\"cpu\"]");
+            const cpuLive = monitorShell.querySelector("[data-chart-live=\"cpu\"]");
+            if (cpuVal) cpuVal.textContent = `${cpuPct}%`;
+            if (cpuSub) cpuSub.textContent = `${perCore.length} core${perCore.length !== 1 ? "s" : ""}`;
+            if (cpuLive) cpuLive.textContent = `${cpuPct}%`;
+            setKpiBar("cpu", cpuPct);
+
+            // Memory — m.memory.memory_bytes.{used_percent, used, total}
+            const memPct = m.memory?.memory_bytes?.used_percent ?? 0;
+            const memUsed = m.memory?.memory_bytes?.used ?? 0;
+            const memTotal = m.memory?.memory_bytes?.total ?? 0;
+            const memVal = monitorShell.querySelector("[data-kpi-value=\"memory\"]");
+            const memSub = monitorShell.querySelector("[data-kpi-sub=\"memory\"]");
+            const memLive = monitorShell.querySelector("[data-chart-live=\"memory\"]");
+            if (memVal) memVal.textContent = `${memPct}%`;
+            if (memSub) memSub.textContent = memTotal ? `${fmtBytes(memUsed)} of ${fmtBytes(memTotal)}` : "No data";
+            if (memLive) memLive.textContent = `${memPct}%`;
+            setKpiBar("memory", memPct);
+
+            // Temperature
+            const tempC = m.temperature_c ?? null;
+            const tempVal = monitorShell.querySelector("[data-kpi-value=\"temp\"]");
+            const tempSub = monitorShell.querySelector("[data-kpi-sub=\"temp\"]");
+            const tempLive = monitorShell.querySelector("[data-chart-live=\"temp\"]");
+            if (tempVal) tempVal.textContent = tempC != null ? `${tempC}\u00b0C` : "--";
+            if (tempSub) tempSub.textContent = tempC == null ? "No sensor" : tempC < 50 ? "Normal" : tempC < 70 ? "Warm" : "Hot";
+            if (tempLive) tempLive.textContent = tempC != null ? `${tempC} \u00b0C` : "-- \u00b0C";
+            setKpiBar("temp", tempC != null ? Math.min(100, (tempC / 85) * 100) : 0);
+
+            // Filesystem — m.filesystem.{used_percent, used_bytes, total_bytes}
+            const diskPct = m.filesystem?.used_percent ?? 0;
+            const diskUsed = m.filesystem?.used_bytes ?? 0;
+            const diskTotal = m.filesystem?.total_bytes ?? 0;
+            const diskVal = monitorShell.querySelector("[data-kpi-value=\"disk\"]");
+            const diskSub = monitorShell.querySelector("[data-kpi-sub=\"disk\"]");
+            if (diskVal) diskVal.textContent = `${diskPct}%`;
+            if (diskSub) diskSub.textContent = diskTotal ? `${fmtBytes(diskUsed)} of ${fmtBytes(diskTotal)}` : "No data";
+            setKpiBar("disk", diskPct);
+
+            // Per-core bars — each entry is {core: int, usage_percent: float}
+            const coreGrid = monitorShell.querySelector("[data-core-grid]");
+            if (coreGrid && perCore.length > 0) {
+                coreGrid.innerHTML = perCore.map((c) => `<div class="core-item">
+                    <div class="core-bar-track"><div class="core-bar-fill" style="height:${Math.min(100, c.usage_percent)}%"></div></div>
+                    <p class="core-item-value">${c.usage_percent}%</p>
+                    <p class="core-item-label">C${c.core}</p>
+                </div>`).join("");
+            }
+
+            // Load average — m.cpu.load_average: {"1m", "5m", "15m"}
+            const loadAvg = m.cpu.load_average ?? {};
+            ["1m", "5m", "15m"].forEach((key) => {
+                const el = monitorShell.querySelector(`[data-load-avg="${key}"]`);
+                if (el) el.textContent = loadAvg[key] != null ? Number(loadAvg[key]).toFixed(2) : "--";
+            });
+
+            // Network rates
+            const ethRates = m.network?.eth0?.rates;
+            const wifiRates = m.network?.wlan0?.rates;
+            const netLive = monitorShell.querySelector("[data-chart-live=\"network\"]");
+            if (netLive) {
+                const rx = (ethRates?.rx_bytes_per_sec ?? 0) + (wifiRates?.rx_bytes_per_sec ?? 0);
+                netLive.textContent = fmtBps(rx);
+            }
+            ["eth0", "wlan0"].forEach((iface) => {
+                const rates = m.network?.[iface]?.rates;
+                const rxEl = monitorShell.querySelector(`[data-net-rx="${iface}"]`);
+                const txEl = monitorShell.querySelector(`[data-net-tx="${iface}"]`);
+                if (rxEl) rxEl.textContent = `rx ${rates ? fmtBps(rates.rx_bytes_per_sec) : "--"}`;
+                if (txEl) txEl.textContent = `tx ${rates ? fmtBps(rates.tx_bytes_per_sec) : "--"}`;
+            });
+        };
+
+        const applyHistoryMetrics = (history) => {
+            const samples = Array.isArray(history?.samples) ? history.samples : [];
+            if (samples.length < 2) return;
+            const cpuData = samples.map((s) => s.cpu_total_percent ?? 0);
+            const memData = samples.map((s) => s.memory_used_percent ?? 0);
+            const tempData = samples.map((s) => s.temperature_c ?? 0);
+            const netRxData = samples.map((s) => (s.network?.eth0?.rx_bytes_per_sec ?? 0) + (s.network?.wlan0?.rx_bytes_per_sec ?? 0));
+            const netTxData = samples.map((s) => (s.network?.eth0?.tx_bytes_per_sec ?? 0) + (s.network?.wlan0?.tx_bytes_per_sec ?? 0));
+            // Auto-scale: anchor min at 0, max = actual peak + 30% headroom (minimum 10 for %)
+            const cpuMax = Math.max(10, ...cpuData) * 1.3;
+            const memMax = Math.max(10, ...memData) * 1.3;
+            drawSparkline(monitorShell.querySelector("[data-chart-svg=\"cpu\"]"), cpuData, { stroke: "#39d0c8", min: 0, max: cpuMax });
+            drawSparkline(monitorShell.querySelector("[data-chart-svg=\"memory\"]"), memData, { stroke: "#f0a64b", min: 0, max: memMax });
+            drawSparkline(monitorShell.querySelector("[data-chart-svg=\"temp\"]"), tempData, { stroke: "#62d39e" });
+            drawDualSparkline(monitorShell.querySelector("[data-chart-svg=\"network\"]"), netRxData, netTxData);
+        };
+
+        const refreshMonitorCurrent = async () => {
+            try {
+                const response = await fetch("/api/system/metrics");
+                if (!response.ok) return;
+                applyCurrentMetrics(await response.json());
+            } catch (err) {
+                console.warn("Failed to refresh system metrics", err);
+            }
+        };
+
+        const refreshMonitorHistory = async () => {
+            try {
+                const response = await fetch("/api/system/metrics/history");
+                if (!response.ok) return;
+                applyHistoryMetrics(await response.json());
+            } catch (err) {
+                console.warn("Failed to refresh system metrics history", err);
+            }
+        };
+
+        refreshMonitorCurrent();
+        refreshMonitorHistory();
+        window.setInterval(refreshMonitorCurrent, 5000);
+        window.setInterval(refreshMonitorHistory, 30000);
+    }
+
     const loginForm = document.querySelector(".auth-form");
     const loginError = document.querySelector("[data-login-error]");
 

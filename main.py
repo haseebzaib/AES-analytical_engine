@@ -10,7 +10,7 @@ import uvicorn
 
 
 class _PollingEndpointFilter(logging.Filter):
-    _SKIP = frozenset(["/api/network/state", "/api/network/apply-result"])
+    _SKIP = frozenset(["/api/network/state", "/api/network/apply-result", "/api/system/metrics"])  # substring match covers /metrics/history too
 
     def filter(self, record: logging.LogRecord) -> bool:
         msg = record.getMessage()

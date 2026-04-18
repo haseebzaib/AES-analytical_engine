@@ -1,0 +1,121 @@
+{% extends "console_layout.html" %}
+
+{% block page_eyebrow %}System Health{% endblock %}
+{% block page_title %}Insights{% endblock %}
+
+{% block console_content %}
+<section class="insights-shell" data-insights-shell>
+
+    <div class="insights-kpi-strip">
+        <article class="insights-kpi-card">
+            <p class="kpi-label">CPU Usage</p>
+            <p class="kpi-value" data-kpi-value="cpu">--</p>
+            <div class="kpi-bar-track"><div class="kpi-bar-fill" data-kpi-bar="cpu"></div></div>
+            <p class="kpi-sub" data-kpi-sub="cpu">Loading&hellip;</p>
+        </article>
+        <article class="insights-kpi-card">
+            <p class="kpi-label">Memory</p>
+            <p class="kpi-value" data-kpi-value="memory">--</p>
+            <div class="kpi-bar-track"><div class="kpi-bar-fill" data-kpi-bar="memory"></div></div>
+            <p class="kpi-sub" data-kpi-sub="memory">Loading&hellip;</p>
+        </article>
+        <article class="insights-kpi-card">
+            <p class="kpi-label">Temperature</p>
+            <p class="kpi-value" data-kpi-value="temp">--</p>
+            <div class="kpi-bar-track"><div class="kpi-bar-fill" data-kpi-bar="temp"></div></div>
+            <p class="kpi-sub" data-kpi-sub="temp">Sensor reading</p>
+        </article>
+        <article class="insights-kpi-card">
+            <p class="kpi-label">Storage</p>
+            <p class="kpi-value" data-kpi-value="disk">--</p>
+            <div class="kpi-bar-track"><div class="kpi-bar-fill" data-kpi-bar="disk"></div></div>
+            <p class="kpi-sub" data-kpi-sub="disk">Loading&hellip;</p>
+        </article>
+    </div>
+
+    <div class="insights-chart-grid">
+        <article class="insight-chart-card">
+            <div class="chart-card-head">
+                <div>
+                    <p class="chart-eyebrow">10 min history</p>
+                    <h3 class="chart-title">CPU Usage</h3>
+                </div>
+                <p class="chart-live-value" data-chart-live="cpu">--%</p>
+            </div>
+            <div class="chart-svg-wrap" data-chart-svg="cpu"></div>
+        </article>
+        <article class="insight-chart-card">
+            <div class="chart-card-head">
+                <div>
+                    <p class="chart-eyebrow">10 min history</p>
+                    <h3 class="chart-title">Memory</h3>
+                </div>
+                <p class="chart-live-value" data-chart-live="memory">--%</p>
+            </div>
+            <div class="chart-svg-wrap" data-chart-svg="memory"></div>
+        </article>
+        <article class="insight-chart-card">
+            <div class="chart-card-head">
+                <div>
+                    <p class="chart-eyebrow">10 min history</p>
+                    <h3 class="chart-title">Temperature</h3>
+                </div>
+                <p class="chart-live-value" data-chart-live="temp">-- &deg;C</p>
+            </div>
+            <div class="chart-svg-wrap" data-chart-svg="temp"></div>
+        </article>
+        <article class="insight-chart-card">
+            <div class="chart-card-head">
+                <div>
+                    <p class="chart-eyebrow">10 min history</p>
+                    <h3 class="chart-title">Network I/O</h3>
+                </div>
+                <p class="chart-live-value" data-chart-live="network">-- B/s</p>
+            </div>
+            <div class="chart-svg-wrap" data-chart-svg="network"></div>
+        </article>
+    </div>
+
+    <div class="insights-detail-row">
+        <article class="insight-detail-card">
+            <h3 class="detail-card-title">Per-Core CPU</h3>
+            <div class="core-grid" data-core-grid>
+                <p class="insights-empty-note">Waiting for data&hellip;</p>
+            </div>
+        </article>
+        <article class="insight-detail-card">
+            <h3 class="detail-card-title">Load Average</h3>
+            <div class="load-avg-grid">
+                <div class="load-avg-item">
+                    <p class="load-avg-value" data-load-avg="1m">--</p>
+                    <p class="load-avg-label">1 min</p>
+                </div>
+                <div class="load-avg-item">
+                    <p class="load-avg-value" data-load-avg="5m">--</p>
+                    <p class="load-avg-label">5 min</p>
+                </div>
+                <div class="load-avg-item">
+                    <p class="load-avg-value" data-load-avg="15m">--</p>
+                    <p class="load-avg-label">15 min</p>
+                </div>
+            </div>
+        </article>
+        <article class="insight-detail-card">
+            <h3 class="detail-card-title">Network Rates</h3>
+            <div class="network-totals-grid">
+                <div class="network-totals-row">
+                    <span class="network-iface-label">eth0</span>
+                    <span class="network-total-item" data-net-rx="eth0">rx --</span>
+                    <span class="network-total-item" data-net-tx="eth0">tx --</span>
+                </div>
+                <div class="network-totals-row">
+                    <span class="network-iface-label">wlan0</span>
+                    <span class="network-total-item" data-net-rx="wlan0">rx --</span>
+                    <span class="network-total-item" data-net-tx="wlan0">tx --</span>
+                </div>
+            </div>
+        </article>
+    </div>
+
+</section>
+{% endblock %}
