@@ -31,6 +31,11 @@ document.addEventListener("DOMContentLoaded", () => {
         const wifiPort = overviewShell.querySelector("[data-overview-wifi-port]");
         const ethernetItem = overviewShell.querySelector('[data-overview-item="ethernet"]');
         const wifiItem = overviewShell.querySelector('[data-overview-item="wi-fi"]');
+        const systemMetricsShell = document.querySelector("[data-system-metrics-shell]");
+        const systemCpuSummary = document.querySelector("[data-system-cpu-summary]");
+        const systemMemorySummary = document.querySelector("[data-system-memory-summary]");
+        const systemTempSummary = document.querySelector("[data-system-temp-summary]");
+        const systemNetworkSummary = document.querySelector("[data-system-network-summary]");
 
         const setTone = (badge, tone) => {
             if (!badge) {
@@ -114,12 +119,39 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const refreshOverviewState = async () => {
             try {
-                const response = await fetch("/api/network/state");
-                if (!response.ok) {
+                const [stateResponse, metricsResponse] = await Promise.all([
+                    fetch("/api/network/state"),
+                    fetch("/api/system/metrics"),
+                ]);
+                if (!stateResponse.ok) {
                     return;
                 }
-                const stateData = await response.json();
+                const stateData = await stateResponse.json();
                 applyOverviewState(stateData);
+                if (systemMetricsShell && metricsResponse.ok) {
+                    const metrics = await metricsResponse.json();
+                    if (systemCpuSummary) {
+                        systemCpuSummary.textContent = `${metrics?.cpu?.total_percent ?? 0}% total usage`;
+                    }
+                    if (systemMemorySummary) {
+                        systemMemorySummary.textContent = `${metrics?.memory?.memory_bytes?.used_percent ?? 0}% used`;
+                    }
+                    if (systemTempSummary) {
+                        systemTempSummary.textContent = metrics?.temperature_c != null ? `${metrics.temperature_c} C` : "No reading yet";
+                    }
+                    if (systemNetworkSummary) {
+                        const eth = metrics?.network?.eth0?.rates;
+                        const wifi = metrics?.network?.wlan0?.rates;
+                        if (eth || wifi) {
+                            const parts = [];
+                            if (eth) parts.push(`ETH rx ${Math.round(eth.rx_bytes_per_sec)} B/s tx ${Math.round(eth.tx_bytes_per_sec)} B/s`);
+                            if (wifi) parts.push(`WIFI rx ${Math.round(wifi.rx_bytes_per_sec)} B/s tx ${Math.round(wifi.tx_bytes_per_sec)} B/s`);
+                            systemNetworkSummary.textContent = parts.join(" · ");
+                        } else {
+                            systemNetworkSummary.textContent = "No samples yet";
+                        }
+                    }
+                }
             } catch (error) {
                 console.warn("Failed to refresh overview network state", error);
             }
@@ -239,6 +271,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const runtimeApDetail = connectivityShell.querySelector("[data-runtime-ap-detail]");
         const runtimeApplyStatus = connectivityShell.querySelector("[data-runtime-apply-status]");
         const runtimeApplyTimestamp = connectivityShell.querySelector("[data-runtime-apply-timestamp]");
+        const runtimeMonitorStatus = connectivityShell.querySelector("[data-runtime-monitor-status]");
+        const runtimeMonitorDetail = connectivityShell.querySelector("[data-runtime-monitor-detail]");
         const wifiSubtabs = Array.from(connectivityShell.querySelectorAll("[data-wifi-subtab]"));
         const wifiSubpanels = Array.from(connectivityShell.querySelectorAll("[data-wifi-subpanel]"));
 
@@ -475,6 +509,17 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             if (runtimeApplyTimestamp) {
                 runtimeApplyTimestamp.textContent = applyResult?.timestamp || "No apply run yet";
+            }
+
+            if (runtimeMonitorStatus) {
+                const statusText = String(networkState?.monitor_status || "unknown").replaceAll("_", " ");
+                runtimeMonitorStatus.textContent = statusText.charAt(0).toUpperCase() + statusText.slice(1);
+            }
+            if (runtimeMonitorDetail) {
+                const recovery = networkState?.recovery || {};
+                runtimeMonitorDetail.textContent = recovery?.last_reason
+                    ? `Recovery ${recovery.count ?? 0} · ${recovery.last_reason}`
+                    : "No recovery action recorded";
             }
         };
 

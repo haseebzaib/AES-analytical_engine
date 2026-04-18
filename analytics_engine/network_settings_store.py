@@ -95,6 +95,11 @@ def _default_network_state() -> dict[str, object]:
     return {
         "active_uplink": "none",
         "monitor_status": "idle",
+        "recovery": {
+            "count": 0,
+            "last_reason": "",
+            "last_timestamp": "",
+        },
         "ethernet": {
             "interface": "eth0",
             "enabled": True,

@@ -52,6 +52,17 @@
                 <strong data-runtime-apply-status>{{ apply_result.status|replace('_', ' ')|title }}</strong>
                 <p data-runtime-apply-timestamp>{{ apply_result.timestamp or 'No apply run yet' }}</p>
             </div>
+            <div class="network-runtime-item">
+                <span>Monitor</span>
+                <strong data-runtime-monitor-status>{{ network_state.monitor_status|default('unknown')|replace('_', ' ')|title }}</strong>
+                <p data-runtime-monitor-detail>
+                    {% if network_state.recovery and network_state.recovery.last_reason %}
+                    Recovery {{ network_state.recovery.count }} · {{ network_state.recovery.last_reason }}
+                    {% else %}
+                    No recovery action recorded
+                    {% endif %}
+                </p>
+            </div>
         </div>
     </article>
 

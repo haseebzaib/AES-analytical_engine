@@ -55,6 +55,37 @@
             </article>
         </section>
 
+        <section class="domain-grid" data-system-metrics-shell>
+            <article class="domain-card">
+                <h3>CPU</h3>
+                <p data-system-cpu-summary>{{ system_metrics.cpu.total_percent if system_metrics and system_metrics.cpu else 0 }}% total usage</p>
+            </article>
+            <article class="domain-card">
+                <h3>Memory</h3>
+                <p data-system-memory-summary>
+                    {% if system_metrics and system_metrics.memory %}
+                    {{ system_metrics.memory.memory_bytes.used_percent }}% used
+                    {% else %}
+                    No samples yet
+                    {% endif %}
+                </p>
+            </article>
+            <article class="domain-card">
+                <h3>Temperature</h3>
+                <p data-system-temp-summary>
+                    {% if system_metrics and system_metrics.temperature_c is not none %}
+                    {{ system_metrics.temperature_c }} C
+                    {% else %}
+                    No reading yet
+                    {% endif %}
+                </p>
+            </article>
+            <article class="domain-card">
+                <h3>Network</h3>
+                <p data-system-network-summary>No samples yet</p>
+            </article>
+        </section>
+
         <section class="domain-grid">
             {% for card in domain_cards %}
             <article class="domain-card">

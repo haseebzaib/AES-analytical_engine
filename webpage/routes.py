@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 import subprocess
 
@@ -7,6 +8,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from analytics_engine.settings_store import DEFAULT_USERNAME
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
@@ -19,6 +22,9 @@ def _settings_store(request: Request):
 
 def _network_settings_store(request: Request):
     return request.app.state.network_settings_store
+
+def _system_metrics_store(request: Request):
+    return request.app.state.system_metrics_store
 
 
 def _overview_status_payload(network_state: dict[str, object]) -> dict[str, object]:
@@ -128,6 +134,7 @@ def _is_authenticated(request: Request) -> bool:
 def _run_network_apply_service() -> tuple[bool, dict[str, object]]:
     networkctl = Path("/opt/gateway/scripts/gateway-networkctl")
     if not networkctl.exists():
+        logger.error("gateway-networkctl not found at %s", networkctl)
         return False, {
             "apply_requested": False,
             "apply_status": "apply_error",
@@ -149,6 +156,7 @@ def _run_network_apply_service() -> tuple[bool, dict[str, object]]:
             timeout=60,
         )
     except FileNotFoundError as exc:
+        logger.error("Could not execute gateway-networkctl: %s", exc)
         return False, {
             "apply_requested": False,
             "apply_status": "apply_error",
@@ -162,6 +170,7 @@ def _run_network_apply_service() -> tuple[bool, dict[str, object]]:
             ],
         }
     except subprocess.TimeoutExpired:
+        logger.error("gateway-networkctl apply timed out")
         return False, {
             "apply_requested": True,
             "apply_status": "apply_error",
@@ -176,6 +185,7 @@ def _run_network_apply_service() -> tuple[bool, dict[str, object]]:
 
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout).strip()
+        logger.error("gateway-networkctl apply failed (rc=%d): %s", completed.returncode, detail)
         return False, {
             "apply_requested": True,
             "apply_status": "apply_error",
@@ -313,6 +323,7 @@ async def dashboard_page(request: Request) -> HTMLResponse:
 
     network_state = _network_settings_store(request).get_state()
     overview_payload = _overview_status_payload(network_state)
+    system_metrics = _system_metrics_store(request).get_current()
 
     return templates.TemplateResponse(
         request,
@@ -324,6 +335,7 @@ async def dashboard_page(request: Request) -> HTMLResponse:
             "status_chips": overview_payload["status_chips"],
             "connectivity_items": overview_payload["connectivity_items"],
             "overview_visual": overview_payload["visual"],
+            "system_metrics": system_metrics,
             "domain_cards": [
                 {
                     "title": "Insights",
@@ -507,6 +519,8 @@ async def save_and_apply_network_settings(request: Request) -> JSONResponse:
         )
         response["ok"] = bool(apply_result.get("ok", True))
         applied = response["ok"]
+        if not applied:
+            logger.error("Network apply reported failure: status=%s errors=%s", apply_result.get("status"), apply_result.get("errors"))
     status_code = status.HTTP_200_OK if applied else status.HTTP_500_INTERNAL_SERVER_ERROR
     return JSONResponse(response, status_code=status_code)
 
@@ -525,6 +539,26 @@ async def get_network_apply_result(request: Request) -> JSONResponse:
         return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
 
     return JSONResponse(_network_settings_store(request).get_apply_result())
+
+
+@router.get("/api/system/metrics")
+async def get_system_metrics(request: Request) -> JSONResponse:
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+
+    payload = _system_metrics_store(request).get_current()
+    payload["ok"] = True
+    return JSONResponse(payload)
+
+
+@router.get("/api/system/metrics/history")
+async def get_system_metrics_history(request: Request) -> JSONResponse:
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+
+    payload = _system_metrics_store(request).get_history()
+    payload["ok"] = True
+    return JSONResponse(payload)
 
 
 @router.post("/api/network/wifi/scan")

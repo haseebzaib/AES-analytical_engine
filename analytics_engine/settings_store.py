@@ -12,7 +12,7 @@ from pathlib import Path
 DEFAULT_USERNAME = "gateway"
 DEFAULT_PASSWORD = "gateway"
 PBKDF2_ITERATIONS = 120_000
-
+# 192.168.18.126
 
 def _hash_password(password: str, salt_hex: str) -> str:
     return hashlib.pbkdf2_hmac(
