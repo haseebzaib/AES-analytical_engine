@@ -20,6 +20,8 @@ class _PollingEndpointFilter(logging.Filter):
 logging.getLogger("uvicorn.access").addFilter(_PollingEndpointFilter())
 
 from analytics_engine.network_settings_store import NetworkSettingsStore
+from analytics_engine.interfaces.rs232_config_store import Rs232ConfigStore
+from utils.redis_client import RedisClient as RedisNotifier
 from analytics_engine.runtime import AnalyticsRuntime
 from analytics_engine.settings_store import SettingsStore
 from analytics_engine.system_metrics_store import SystemMetricsStore
@@ -32,18 +34,23 @@ storage_root = Path(os.environ.get("METACRUST_STORAGE_ROOT", str(gateway_root / 
 settings_store = SettingsStore(storage_root)
 network_settings_store = NetworkSettingsStore(gateway_root=gateway_root, storage_root=storage_root)
 system_metrics_store = SystemMetricsStore(gateway_root=gateway_root)
+rs232_config_store = Rs232ConfigStore(storage_root=storage_root)
+redis_notifier = RedisNotifier()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.session_nonce = secrets.token_urlsafe(16)
     network_settings_store.ensure_initialized()
+    rs232_config_store.ensure_initialized()
     runtime.start()
     app.state.runtime = runtime
     app.state.gateway_root = gateway_root
     app.state.settings_store = settings_store
     app.state.network_settings_store = network_settings_store
     app.state.system_metrics_store = system_metrics_store
+    app.state.rs232_config_store = rs232_config_store
+    app.state.redis_notifier = redis_notifier
     try:
         yield
     finally:

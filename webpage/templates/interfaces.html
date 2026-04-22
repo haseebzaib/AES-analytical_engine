@@ -1,0 +1,435 @@
+{% extends "console_layout.html" %}
+
+{% block page_eyebrow %}Field I/O{% endblock %}
+{% block page_title %}Interfaces{% endblock %}
+
+{% block console_content %}
+
+{# ── Alarm state <option> list macro ── #}
+{% macro alarm_opts(current) %}
+<option value="off"{% if current == 'off' %} selected{% endif %}>Off</option>
+<option value="audible"{% if current == 'audible' %} selected{% endif %}>Audible</option>
+<option value="visible"{% if current == 'visible' %} selected{% endif %}>Visible</option>
+<option value="audible_visible"{% if current == 'audible_visible' %} selected{% endif %}>Audible + Visible</option>
+<option value="relay"{% if current == 'relay' %} selected{% endif %}>Relay</option>
+<option value="audible_relay"{% if current == 'audible_relay' %} selected{% endif %}>Audible + Relay</option>
+<option value="visible_relay"{% if current == 'visible_relay' %} selected{% endif %}>Visible + Relay</option>
+<option value="audible_visible_relay"{% if current == 'audible_visible_relay' %} selected{% endif %}>Audible + Visible + Relay</option>
+{% endmacro %}
+
+{# ── Port content macro ── #}
+{% macro port_panel(port_id, ch_label, port) %}
+{% set dt = port.dustrak %}
+{% set ser = port.serial %}
+{% set ao = dt.analog_output %}
+{% set baud_rates = [50, 75, 110, 134, 150, 200, 300, 600, 1200, 1800, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400] %}
+{% set pm_channels = [('pm1','PM1'), ('pm25','PM2.5'), ('pm4','PM4'), ('pm10','PM10'), ('total','Total')] %}
+
+<div class="iface-port-pane" data-rs232-port="{{ port_id }}"{% if port_id != "0" %} style="display:none"{% endif %}>
+
+    {# Port header #}
+    <div class="iface-port-head">
+        <div class="iface-port-head-left">
+            <div class="iface-port-name-row">
+                <span class="iface-port-name">Port {{ port_id }}</span>
+                <span class="iface-port-channel-badge">{{ ch_label }}</span>
+                <span class="iface-port-status {% if port.enabled %}is-active{% else %}is-idle{% endif %}">
+                    {% if port.enabled %}Active{% else %}Idle{% endif %}
+                </span>
+            </div>
+        </div>
+        <label class="iface-toggle">
+            <input type="checkbox" class="iface-toggle-input" data-rs232-enable
+                   {% if port.enabled %}checked{% endif %}>
+            <span class="iface-toggle-track" aria-hidden="true"></span>
+        </label>
+    </div>
+
+    {# Body: only visible when port is enabled #}
+    <div class="iface-port-body" data-rs232-port-body
+         {% if not port.enabled %}style="display:none"{% endif %}>
+
+        {# ── Serial port configuration ── #}
+        <div class="iface-cfg-card">
+            <p class="iface-section-eyebrow">Serial Port</p>
+            <div class="iface-serial-grid">
+                <label class="iface-field-group">
+                    <span class="iface-field-label">Baud Rate</span>
+                    <select class="iface-select" data-rs232-serial="baud_rate">
+                        {% for br in baud_rates %}
+                        <option value="{{ br }}"{% if ser.baud_rate == br %} selected{% endif %}>{{ br }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label class="iface-field-group">
+                    <span class="iface-field-label">Parity</span>
+                    <select class="iface-select" data-rs232-serial="parity">
+                        <option value="none"{% if ser.parity == 'none' %} selected{% endif %}>None</option>
+                        <option value="even"{% if ser.parity == 'even' %} selected{% endif %}>Even</option>
+                        <option value="odd"{% if ser.parity == 'odd' %} selected{% endif %}>Odd</option>
+                    </select>
+                </label>
+                <label class="iface-field-group">
+                    <span class="iface-field-label">Stop Bits</span>
+                    <select class="iface-select" data-rs232-serial="stop_bits">
+                        <option value="1"{% if ser.stop_bits == 1 %} selected{% endif %}>1</option>
+                        <option value="2"{% if ser.stop_bits == 2 %} selected{% endif %}>2</option>
+                    </select>
+                </label>
+                <label class="iface-field-group">
+                    <span class="iface-field-label">Data Bits</span>
+                    <select class="iface-select" data-rs232-serial="data_bits">
+                        <option value="5"{% if ser.data_bits == 5 %} selected{% endif %}>5</option>
+                        <option value="6"{% if ser.data_bits == 6 %} selected{% endif %}>6</option>
+                        <option value="7"{% if ser.data_bits == 7 %} selected{% endif %}>7</option>
+                        <option value="8"{% if ser.data_bits == 8 %} selected{% endif %}>8</option>
+                    </select>
+                </label>
+            </div>
+        </div>
+
+        {# ── Sensor selector ── #}
+        <div class="iface-cfg-card">
+            <p class="iface-section-eyebrow">Sensor</p>
+            <div class="iface-sensor-strip">
+                <button type="button" class="iface-sensor-btn is-current"
+                        data-rs232-sensor="dustrak" aria-pressed="true">
+                    <span class="iface-sensor-btn-dot"></span>
+                    <span class="iface-sensor-btn-label">DustTrak DRX / II</span>
+                    <span class="iface-sensor-btn-sub">TSI Series 85xx</span>
+                </button>
+                <button type="button" class="iface-sensor-btn is-locked"
+                        disabled aria-disabled="true">
+                    <span class="iface-sensor-btn-dot"></span>
+                    <span class="iface-sensor-btn-label">Temp &amp; Humidity</span>
+                    <span class="iface-sensor-btn-sub">RS232 probe</span>
+                </button>
+            </div>
+        </div>
+
+        {# ── DustTrak configuration ── #}
+        <div data-rs232-sensor-config="dustrak">
+
+            {# Polling #}
+            <div class="iface-cfg-card">
+                <p class="iface-section-eyebrow">Polling</p>
+                <div class="iface-poll-grid">
+                    {% set poll = dt.polling %}
+                    <label class="iface-poll-item">
+                        <div class="iface-poll-text">
+                            <span class="iface-poll-label">Read device identity on startup</span>
+                            <span class="iface-poll-desc">Reads model, serial number, and firmware version on init</span>
+                        </div>
+                        <input type="checkbox" class="iface-poll-check"
+                               data-rs232-poll="read_identity_on_init"
+                               {% if poll.read_identity_on_init %}checked{% endif %}>
+                    </label>
+                    <label class="iface-poll-item">
+                        <div class="iface-poll-text">
+                            <span class="iface-poll-label">Poll device status</span>
+                            <span class="iface-poll-desc">Continuously monitors operational status of the instrument</span>
+                        </div>
+                        <input type="checkbox" class="iface-poll-check"
+                               data-rs232-poll="poll_status"
+                               {% if poll.poll_status %}checked{% endif %}>
+                    </label>
+                    <label class="iface-poll-item">
+                        <div class="iface-poll-text">
+                            <span class="iface-poll-label">Auto-start measurement</span>
+                            <span class="iface-poll-desc">Automatically begins measurement sampling when the port connects</span>
+                        </div>
+                        <input type="checkbox" class="iface-poll-check"
+                               data-rs232-poll="auto_start_measurement"
+                               {% if poll.auto_start_measurement %}checked{% endif %}>
+                    </label>
+                    <label class="iface-poll-item">
+                        <div class="iface-poll-text">
+                            <span class="iface-poll-label">Stream live measurements</span>
+                            <span class="iface-poll-desc">Reads PM channel values (PM1 / PM2.5 / PM4 / PM10 / Total) on each cycle</span>
+                        </div>
+                        <input type="checkbox" class="iface-poll-check"
+                               data-rs232-poll="poll_measurements"
+                               {% if poll.poll_measurements %}checked{% endif %}>
+                    </label>
+                    <label class="iface-poll-item">
+                        <div class="iface-poll-text">
+                            <span class="iface-poll-label">Collect measurement statistics</span>
+                            <span class="iface-poll-desc">Gathers min / max / average / TWA data per channel</span>
+                        </div>
+                        <input type="checkbox" class="iface-poll-check"
+                               data-rs232-poll="poll_measurement_stats"
+                               {% if poll.poll_measurement_stats %}checked{% endif %}>
+                    </label>
+                    <label class="iface-poll-item">
+                        <div class="iface-poll-text">
+                            <span class="iface-poll-label">Monitor fault codes</span>
+                            <span class="iface-poll-desc">Reads and logs device fault message flags on each cycle</span>
+                        </div>
+                        <input type="checkbox" class="iface-poll-check"
+                               data-rs232-poll="poll_fault_messages"
+                               {% if poll.poll_fault_messages %}checked{% endif %}>
+                    </label>
+                    <label class="iface-poll-item">
+                        <div class="iface-poll-text">
+                            <span class="iface-poll-label">Monitor alarm codes</span>
+                            <span class="iface-poll-desc">Reads and logs device alarm message flags on each cycle</span>
+                        </div>
+                        <input type="checkbox" class="iface-poll-check"
+                               data-rs232-poll="poll_alarm_messages"
+                               {% if poll.poll_alarm_messages %}checked{% endif %}>
+                    </label>
+                    <label class="iface-poll-item">
+                        <div class="iface-poll-text">
+                            <span class="iface-poll-label">Track logging program info</span>
+                            <span class="iface-poll-desc">Reads active logging session status and progress from the device</span>
+                        </div>
+                        <input type="checkbox" class="iface-poll-check"
+                               data-rs232-poll="poll_log_info"
+                               {% if poll.poll_log_info %}checked{% endif %}>
+                    </label>
+                </div>
+            </div>
+
+            {# Driver #}
+            <div class="iface-cfg-card">
+                <p class="iface-section-eyebrow">Driver</p>
+                <div class="iface-poll-grid">
+                    <label class="iface-poll-item">
+                        <div class="iface-poll-text">
+                            <span class="iface-poll-label">Update RAM after write</span>
+                            <span class="iface-poll-desc">Reads back register values after each write to verify they were applied correctly</span>
+                        </div>
+                        <input type="checkbox" class="iface-poll-check"
+                               data-rs232-driver="update_ram_after_write"
+                               {% if dt.driver.update_ram_after_write %}checked{% endif %}>
+                    </label>
+                </div>
+            </div>
+
+            {# Alarms #}
+            <div class="iface-cfg-card">
+                <p class="iface-section-eyebrow">Alarms</p>
+                <div class="iface-alarms-list">
+                    {% for ch_key, ch_name in pm_channels %}
+                    {% set alm = dt.alarms[ch_key] %}
+                    <div class="iface-alarm-row" data-alarm-ch="{{ ch_key }}">
+                        <button type="button" class="iface-alarm-header" data-alarm-toggle>
+                            <span class="iface-alarm-ch-label">{{ ch_name }}</span>
+                            <span class="iface-alarm-summary" data-alarm-summary>
+                                {{ alm.alarm1_state | replace('_', ' ') | title }} / {{ alm.alarm2_state | replace('_', ' ') | title }}
+                            </span>
+                            <span class="iface-alarm-chevron" aria-hidden="true">▸</span>
+                        </button>
+                        <div class="iface-alarm-body" data-alarm-body style="display:none">
+                            <div class="iface-alarm-pair">
+                                <div class="iface-alarm-group">
+                                    <p class="iface-alarm-group-label">Alarm 1</p>
+                                    <div class="iface-alarm-fields">
+                                        <label class="iface-field-group">
+                                            <span class="iface-field-label">State</span>
+                                            <select class="iface-select iface-select-sm"
+                                                    data-rs232-alarm="{{ ch_key }}"
+                                                    data-rs232-alarm-field="alarm1_state">
+                                                {{ alarm_opts(alm.alarm1_state) }}
+                                            </select>
+                                        </label>
+                                        <label class="iface-field-group">
+                                            <span class="iface-field-label">Threshold (mg/m³)</span>
+                                            <input type="number" class="iface-number" min="0" step="0.001"
+                                                   data-rs232-alarm="{{ ch_key }}"
+                                                   data-rs232-alarm-field="alarm1_mg_per_m3"
+                                                   value="{{ alm.alarm1_mg_per_m3 }}">
+                                        </label>
+                                        <label class="iface-poll-item iface-alarm-stel">
+                                            <div class="iface-poll-text">
+                                                <span class="iface-poll-label">STEL Alarm 1 enabled</span>
+                                                <span class="iface-poll-desc">Short-term exposure limit alarm on this channel</span>
+                                            </div>
+                                            <input type="checkbox" class="iface-poll-check"
+                                                   data-rs232-alarm="{{ ch_key }}"
+                                                   data-rs232-alarm-field="stel_alarm1_enabled"
+                                                   {% if alm.stel_alarm1_enabled %}checked{% endif %}>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="iface-alarm-group">
+                                    <p class="iface-alarm-group-label">Alarm 2</p>
+                                    <div class="iface-alarm-fields">
+                                        <label class="iface-field-group">
+                                            <span class="iface-field-label">State</span>
+                                            <select class="iface-select iface-select-sm"
+                                                    data-rs232-alarm="{{ ch_key }}"
+                                                    data-rs232-alarm-field="alarm2_state">
+                                                {{ alarm_opts(alm.alarm2_state) }}
+                                            </select>
+                                        </label>
+                                        <label class="iface-field-group">
+                                            <span class="iface-field-label">Threshold (mg/m³)</span>
+                                            <input type="number" class="iface-number" min="0" step="0.001"
+                                                   data-rs232-alarm="{{ ch_key }}"
+                                                   data-rs232-alarm-field="alarm2_mg_per_m3"
+                                                   value="{{ alm.alarm2_mg_per_m3 }}">
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            {# Analog Output #}
+            <div class="iface-cfg-card">
+                <p class="iface-section-eyebrow">Analog Output</p>
+                <div class="iface-analog-grid">
+                    <label class="iface-field-group">
+                        <span class="iface-field-label">Output Mode</span>
+                        <select class="iface-select" data-rs232-analog="state">
+                            <option value="off"{% if ao.state == 'off' %} selected{% endif %}>Off</option>
+                            <option value="voltage"{% if ao.state == 'voltage' %} selected{% endif %}>Voltage (0–5 V)</option>
+                            <option value="current"{% if ao.state == 'current' %} selected{% endif %}>Current (4–20 mA)</option>
+                        </select>
+                    </label>
+                    <label class="iface-field-group" data-analog-channel-group
+                           {% if ao.state == 'off' %}style="opacity:0.45;pointer-events:none"{% endif %}>
+                        <span class="iface-field-label">PM Channel</span>
+                        <select class="iface-select" data-rs232-analog="channel"
+                                {% if ao.state == 'off' %}disabled{% endif %}>
+                            {% for ch_key, ch_name in pm_channels %}
+                            <option value="{{ ch_key }}"{% if ao.channel == ch_key %} selected{% endif %}>{{ ch_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="iface-field-group">
+                        <span class="iface-field-label">Min (mg/m³)</span>
+                        <input type="number" class="iface-number" min="0" step="0.001"
+                               data-rs232-analog="min_mg_per_m3" value="{{ ao.min_mg_per_m3 }}">
+                    </label>
+                    <label class="iface-field-group">
+                        <span class="iface-field-label">Max (mg/m³)</span>
+                        <input type="number" class="iface-number" min="0" step="0.001"
+                               data-rs232-analog="max_mg_per_m3" value="{{ ao.max_mg_per_m3 }}">
+                    </label>
+                </div>
+            </div>
+
+        </div>{# end dustrak sensor config #}
+
+        {# ── Temp & Humidity locked panel (hidden by default, shown when sensor selected) ── #}
+        <div data-rs232-sensor-config="temp_humidity" style="display:none">
+            <div class="iface-cfg-card iface-cfg-card-locked">
+                <p class="iface-section-eyebrow">Measurement Type</p>
+                <div class="iface-sensor-strip">
+                    <button type="button" class="iface-sensor-btn is-locked" disabled aria-disabled="true">
+                        <span class="iface-sensor-btn-dot"></span>
+                        <span class="iface-sensor-btn-label">Temperature Only</span>
+                        <span class="iface-sensor-btn-sub">Single channel</span>
+                    </button>
+                    <button type="button" class="iface-sensor-btn is-locked" disabled aria-disabled="true">
+                        <span class="iface-sensor-btn-dot"></span>
+                        <span class="iface-sensor-btn-label">Humidity Only</span>
+                        <span class="iface-sensor-btn-sub">Single channel</span>
+                    </button>
+                    <button type="button" class="iface-sensor-btn is-locked" disabled aria-disabled="true">
+                        <span class="iface-sensor-btn-dot"></span>
+                        <span class="iface-sensor-btn-label">Combined</span>
+                        <span class="iface-sensor-btn-sub">Temp + RH</span>
+                    </button>
+                </div>
+            </div>
+            <div class="iface-cfg-card iface-cfg-card-locked">
+                <p class="iface-section-eyebrow">Sensor Model</p>
+                <p class="iface-locked-note">Model selection coming in a future release.</p>
+            </div>
+        </div>
+
+    </div>{# end port-body #}
+
+    <div class="iface-port-disabled-note" data-rs232-disabled-note
+         {% if port.enabled %}style="display:none"{% endif %}>
+        <span>Enable this port to configure its sensor and serial settings</span>
+    </div>
+
+</div>
+{% endmacro %}
+
+{# ════════════════════════════════════════════════════════════════
+   Page shell
+   ════════════════════════════════════════════════════════════════ #}
+<section class="iface-shell" data-interfaces-shell>
+
+    {# ── Interface type selector ── #}
+    <div class="iface-type-bar">
+        <button type="button" class="iface-type-btn is-current"
+                data-iface-type="rs232" aria-pressed="true">
+            <span class="iface-type-icon">
+                <span class="iface-type-icon-dot"></span>
+                <span class="iface-type-icon-dot"></span>
+            </span>
+            <span class="iface-type-label">RS232</span>
+            <span class="iface-type-sub">2 ports</span>
+        </button>
+        <button type="button" class="iface-type-btn is-locked" disabled aria-disabled="true">
+            <span class="iface-type-icon iface-type-icon-grid">
+                <span class="iface-type-icon-dot"></span>
+                <span class="iface-type-icon-dot"></span>
+                <span class="iface-type-icon-dot"></span>
+                <span class="iface-type-icon-dot"></span>
+            </span>
+            <span class="iface-type-label">RS485</span>
+            <span class="iface-type-sub">2 ports</span>
+        </button>
+        <button type="button" class="iface-type-btn is-locked" disabled aria-disabled="true">
+            <span class="iface-type-icon">
+                <span class="iface-type-icon-bar"></span>
+            </span>
+            <span class="iface-type-label">DI</span>
+            <span class="iface-type-sub">2 inputs</span>
+        </button>
+        <button type="button" class="iface-type-btn is-locked" disabled aria-disabled="true">
+            <span class="iface-type-icon">
+                <span class="iface-type-icon-bar"></span>
+            </span>
+            <span class="iface-type-label">DO</span>
+            <span class="iface-type-sub">2 outputs</span>
+        </button>
+    </div>
+
+    {# ── RS232 panel ── #}
+    <div class="iface-type-panel iface-panel-card" data-iface-panel="rs232">
+
+        {# Port tabs #}
+        <div class="iface-port-tabs">
+            {% set ports = [
+                ("0", "Ch0", rs232_config.rs232.port_0),
+                ("1", "Ch1", rs232_config.rs232.port_1),
+            ] %}
+            {% for port_id, ch_label, port in ports %}
+            <button type="button"
+                    class="iface-port-tab-btn {% if loop.first %}is-active{% endif %}"
+                    data-rs232-tab-btn="{{ port_id }}">
+                <span class="iface-port-tab-dot {% if port.enabled %}is-active{% else %}is-idle{% endif %}"
+                      data-rs232-tab-dot="{{ port_id }}"></span>
+                Port {{ port_id }}
+            </button>
+            {% endfor %}
+        </div>
+
+        {# Port panes #}
+        {% for port_id, ch_label, port in ports %}
+        {{ port_panel(port_id, ch_label, port) }}
+        {% endfor %}
+
+        {# Save bar — shared, always at the bottom #}
+        <div class="iface-save-bar">
+            <p class="iface-save-message" data-iface-save-message></p>
+            <button type="button" class="primary-action iface-save-btn" data-iface-save>
+                Save Interface Configuration
+            </button>
+        </div>
+
+    </div>{# end rs232 panel #}
+
+</section>
+{% endblock %}

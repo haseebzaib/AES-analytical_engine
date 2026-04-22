@@ -1622,3 +1622,744 @@ h2 {
         grid-column: auto;
     }
 }
+
+/* ================================================================
+   Interfaces page
+   ================================================================ */
+
+.iface-shell {
+    padding: 1.8rem;
+    display: grid;
+    gap: 1.6rem;
+}
+
+/* --- Interface type selector bar --- */
+.iface-type-bar {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.iface-type-btn {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.2rem;
+    padding: 1rem 1.25rem;
+    min-width: 7.5rem;
+    border-radius: 1.2rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+    transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.iface-type-btn.is-current {
+    background: linear-gradient(135deg, rgba(57, 208, 200, 0.12), rgba(57, 208, 200, 0.06));
+    border-color: rgba(57, 208, 200, 0.36);
+    box-shadow: 0 0 0 3px rgba(57, 208, 200, 0.07), 0 0 28px rgba(57, 208, 200, 0.1);
+}
+
+.iface-type-btn.is-locked {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.iface-type-icon {
+    display: flex;
+    gap: 0.25rem;
+    margin-bottom: 0.3rem;
+}
+
+.iface-type-icon-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.22rem;
+}
+
+.iface-type-icon-dot {
+    width: 0.42rem;
+    height: 0.42rem;
+    border-radius: 999px;
+    background: var(--accent-cool);
+    opacity: 0.7;
+}
+
+.iface-type-btn.is-locked .iface-type-icon-dot {
+    background: rgba(255, 255, 255, 0.35);
+}
+
+.iface-type-icon-bar {
+    width: 1.1rem;
+    height: 0.3rem;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.35);
+}
+
+.iface-type-label {
+    font-family: var(--font-display);
+    font-size: 0.98rem;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.iface-type-sub {
+    font-size: 0.74rem;
+    color: var(--muted);
+    line-height: 1;
+}
+
+.iface-coming-badge {
+    position: absolute;
+    top: 0.55rem;
+    right: 0.65rem;
+    padding: 0.18rem 0.42rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+/* --- Port grid --- */
+.iface-port-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    align-items: start;
+}
+
+/* --- Port card --- */
+.iface-port-card {
+    border-radius: 1.4rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--surface);
+    backdrop-filter: blur(14px);
+    overflow: hidden;
+}
+
+/* Port card header */
+.iface-port-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.2rem 1.4rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.iface-port-head-left {
+    display: grid;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.iface-port-name-row {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+}
+
+.iface-port-name {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.iface-port-channel-badge {
+    padding: 0.18rem 0.52rem;
+    border-radius: 999px;
+    background: rgba(57, 208, 200, 0.1);
+    border: 1px solid rgba(57, 208, 200, 0.22);
+    color: var(--accent-cool);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+}
+
+.iface-port-status {
+    padding: 0.18rem 0.52rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+
+.iface-port-status.is-active {
+    background: rgba(98, 211, 158, 0.1);
+    border: 1px solid rgba(98, 211, 158, 0.24);
+    color: var(--success);
+}
+
+.iface-port-status.is-idle {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--muted);
+}
+
+.iface-port-meta-row {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+.iface-port-meta-item {
+    font-size: 0.78rem;
+    color: var(--muted);
+    font-family: monospace;
+}
+
+.iface-port-meta-sep {
+    font-size: 0.78rem;
+    color: rgba(255, 255, 255, 0.2);
+}
+
+/* Port enable toggle */
+.iface-toggle {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    width: 2.6rem;
+    height: 1.45rem;
+    cursor: pointer;
+}
+
+.iface-toggle-input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+
+.iface-toggle-track {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    transition: background 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.iface-toggle-track::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: calc(1.45rem - 8px);
+    height: calc(1.45rem - 8px);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.55);
+    transition: transform 200ms ease, background 200ms ease;
+}
+
+.iface-toggle-input:checked + .iface-toggle-track {
+    background: var(--accent-cool);
+    border-color: var(--accent-cool);
+    box-shadow: 0 0 14px rgba(57, 208, 200, 0.3);
+}
+
+.iface-toggle-input:checked + .iface-toggle-track::after {
+    transform: translateX(1.15rem);
+    background: #fff;
+}
+
+/* Port body */
+.iface-port-body {
+    padding: 1.2rem 1.4rem;
+    display: grid;
+    gap: 1.2rem;
+}
+
+.iface-port-disabled-note {
+    padding: 2rem 1.4rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+/* --- Sensor section --- */
+.iface-sensor-section {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.iface-section-eyebrow {
+    margin: 0;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.iface-sensor-strip {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.iface-sensor-btn {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.18rem;
+    padding: 0.85rem 1rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 180ms ease, background 180ms ease;
+    min-width: 9rem;
+}
+
+.iface-sensor-btn.is-current {
+    background: linear-gradient(135deg, rgba(57, 208, 200, 0.1), rgba(57, 208, 200, 0.05));
+    border-color: rgba(57, 208, 200, 0.32);
+}
+
+.iface-sensor-btn.is-locked {
+    opacity: 0.42;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.iface-sensor-btn-dot {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.iface-sensor-btn.is-current .iface-sensor-btn-dot {
+    background: var(--accent-cool);
+    box-shadow: 0 0 8px rgba(57, 208, 200, 0.5);
+}
+
+.iface-sensor-btn-label {
+    font-size: 0.88rem;
+    font-weight: 600;
+    padding-right: 0.9rem;
+}
+
+.iface-sensor-btn-sub {
+    font-size: 0.74rem;
+    color: var(--muted);
+}
+
+/* --- Section divider --- */
+.iface-section-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.iface-section-divider::before,
+.iface-section-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.iface-section-divider-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+/* --- Polling grid --- */
+.iface-poll-grid {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.iface-poll-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.85rem 1rem;
+    border-radius: 0.85rem;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.025);
+    cursor: pointer;
+    transition: border-color 150ms ease, background 150ms ease;
+}
+
+.iface-poll-item:hover {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.iface-poll-text {
+    display: grid;
+    gap: 0.2rem;
+    min-width: 0;
+}
+
+.iface-poll-label {
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: var(--text);
+}
+
+.iface-poll-desc {
+    font-size: 0.76rem;
+    color: var(--muted);
+    line-height: 1.4;
+}
+
+.iface-poll-check {
+    flex: 0 0 auto;
+    width: 1.05rem;
+    height: 1.05rem;
+    accent-color: var(--accent-cool);
+    cursor: pointer;
+}
+
+/* --- Save bar --- */
+.iface-save-bar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.iface-save-btn {
+    width: auto;
+    min-width: 16rem;
+    padding-inline: 1.6rem;
+}
+
+.iface-save-message {
+    min-height: 1rem;
+    margin: 0;
+}
+
+/* --- Panel card wrapper --- */
+.iface-panel-card {
+    border-radius: 1.4rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--surface);
+    backdrop-filter: blur(14px);
+    overflow: hidden;
+}
+
+/* --- Port tabs --- */
+.iface-port-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.iface-port-tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.9rem 1.5rem;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+
+.iface-port-tab-btn:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.iface-port-tab-btn.is-active {
+    color: var(--text);
+    border-bottom-color: var(--accent-cool);
+}
+
+.iface-port-tab-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 999px;
+    flex-shrink: 0;
+    transition: background 200ms ease;
+}
+
+.iface-port-tab-dot.is-active {
+    background: var(--success);
+    box-shadow: 0 0 6px rgba(98, 211, 158, 0.55);
+}
+
+.iface-port-tab-dot.is-idle {
+    background: rgba(255, 255, 255, 0.22);
+}
+
+/* --- Port pane (full-width content area) --- */
+.iface-port-pane {
+    padding: 1.4rem 1.6rem;
+    display: grid;
+    gap: 1rem;
+}
+
+/* --- Config card --- */
+.iface-cfg-card {
+    border-radius: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    background: rgba(255, 255, 255, 0.03);
+    padding: 1.1rem 1.25rem;
+    display: grid;
+    gap: 0.85rem;
+}
+
+.iface-cfg-card-locked {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* --- Serial grid: 4-col on wide, 2-col on medium --- */
+.iface-serial-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem 1rem;
+}
+
+/* --- Field group: label + control stacked --- */
+.iface-field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.iface-field-label {
+    font-size: 0.74rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.055em;
+    color: var(--muted);
+}
+
+/* --- Select --- */
+.iface-select {
+    appearance: none;
+    -webkit-appearance: none;
+    background: rgba(255, 255, 255, 0.05) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='rgba(157,179,187,0.7)'/%3E%3C/svg%3E") no-repeat right 0.7rem center;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 0.6rem;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.875rem;
+    padding: 0.45rem 2rem 0.45rem 0.7rem;
+    cursor: pointer;
+    transition: border-color 150ms ease, background 150ms ease;
+}
+
+.iface-select:focus {
+    outline: none;
+    border-color: rgba(57, 208, 200, 0.45);
+    box-shadow: 0 0 0 3px rgba(57, 208, 200, 0.1);
+}
+
+.iface-select option {
+    background: #0d212a;
+    color: var(--text);
+}
+
+.iface-select-sm {
+    font-size: 0.8rem;
+}
+
+/* --- Number input --- */
+.iface-number {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 0.6rem;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.875rem;
+    padding: 0.45rem 0.7rem;
+    width: 100%;
+    transition: border-color 150ms ease;
+}
+
+.iface-number:focus {
+    outline: none;
+    border-color: rgba(57, 208, 200, 0.45);
+    box-shadow: 0 0 0 3px rgba(57, 208, 200, 0.1);
+}
+
+/* --- Alarms accordion list --- */
+.iface-alarms-list {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.iface-alarm-row {
+    border-radius: 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    overflow: hidden;
+}
+
+.iface-alarm-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.7rem 1rem;
+    border: none;
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.875rem;
+    cursor: pointer;
+    text-align: left;
+    transition: background 150ms ease;
+}
+
+.iface-alarm-header:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.iface-alarm-ch-label {
+    font-weight: 600;
+    font-size: 0.82rem;
+    min-width: 3rem;
+    color: var(--accent-cool);
+}
+
+.iface-alarm-summary {
+    flex: 1;
+    font-size: 0.78rem;
+    color: var(--muted);
+}
+
+.iface-alarm-chevron {
+    font-size: 0.7rem;
+    color: var(--muted);
+    transition: transform 200ms ease;
+    line-height: 1;
+}
+
+.iface-alarm-row.is-open .iface-alarm-chevron {
+    transform: rotate(90deg);
+}
+
+.iface-alarm-body {
+    padding: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.iface-alarm-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.iface-alarm-group-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin: 0 0 0.65rem;
+}
+
+.iface-alarm-fields {
+    display: grid;
+    gap: 0.6rem;
+}
+
+.iface-alarm-stel {
+    margin-top: 0.25rem;
+}
+
+/* --- Analog output grid --- */
+.iface-analog-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem 1rem;
+}
+
+/* --- Locked note --- */
+.iface-locked-note {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin: 0;
+    font-style: italic;
+}
+
+/* --- Responsive --- */
+@media (max-width: 1080px) {
+    .iface-serial-grid,
+    .iface-analog-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 720px) {
+    .iface-shell {
+        padding: 1rem;
+    }
+
+    .iface-type-bar {
+        gap: 0.5rem;
+    }
+
+    .iface-type-btn {
+        min-width: 5.5rem;
+        padding: 0.85rem 1rem;
+    }
+
+    .iface-port-pane {
+        padding: 1rem;
+    }
+
+    .iface-serial-grid,
+    .iface-analog-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .iface-alarm-pair {
+        grid-template-columns: 1fr;
+    }
+
+    .iface-save-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .iface-save-btn {
+        width: 100%;
+    }
+}
+
+.iface-save-bar {
+    padding: 1rem 1.6rem 1.4rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}

@@ -106,7 +106,7 @@ def _primary_sections(active_label: str) -> list[dict[str, object]]:
         ("Overview", "Over", "/dashboard"),
         ("Monitor", "Mon", "/monitor"),
         ("Insights", "Info", "#"),
-        ("Field Interfaces", "Field", "#"),
+        ("Interfaces", "I/O", "/interfaces"),
         ("Network Intelligence", "Net", "#"),
         ("Destinations", "Dest", "#"),
         ("Connectivity", "Conn", "/connectivity"),
@@ -343,7 +343,7 @@ async def dashboard_page(request: Request) -> HTMLResponse:
                     "description": "Continuity, anomalies, incidents, trends, and evidence across sensor and network data.",
                 },
                 {
-                    "title": "Field Interfaces",
+                    "title": "Interfaces",
                     "description": "RS232, RS485, Modbus RTU, GPS, IMU, DI/DO, and attached field devices.",
                 },
                 {
@@ -576,6 +576,48 @@ async def get_system_metrics_history(request: Request) -> JSONResponse:
     payload = _system_metrics_store(request).get_history()
     payload["ok"] = True
     return JSONResponse(payload)
+
+
+@router.get("/interfaces", response_class=HTMLResponse)
+async def interfaces_page(request: Request) -> HTMLResponse:
+    if not _is_authenticated(request):
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+
+    rs232_config = request.app.state.rs232_config_store.get_config()
+    return templates.TemplateResponse(
+        request,
+        "interfaces.html",
+        {
+            "product_name": "MetaCrust Edge Gateway",
+            "page_title": "Interfaces",
+            "primary_sections": _primary_sections("Interfaces"),
+            "rs232_config": rs232_config,
+        },
+    )
+
+
+@router.get("/api/interfaces/rs232/config")
+async def get_rs232_config(request: Request) -> JSONResponse:
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+
+    config = request.app.state.rs232_config_store.get_config()
+    config["ok"] = True
+    return JSONResponse(config)
+
+
+@router.post("/api/interfaces/rs232/config")
+async def save_rs232_config(request: Request) -> JSONResponse:
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+
+    payload = await request.json()
+    success, response = request.app.state.rs232_config_store.save_config(payload)
+    if success:
+        request.app.state.redis_notifier.notify_changed("rs232_config")
+    response["ok"] = success
+    status_code = status.HTTP_200_OK if success else status.HTTP_400_BAD_REQUEST
+    return JSONResponse(response, status_code=status_code)
 
 
 @router.post("/api/network/wifi/scan")

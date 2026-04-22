@@ -695,7 +695,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (monitorShell) {
         const drawSparkline = (container, data, opts = {}) => {
             if (!container || !Array.isArray(data) || data.length < 2) return;
-            const { stroke = "#39d0c8", min: minOverride, max: maxOverride } = opts;
+            const { stroke = "#39d0c8", min: minOverride, max: maxOverride, fmt = (v) => v.toFixed(1) } = opts;
             const W = container.clientWidth || 300;
             const H = container.clientHeight || 72;
             const pad = 3;
@@ -717,7 +717,56 @@ document.addEventListener("DOMContentLoaded", () => {
                 </defs>
                 <path d="M ${toX(0)},${toY(data[0])} L ${pts} L ${toX(data.length - 1)},${H} L ${toX(0)},${H} Z" fill="url(#${gradId})"/>
                 <polyline points="${pts}" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <line class="ch-xhair" x1="0" y1="${pad}" x2="0" y2="${H - pad}" stroke="${stroke}" stroke-width="1" stroke-opacity="0.45" stroke-dasharray="3 2" opacity="0"/>
+                <circle class="ch-dot" r="3.5" fill="${stroke}" stroke="#08141a" stroke-width="1.5" opacity="0"/>
+                <g class="ch-tip" opacity="0">
+                    <rect class="ch-tip-bg" rx="3" fill="rgba(8,20,26,0.92)" stroke="${stroke}" stroke-width="0.75" stroke-opacity="0.6"/>
+                    <text class="ch-tip-txt" font-size="10" font-family="monospace" fill="${stroke}" text-anchor="middle" dominant-baseline="middle"/>
+                </g>
+                <rect class="ch-overlay" x="${pad}" y="${pad}" width="${uW}" height="${uH}" fill="transparent" style="cursor:crosshair"/>
             </svg>`;
+
+            const svg = container.querySelector("svg");
+            const xhair = svg.querySelector(".ch-xhair");
+            const dot = svg.querySelector(".ch-dot");
+            const tip = svg.querySelector(".ch-tip");
+            const tipBg = svg.querySelector(".ch-tip-bg");
+            const tipTxt = svg.querySelector(".ch-tip-txt");
+            const overlay = svg.querySelector(".ch-overlay");
+            const tipPadX = 6;
+            const tipH = 16;
+
+            overlay.addEventListener("mousemove", (e) => {
+                const rect = svg.getBoundingClientRect();
+                const mx = (e.clientX - rect.left) * (W / rect.width);
+                const idx = Math.round(Math.max(0, Math.min(1, (mx - pad) / uW)) * (data.length - 1));
+                const x = toX(idx);
+                const y = toY(data[idx]);
+                const label = fmt(data[idx]);
+                const textW = label.length * 6 + tipPadX * 2;
+
+                xhair.setAttribute("x1", x); xhair.setAttribute("x2", x); xhair.setAttribute("opacity", "1");
+                dot.setAttribute("cx", x); dot.setAttribute("cy", y); dot.setAttribute("opacity", "1");
+
+                let tx = x - textW / 2;
+                let ty = y - tipH - 6;
+                if (tx < pad) tx = pad;
+                if (tx + textW > W - pad) tx = W - pad - textW;
+                if (ty < pad) ty = y + 8;
+                if (ty + tipH > H - pad) ty = H - pad - tipH;
+
+                tipBg.setAttribute("x", tx); tipBg.setAttribute("y", ty);
+                tipBg.setAttribute("width", textW); tipBg.setAttribute("height", tipH);
+                tipTxt.setAttribute("x", tx + textW / 2); tipTxt.setAttribute("y", ty + tipH / 2);
+                tipTxt.textContent = label;
+                tip.setAttribute("opacity", "1");
+            });
+
+            overlay.addEventListener("mouseleave", () => {
+                xhair.setAttribute("opacity", "0");
+                dot.setAttribute("opacity", "0");
+                tip.setAttribute("opacity", "0");
+            });
         };
 
         const drawDualSparkline = (container, rxData, txData) => {
@@ -732,8 +781,8 @@ document.addEventListener("DOMContentLoaded", () => {
             const toX = (i) => pad + (i / (rxData.length - 1)) * uW;
             const toY = (v) => pad + uH - (v / maxV) * uH;
             const rxPts = rxData.map((v, i) => `${toX(i)},${toY(v)}`).join(" ");
-            const txPts = Array.isArray(txData) && txData.length >= 2
-                ? txData.map((v, i) => `${toX(i)},${toY(v)}`).join(" ") : null;
+            const hasTx = Array.isArray(txData) && txData.length >= 2;
+            const txPts = hasTx ? txData.map((v, i) => `${toX(i)},${toY(v)}`).join(" ") : null;
             container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
                 <defs>
                     <linearGradient id="sg_netrx" x1="0" y1="0" x2="0" y2="1">
@@ -744,7 +793,72 @@ document.addEventListener("DOMContentLoaded", () => {
                 <path d="M ${toX(0)},${toY(rxData[0])} L ${rxPts} L ${toX(rxData.length - 1)},${H} L ${toX(0)},${H} Z" fill="url(#sg_netrx)"/>
                 <polyline points="${rxPts}" fill="none" stroke="#a97df0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                 ${txPts ? `<polyline points="${txPts}" fill="none" stroke="#f0a64b" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 3"/>` : ""}
+                <line class="ch-xhair" x1="0" y1="${pad}" x2="0" y2="${H - pad}" stroke="rgba(255,255,255,0.35)" stroke-width="1" stroke-dasharray="3 2" opacity="0"/>
+                <circle class="ch-dot-rx" r="3" fill="#a97df0" stroke="#08141a" stroke-width="1.5" opacity="0"/>
+                ${hasTx ? `<circle class="ch-dot-tx" r="3" fill="#f0a64b" stroke="#08141a" stroke-width="1.5" opacity="0"/>` : ""}
+                <g class="ch-tip" opacity="0">
+                    <rect class="ch-tip-bg" rx="3" fill="rgba(8,20,26,0.92)" stroke="rgba(255,255,255,0.18)" stroke-width="0.75"/>
+                    <text class="ch-tip-rx" font-size="9" font-family="monospace" fill="#a97df0" dominant-baseline="middle"/>
+                    ${hasTx ? `<text class="ch-tip-tx" font-size="9" font-family="monospace" fill="#f0a64b" dominant-baseline="middle"/>` : ""}
+                </g>
+                <rect class="ch-overlay" x="${pad}" y="${pad}" width="${uW}" height="${uH}" fill="transparent" style="cursor:crosshair"/>
             </svg>`;
+
+            const svg = container.querySelector("svg");
+            const xhair = svg.querySelector(".ch-xhair");
+            const dotRx = svg.querySelector(".ch-dot-rx");
+            const dotTx = svg.querySelector(".ch-dot-tx");
+            const tip = svg.querySelector(".ch-tip");
+            const tipBg = svg.querySelector(".ch-tip-bg");
+            const tipRxEl = svg.querySelector(".ch-tip-rx");
+            const tipTxEl = svg.querySelector(".ch-tip-tx");
+            const overlay = svg.querySelector(".ch-overlay");
+            const tipPadX = 6;
+            const tipPadY = 4;
+            const lineH = 11;
+
+            overlay.addEventListener("mousemove", (e) => {
+                const rect = svg.getBoundingClientRect();
+                const mx = (e.clientX - rect.left) * (W / rect.width);
+                const idx = Math.round(Math.max(0, Math.min(1, (mx - pad) / uW)) * (rxData.length - 1));
+                const x = toX(idx);
+                const yRx = toY(rxData[idx]);
+                const rxLabel = `rx ${fmtBps(rxData[idx])}`;
+                const txLabel = hasTx ? `tx ${fmtBps(txData[idx])}` : null;
+                const longestLabel = txLabel && txLabel.length > rxLabel.length ? txLabel : rxLabel;
+                const textW = longestLabel.length * 5.5 + tipPadX * 2;
+                const tipH = hasTx ? tipPadY * 2 + lineH * 2 : tipPadY * 2 + lineH;
+
+                xhair.setAttribute("x1", x); xhair.setAttribute("x2", x); xhair.setAttribute("opacity", "1");
+                dotRx.setAttribute("cx", x); dotRx.setAttribute("cy", yRx); dotRx.setAttribute("opacity", "1");
+                if (dotTx) {
+                    dotTx.setAttribute("cx", x); dotTx.setAttribute("cy", toY(txData[idx])); dotTx.setAttribute("opacity", "1");
+                }
+
+                let tx = x - textW / 2;
+                let ty = yRx - tipH - 6;
+                if (tx < pad) tx = pad;
+                if (tx + textW > W - pad) tx = W - pad - textW;
+                if (ty < pad) ty = yRx + 8;
+                if (ty + tipH > H - pad) ty = H - pad - tipH;
+
+                tipBg.setAttribute("x", tx); tipBg.setAttribute("y", ty);
+                tipBg.setAttribute("width", textW); tipBg.setAttribute("height", tipH);
+                tipRxEl.setAttribute("x", tx + tipPadX); tipRxEl.setAttribute("y", ty + tipPadY + lineH / 2);
+                tipRxEl.textContent = rxLabel;
+                if (tipTxEl && txLabel) {
+                    tipTxEl.setAttribute("x", tx + tipPadX); tipTxEl.setAttribute("y", ty + tipPadY + lineH + lineH / 2);
+                    tipTxEl.textContent = txLabel;
+                }
+                tip.setAttribute("opacity", "1");
+            });
+
+            overlay.addEventListener("mouseleave", () => {
+                xhair.setAttribute("opacity", "0");
+                dotRx.setAttribute("opacity", "0");
+                if (dotTx) dotTx.setAttribute("opacity", "0");
+                tip.setAttribute("opacity", "0");
+            });
         };
 
         const fmtBps = (bps) => {
@@ -860,9 +974,9 @@ document.addEventListener("DOMContentLoaded", () => {
             // Auto-scale: anchor min at 0, max = actual peak + 30% headroom (minimum 10 for %)
             const cpuMax = Math.max(10, ...cpuData) * 1.3;
             const memMax = Math.max(10, ...memData) * 1.3;
-            drawSparkline(monitorShell.querySelector("[data-chart-svg=\"cpu\"]"), cpuData, { stroke: "#39d0c8", min: 0, max: cpuMax });
-            drawSparkline(monitorShell.querySelector("[data-chart-svg=\"memory\"]"), memData, { stroke: "#f0a64b", min: 0, max: memMax });
-            drawSparkline(monitorShell.querySelector("[data-chart-svg=\"temp\"]"), tempData, { stroke: "#62d39e" });
+            drawSparkline(monitorShell.querySelector("[data-chart-svg=\"cpu\"]"), cpuData, { stroke: "#39d0c8", min: 0, max: cpuMax, fmt: (v) => `${v.toFixed(1)}%` });
+            drawSparkline(monitorShell.querySelector("[data-chart-svg=\"memory\"]"), memData, { stroke: "#f0a64b", min: 0, max: memMax, fmt: (v) => `${v.toFixed(1)}%` });
+            drawSparkline(monitorShell.querySelector("[data-chart-svg=\"temp\"]"), tempData, { stroke: "#62d39e", fmt: (v) => `${v.toFixed(1)}°C` });
             drawDualSparkline(monitorShell.querySelector("[data-chart-svg=\"network\"]"), netRxData, netTxData);
         };
 
@@ -890,6 +1004,177 @@ document.addEventListener("DOMContentLoaded", () => {
         refreshMonitorHistory();
         window.setInterval(refreshMonitorCurrent, 5000);
         window.setInterval(refreshMonitorHistory, 30000);
+    }
+
+    const interfacesShell = document.querySelector("[data-interfaces-shell]");
+    if (interfacesShell) {
+        // ── Port tabs ──────────────────────────────────────────────────────────
+        const tabBtns = Array.from(interfacesShell.querySelectorAll("[data-rs232-tab-btn]"));
+        const portPanes = Array.from(interfacesShell.querySelectorAll("[data-rs232-port]"));
+
+        const switchTab = (portId) => {
+            tabBtns.forEach((btn) => {
+                btn.classList.toggle("is-active", btn.getAttribute("data-rs232-tab-btn") === portId);
+            });
+            portPanes.forEach((pane) => {
+                pane.style.display = pane.getAttribute("data-rs232-port") === portId ? "" : "none";
+            });
+        };
+
+        tabBtns.forEach((btn) => {
+            btn.addEventListener("click", () => switchTab(btn.getAttribute("data-rs232-tab-btn")));
+        });
+
+        // ── Enable toggle per port ─────────────────────────────────────────────
+        portPanes.forEach((pane) => {
+            const portId = pane.getAttribute("data-rs232-port");
+            const enableToggle = pane.querySelector("[data-rs232-enable]");
+            const portBody = pane.querySelector("[data-rs232-port-body]");
+            const disabledNote = pane.querySelector("[data-rs232-disabled-note]");
+            const statusBadge = pane.querySelector(".iface-port-status");
+            const tabDot = interfacesShell.querySelector(`[data-rs232-tab-dot="${portId}"]`);
+
+            const applyPortState = (enabled) => {
+                if (portBody) portBody.style.display = enabled ? "" : "none";
+                if (disabledNote) disabledNote.style.display = enabled ? "none" : "";
+                if (statusBadge) {
+                    statusBadge.className = `iface-port-status ${enabled ? "is-active" : "is-idle"}`;
+                    statusBadge.textContent = enabled ? "Active" : "Idle";
+                }
+                if (tabDot) {
+                    tabDot.className = `iface-port-tab-dot ${enabled ? "is-active" : "is-idle"}`;
+                }
+            };
+
+            if (enableToggle) {
+                enableToggle.addEventListener("change", () => applyPortState(enableToggle.checked));
+            }
+
+            // ── Alarm accordion per port ───────────────────────────────────────
+            pane.querySelectorAll("[data-alarm-toggle]").forEach((toggleBtn) => {
+                const row = toggleBtn.closest("[data-alarm-ch]");
+                const body = row?.querySelector("[data-alarm-body]");
+                toggleBtn.addEventListener("click", () => {
+                    const open = row.classList.toggle("is-open");
+                    if (body) body.style.display = open ? "" : "none";
+                });
+            });
+
+            // ── Analog output state → enable/disable channel select ────────────
+            const analogStateSelect = pane.querySelector("[data-rs232-analog='state']");
+            const analogChannelGroup = pane.querySelector("[data-analog-channel-group]");
+            const analogChannelSelect = pane.querySelector("[data-rs232-analog='channel']");
+
+            if (analogStateSelect) {
+                const applyAnalogState = (state) => {
+                    const off = state === "off";
+                    if (analogChannelGroup) {
+                        analogChannelGroup.style.opacity = off ? "0.45" : "";
+                        analogChannelGroup.style.pointerEvents = off ? "none" : "";
+                    }
+                    if (analogChannelSelect) analogChannelSelect.disabled = off;
+                };
+                analogStateSelect.addEventListener("change", () => applyAnalogState(analogStateSelect.value));
+            }
+        });
+
+        // ── Payload builder ────────────────────────────────────────────────────
+        const buildPayload = () => {
+            const buildPort = (portId) => {
+                const pane = interfacesShell.querySelector(`[data-rs232-port="${portId}"]`);
+                if (!pane) return null;
+
+                const enabled = pane.querySelector("[data-rs232-enable]")?.checked ?? false;
+
+                // Serial
+                const serial = {};
+                pane.querySelectorAll("[data-rs232-serial]").forEach((el) => {
+                    const key = el.getAttribute("data-rs232-serial");
+                    serial[key] = ["baud_rate", "stop_bits", "data_bits"].includes(key)
+                        ? parseInt(el.value, 10)
+                        : el.value;
+                });
+
+                // Polling
+                const polling = {};
+                pane.querySelectorAll("[data-rs232-poll]").forEach((el) => {
+                    polling[el.getAttribute("data-rs232-poll")] = el.checked;
+                });
+
+                // Driver
+                const driver = {};
+                pane.querySelectorAll("[data-rs232-driver]").forEach((el) => {
+                    driver[el.getAttribute("data-rs232-driver")] = el.checked;
+                });
+
+                // Alarms: collect by channel
+                const alarms = {};
+                pane.querySelectorAll("[data-rs232-alarm]").forEach((el) => {
+                    const ch = el.getAttribute("data-rs232-alarm");
+                    const field = el.getAttribute("data-rs232-alarm-field");
+                    if (!alarms[ch]) alarms[ch] = {};
+                    if (el.type === "checkbox") {
+                        alarms[ch][field] = el.checked;
+                    } else if (el.type === "number") {
+                        alarms[ch][field] = parseFloat(el.value) || 0;
+                    } else {
+                        alarms[ch][field] = el.value;
+                    }
+                });
+
+                // Analog output
+                const analog = {};
+                pane.querySelectorAll("[data-rs232-analog]").forEach((el) => {
+                    const key = el.getAttribute("data-rs232-analog");
+                    analog[key] = el.type === "number" ? parseFloat(el.value) || 0 : el.value;
+                });
+                if (analog.state === "off") analog.channel = null;
+
+                return {
+                    enabled,
+                    serial,
+                    sensor: "dustrak",
+                    dustrak: { polling, driver, alarms, analog_output: analog },
+                };
+            };
+
+            return {
+                version: 1,
+                rs232: { port_0: buildPort("0"), port_1: buildPort("1") },
+            };
+        };
+
+        // ── Save button ────────────────────────────────────────────────────────
+        const saveBtn = interfacesShell.querySelector("[data-iface-save]");
+        const saveMessage = interfacesShell.querySelector("[data-iface-save-message]");
+
+        if (saveBtn) {
+            saveBtn.addEventListener("click", async () => {
+                if (saveMessage) {
+                    saveMessage.textContent = "";
+                    saveMessage.classList.remove("is-success");
+                }
+                saveBtn.disabled = true;
+                saveBtn.textContent = "Saving…";
+                try {
+                    const response = await fetch("/api/interfaces/rs232/config", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(buildPayload()),
+                    });
+                    const data = await response.json();
+                    if (saveMessage) {
+                        saveMessage.textContent = data.message || (response.ok ? "Saved." : "Save failed.");
+                        saveMessage.classList.toggle("is-success", response.ok && data.ok);
+                    }
+                } catch {
+                    if (saveMessage) saveMessage.textContent = "Could not reach the gateway.";
+                } finally {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = "Save Interface Configuration";
+                }
+            });
+        }
     }
 
     const loginForm = document.querySelector(".auth-form");
