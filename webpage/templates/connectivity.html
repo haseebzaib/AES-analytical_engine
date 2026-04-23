@@ -71,7 +71,7 @@
             <div class="system-panel-head">
                 <div>
                     <p class="hero-band-eyebrow">Ethernet</p>
-                    <h2>eth0 uplink profile</h2>
+                    <h2>Ethernet uplink profile</h2>
                 </div>
             </div>
 
@@ -86,6 +86,7 @@
                         <span>Interface</span>
                         <select name="ethernet_interface">
                             <option value="eth0" {% if net.ethernet.interface == 'eth0' %}selected{% endif %}>eth0</option>
+                            <option value="eth1" {% if net.ethernet.interface == 'eth1' %}selected{% endif %}>eth1</option>
                         </select>
                     </label>
 
@@ -452,27 +453,27 @@
                     <label class="field">
                         <span>Priority slot 1</span>
                         <select name="policy_uplink_priority_1">
-                            {% for value in ['eth0', 'wifi_client', 'cellular'] %}
-                            <option value="{{ value }}" {% if net.policy.uplink_priority[0] == value %}selected{% endif %}>{{ value }}</option>
-                            {% endfor %}
+                            <option value="eth0" {% if net.policy.uplink_priority[0] == 'eth0' %}selected{% endif %}>Ethernet</option>
+                            <option value="wifi_client" {% if net.policy.uplink_priority[0] == 'wifi_client' %}selected{% endif %}>Wi-Fi Client</option>
+                            <option value="cellular" {% if net.policy.uplink_priority[0] == 'cellular' %}selected{% endif %}>Cellular</option>
                         </select>
                     </label>
 
                     <label class="field">
                         <span>Priority slot 2</span>
                         <select name="policy_uplink_priority_2">
-                            {% for value in ['eth0', 'wifi_client', 'cellular'] %}
-                            <option value="{{ value }}" {% if net.policy.uplink_priority[1] == value %}selected{% endif %}>{{ value }}</option>
-                            {% endfor %}
+                            <option value="eth0" {% if net.policy.uplink_priority[1] == 'eth0' %}selected{% endif %}>Ethernet</option>
+                            <option value="wifi_client" {% if net.policy.uplink_priority[1] == 'wifi_client' %}selected{% endif %}>Wi-Fi Client</option>
+                            <option value="cellular" {% if net.policy.uplink_priority[1] == 'cellular' %}selected{% endif %}>Cellular</option>
                         </select>
                     </label>
 
                     <label class="field">
                         <span>Priority slot 3</span>
                         <select name="policy_uplink_priority_3">
-                            {% for value in ['eth0', 'wifi_client', 'cellular'] %}
-                            <option value="{{ value }}" {% if net.policy.uplink_priority[2] == value %}selected{% endif %}>{{ value }}</option>
-                            {% endfor %}
+                            <option value="eth0" {% if net.policy.uplink_priority[2] == 'eth0' %}selected{% endif %}>Ethernet</option>
+                            <option value="wifi_client" {% if net.policy.uplink_priority[2] == 'wifi_client' %}selected{% endif %}>Wi-Fi Client</option>
+                            <option value="cellular" {% if net.policy.uplink_priority[2] == 'cellular' %}selected{% endif %}>Cellular</option>
                         </select>
                     </label>
 

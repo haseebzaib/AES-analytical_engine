@@ -28,7 +28,7 @@ def _default_network_document() -> dict[str, object]:
             },
             "ethernet": {
                 "enabled": True,
-                "interface": "eth0",
+                "interface": "eth1",
                 "role": "uplink",
                 "dhcp": True,
                 "static_address": "",
@@ -101,7 +101,7 @@ def _default_network_state() -> dict[str, object]:
             "last_timestamp": "",
         },
         "ethernet": {
-            "interface": "eth0",
+            "interface": "eth1",
             "enabled": True,
             "link_up": False,
             "interface_up": False,

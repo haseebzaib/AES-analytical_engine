@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from threading import Event, Thread
 from time import sleep
+
+from utils.led import toggle_led
 
 
 @dataclass(slots=True)
 class BackgroundWorker:
     name: str
     interval_seconds: float
+    tick_fn: Callable[[], None] | None = None
     status: str = "idle"
     _thread: Thread | None = field(default=None, init=False, repr=False)
 
@@ -27,6 +31,8 @@ class BackgroundWorker:
     def _run(self, stop_event: Event) -> None:
         self.status = "running"
         while not stop_event.is_set():
+            if self.tick_fn:
+                self.tick_fn()
             sleep(self.interval_seconds)
         self.status = "stopped"
 
@@ -37,7 +43,7 @@ class AnalyticsRuntime:
     def __init__(self) -> None:
         self._stop_event = Event()
         self._workers = [
-            BackgroundWorker(name="analytics-loop", interval_seconds=2.0),
+            BackgroundWorker(name="analytics-loop", interval_seconds=1.0, tick_fn=toggle_led),
             BackgroundWorker(name="config-sync", interval_seconds=5.0),
             BackgroundWorker(name="health-rollup", interval_seconds=10.0),
         ]

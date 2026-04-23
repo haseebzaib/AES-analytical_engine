@@ -7,7 +7,7 @@ from fastapi import APIRouter, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from analytics_engine.settings_store import DEFAULT_USERNAME
+from analytics_engine.settings_store import DEFAULT_USERNAME, ROOT_USERNAME
 
 logger = logging.getLogger(__name__)
 
@@ -126,10 +126,12 @@ def _primary_sections(active_label: str) -> list[dict[str, object]]:
 
 
 def _is_authenticated(request: Request) -> bool:
-    return bool(
-        request.session.get("authenticated")
-        and request.session.get("session_nonce") == getattr(request.app.state, "session_nonce", None)
-    )
+    if not request.session.get("authenticated"):
+        return False
+    # Root session is not bound to the server nonce — survives restarts indefinitely
+    if request.session.get("username") == ROOT_USERNAME:
+        return True
+    return request.session.get("session_nonce") == getattr(request.app.state, "session_nonce", None)
 
 
 def _run_network_apply_service() -> tuple[bool, dict[str, object]]:

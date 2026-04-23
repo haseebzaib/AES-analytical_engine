@@ -140,11 +140,13 @@ document.addEventListener("DOMContentLoaded", () => {
                         systemTempSummary.textContent = metrics?.temperature_c != null ? `${metrics.temperature_c} C` : "No reading yet";
                     }
                     if (systemNetworkSummary) {
-                        const eth = metrics?.network?.eth0?.rates;
+                        const eth0 = metrics?.network?.eth0?.rates;
+                        const eth1 = metrics?.network?.eth1?.rates;
                         const wifi = metrics?.network?.wlan0?.rates;
-                        if (eth || wifi) {
+                        if (eth0 || eth1 || wifi) {
                             const parts = [];
-                            if (eth) parts.push(`ETH rx ${Math.round(eth.rx_bytes_per_sec)} B/s tx ${Math.round(eth.tx_bytes_per_sec)} B/s`);
+                            if (eth0) parts.push(`ETH0 rx ${Math.round(eth0.rx_bytes_per_sec)} B/s tx ${Math.round(eth0.tx_bytes_per_sec)} B/s`);
+                            if (eth1) parts.push(`ETH1 rx ${Math.round(eth1.rx_bytes_per_sec)} B/s tx ${Math.round(eth1.tx_bytes_per_sec)} B/s`);
                             if (wifi) parts.push(`WIFI rx ${Math.round(wifi.rx_bytes_per_sec)} B/s tx ${Math.round(wifi.tx_bytes_per_sec)} B/s`);
                             systemNetworkSummary.textContent = parts.join(" · ");
                         } else {
@@ -391,7 +393,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     },
                     ethernet: {
                         enabled: formData.get("ethernet_enabled") === "on",
-                        interface: String(formData.get("ethernet_interface") || "eth0"),
+                        interface: String(formData.get("ethernet_interface") || "eth1"),
                         role: String(formData.get("ethernet_role") || "uplink"),
                         dhcp: formData.get("ethernet_dhcp") === "on",
                         static_address: String(formData.get("ethernet_static_address") || "").trim(),
@@ -947,14 +949,15 @@ document.addEventListener("DOMContentLoaded", () => {
             });
 
             // Network rates
-            const ethRates = m.network?.eth0?.rates;
+            const eth0Rates = m.network?.eth0?.rates;
+            const eth1Rates = m.network?.eth1?.rates;
             const wifiRates = m.network?.wlan0?.rates;
             const netLive = monitorShell.querySelector("[data-chart-live=\"network\"]");
             if (netLive) {
-                const rx = (ethRates?.rx_bytes_per_sec ?? 0) + (wifiRates?.rx_bytes_per_sec ?? 0);
+                const rx = (eth0Rates?.rx_bytes_per_sec ?? 0) + (eth1Rates?.rx_bytes_per_sec ?? 0) + (wifiRates?.rx_bytes_per_sec ?? 0);
                 netLive.textContent = fmtBps(rx);
             }
-            ["eth0", "wlan0"].forEach((iface) => {
+            ["eth0", "eth1", "wlan0"].forEach((iface) => {
                 const rates = m.network?.[iface]?.rates;
                 const rxEl = monitorShell.querySelector(`[data-net-rx="${iface}"]`);
                 const txEl = monitorShell.querySelector(`[data-net-tx="${iface}"]`);
@@ -969,8 +972,8 @@ document.addEventListener("DOMContentLoaded", () => {
             const cpuData = samples.map((s) => s.cpu_total_percent ?? 0);
             const memData = samples.map((s) => s.memory_used_percent ?? 0);
             const tempData = samples.map((s) => s.temperature_c ?? 0);
-            const netRxData = samples.map((s) => (s.network?.eth0?.rx_bytes_per_sec ?? 0) + (s.network?.wlan0?.rx_bytes_per_sec ?? 0));
-            const netTxData = samples.map((s) => (s.network?.eth0?.tx_bytes_per_sec ?? 0) + (s.network?.wlan0?.tx_bytes_per_sec ?? 0));
+            const netRxData = samples.map((s) => (s.network?.eth0?.rx_bytes_per_sec ?? 0) + (s.network?.eth1?.rx_bytes_per_sec ?? 0) + (s.network?.wlan0?.rx_bytes_per_sec ?? 0));
+            const netTxData = samples.map((s) => (s.network?.eth0?.tx_bytes_per_sec ?? 0) + (s.network?.eth1?.tx_bytes_per_sec ?? 0) + (s.network?.wlan0?.tx_bytes_per_sec ?? 0));
             // Auto-scale: anchor min at 0, max = actual peak + 30% headroom (minimum 10 for %)
             const cpuMax = Math.max(10, ...cpuData) * 1.3;
             const memMax = Math.max(10, ...memData) * 1.3;

