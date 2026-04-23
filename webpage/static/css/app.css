@@ -1879,9 +1879,9 @@ h2 {
 
 /* Port body */
 .iface-port-body {
-    padding: 1.2rem 1.4rem;
+    padding: 1rem 1.4rem 1.6rem;
     display: grid;
-    gap: 1.2rem;
+    gap: 1rem;
 }
 
 .iface-port-disabled-note {
@@ -2121,11 +2121,11 @@ h2 {
     background: rgba(255, 255, 255, 0.22);
 }
 
-/* --- Port pane (full-width content area) --- */
+/* --- Port pane (full-width content area, children manage their own padding) --- */
 .iface-port-pane {
-    padding: 1.4rem 1.6rem;
-    display: grid;
-    gap: 1rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
 }
 
 /* --- Config card --- */
