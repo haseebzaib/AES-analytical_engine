@@ -1214,6 +1214,284 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             });
         }
+
+        // ── Shared: register table add/delete row ──────────────────────────────
+        const REG_ROW_HTML = () => `
+            <tr data-reg-row>
+                <td><input type="text" class="iface-number iface-reg-input" data-reg-field="name" placeholder="e.g. Temperature"></td>
+                <td><select class="iface-select iface-select-sm" data-reg-field="register_type">
+                    <option value="coil">Coil (0x)</option>
+                    <option value="discrete_input">Discrete Input (1x)</option>
+                    <option value="input_register">Input Reg (3x)</option>
+                    <option value="holding_register" selected>Holding Reg (4x)</option>
+                </select></td>
+                <td><input type="number" class="iface-number iface-reg-input" data-reg-field="address" min="0" max="65535" value="40001"></td>
+                <td><select class="iface-select iface-select-sm" data-reg-field="data_type">
+                    <option value="uint16" selected>UInt16</option>
+                    <option value="int16">Int16</option>
+                    <option value="uint32">UInt32</option>
+                    <option value="int32">Int32</option>
+                    <option value="float32">Float32</option>
+                    <option value="bool">Bool</option>
+                </select></td>
+                <td><select class="iface-select iface-select-sm" data-reg-field="word_order">
+                    <option value="big" selected>Big</option>
+                    <option value="little">Little</option>
+                </select></td>
+                <td><input type="number" class="iface-number iface-reg-input" data-reg-field="scale" step="any" value="1"></td>
+                <td><input type="text" class="iface-number iface-reg-input" data-reg-field="unit" placeholder="°C"></td>
+                <td><button type="button" class="iface-reg-delete-btn" data-reg-delete title="Remove">✕</button></td>
+            </tr>`;
+
+        const wireRegTable = (container) => {
+            const tbody = container.querySelector("[data-reg-tbody]");
+            const addBtn = container.querySelector("[data-reg-add]");
+            const empty = container.querySelector("[data-reg-empty]");
+
+            const refreshEmpty = () => {
+                const hasRows = tbody.querySelectorAll("[data-reg-row]").length > 0;
+                if (empty) empty.style.display = hasRows ? "none" : "";
+            };
+
+            if (addBtn) {
+                addBtn.addEventListener("click", () => {
+                    const tmp = document.createElement("tbody");
+                    tmp.innerHTML = REG_ROW_HTML();
+                    const row = tmp.firstElementChild;
+                    row.querySelector("[data-reg-delete]").addEventListener("click", () => {
+                        row.remove(); refreshEmpty();
+                    });
+                    tbody.appendChild(row);
+                    refreshEmpty();
+                });
+            }
+
+            tbody.querySelectorAll("[data-reg-delete]").forEach((btn) => {
+                btn.addEventListener("click", () => { btn.closest("[data-reg-row]").remove(); refreshEmpty(); });
+            });
+            refreshEmpty();
+        };
+
+        const readRegTable = (container) => {
+            return Array.from(container.querySelectorAll("[data-reg-row]")).map((row) => {
+                const f = (attr) => row.querySelector(`[data-reg-field="${attr}"]`)?.value ?? "";
+                return {
+                    name: f("name"),
+                    register_type: f("register_type"),
+                    address: parseInt(f("address"), 10) || 0,
+                    data_type: f("data_type"),
+                    word_order: f("word_order"),
+                    scale: parseFloat(f("scale")) || 1,
+                    unit: f("unit"),
+                };
+            });
+        };
+
+        // ── RS485 panel ────────────────────────────────────────────────────────
+        const rs485Panel = interfacesShell.querySelector("[data-iface-panel='rs485']");
+        if (rs485Panel) {
+            // Wire register tables
+            rs485Panel.querySelectorAll("[data-reg-table]").forEach(wireRegTable);
+
+            // Enable toggles
+            rs485Panel.querySelectorAll("[data-rtu-port]").forEach((pane) => {
+                const portId = pane.getAttribute("data-rtu-port");
+                const toggle = pane.querySelector("[data-rtu-enable]");
+                const body = pane.querySelector("[data-rtu-port-body]");
+                const note = pane.querySelector("[data-rtu-disabled-note]");
+                const status = pane.querySelector(".iface-port-status");
+                const dot = rs485Panel.querySelector(`[data-rtu-tab-dot="${portId}"]`);
+
+                const apply = (enabled) => {
+                    if (body) body.style.display = enabled ? "" : "none";
+                    if (note) note.style.display = enabled ? "none" : "";
+                    if (status) { status.className = `iface-port-status ${enabled ? "is-active" : "is-idle"}`; status.textContent = enabled ? "Active" : "Idle"; }
+                    if (dot) dot.className = `iface-port-tab-dot ${enabled ? "is-active" : "is-idle"}`;
+                };
+
+                if (toggle) toggle.addEventListener("change", () => apply(toggle.checked));
+            });
+
+            // Save
+            const rtuSaveBtn = rs485Panel.querySelector("[data-rtu-save]");
+            const rtuSaveMsg = rs485Panel.querySelector("[data-rtu-save-message]");
+
+            const buildRtuPayload = () => {
+                const buildPort = (portId, portKey) => {
+                    const pane = rs485Panel.querySelector(`[data-rtu-port="${portId}"]`);
+                    if (!pane) return null;
+                    const serial = {};
+                    pane.querySelectorAll("[data-rtu-serial]").forEach((el) => {
+                        const k = el.getAttribute("data-rtu-serial");
+                        serial[k] = ["baud_rate", "stop_bits", "data_bits"].includes(k) ? parseInt(el.value, 10) : el.value;
+                    });
+                    const modbus_rtu = { registers: readRegTable(pane.querySelector("[data-reg-table]")) };
+                    pane.querySelectorAll("[data-rtu-modbus]").forEach((el) => {
+                        const k = el.getAttribute("data-rtu-modbus");
+                        modbus_rtu[k] = parseInt(el.value, 10) || 0;
+                    });
+                    return {
+                        enabled: pane.querySelector("[data-rtu-enable]")?.checked ?? false,
+                        serial,
+                        modbus_rtu,
+                    };
+                };
+                return { version: 1, rs485: { port_2: buildPort("0"), port_3: buildPort("1") } };
+            };
+
+            if (rtuSaveBtn) {
+                rtuSaveBtn.addEventListener("click", async () => {
+                    if (rtuSaveMsg) { rtuSaveMsg.textContent = ""; rtuSaveMsg.classList.remove("is-success"); }
+                    rtuSaveBtn.disabled = true; rtuSaveBtn.textContent = "Saving…";
+                    try {
+                        const res = await fetch("/api/interfaces/rs485/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(buildRtuPayload()) });
+                        const data = await res.json();
+                        if (rtuSaveMsg) { rtuSaveMsg.textContent = data.message || (res.ok ? "Saved." : "Save failed."); rtuSaveMsg.classList.toggle("is-success", res.ok && data.ok); }
+                    } catch { if (rtuSaveMsg) rtuSaveMsg.textContent = "Could not reach the gateway."; }
+                    finally { rtuSaveBtn.disabled = false; rtuSaveBtn.textContent = "Save RS485 Configuration"; }
+                });
+            }
+        }
+
+        // ── Modbus TCP panel ───────────────────────────────────────────────────
+        const mtcpPanel = interfacesShell.querySelector("[data-iface-panel='modbus-tcp']");
+        if (mtcpPanel) {
+            const mtcpList = mtcpPanel.querySelector("[data-mtcp-list]");
+            const mtcpCount = mtcpPanel.querySelector("[data-mtcp-count]");
+            const MAX_CONN = 10;
+
+            const updateMtcpCount = () => {
+                const n = mtcpList.querySelectorAll("[data-mtcp-conn]").length;
+                if (mtcpCount) mtcpCount.textContent = `${n} / ${MAX_CONN}`;
+                const addBtn = mtcpPanel.querySelector("[data-mtcp-add-conn]");
+                if (addBtn) addBtn.disabled = n >= MAX_CONN;
+            };
+
+            const wireMtcpConn = (connEl) => {
+                // Accordion toggle
+                const header = connEl.querySelector("[data-mtcp-conn-toggle]");
+                const body = connEl.querySelector("[data-mtcp-conn-body]");
+                const chevron = connEl.querySelector(".iface-alarm-chevron");
+                if (header) header.addEventListener("click", () => {
+                    const open = connEl.classList.toggle("is-open");
+                    if (body) body.style.display = open ? "" : "none";
+                    if (chevron) chevron.style.transform = open ? "rotate(90deg)" : "";
+                });
+
+                // Live summary update
+                const nameInput = connEl.querySelector("[data-mtcp-field='name']");
+                const ifaceSelect = connEl.querySelector("[data-mtcp-field='interface']");
+                const ipInput = connEl.querySelector("[data-mtcp-field='ip']");
+                const portInput = connEl.querySelector("[data-mtcp-field='port']");
+                const unitInput = connEl.querySelector("[data-mtcp-field='unit_id']");
+                const nameLabel = connEl.querySelector("[data-mtcp-conn-name-label]");
+                const summary = connEl.querySelector("[data-mtcp-conn-summary]");
+                const dot = connEl.querySelector("[data-mtcp-conn-dot]");
+                const enableToggle = connEl.querySelector("[data-mtcp-conn-enable]");
+
+                const refreshSummary = () => {
+                    if (nameLabel && nameInput) nameLabel.textContent = nameInput.value || "Unnamed";
+                    if (summary) summary.textContent = `${ifaceSelect?.value ?? "eth0"} · ${ipInput?.value || "—"}:${portInput?.value || "502"} · Unit ${unitInput?.value || "1"}`;
+                };
+                const refreshDot = () => {
+                    if (dot) dot.className = `iface-conn-status-dot ${enableToggle?.checked ? "is-active" : "is-idle"}`;
+                };
+
+                [nameInput, ifaceSelect, ipInput, portInput, unitInput].forEach((el) => el?.addEventListener("input", refreshSummary));
+                enableToggle?.addEventListener("change", refreshDot);
+
+                // Delete connection
+                connEl.querySelector("[data-mtcp-del-conn]")?.addEventListener("click", () => {
+                    connEl.remove();
+                    updateMtcpCount();
+                    const empty = mtcpList.querySelector("[data-mtcp-empty]");
+                    if (empty) empty.style.display = mtcpList.querySelectorAll("[data-mtcp-conn]").length === 0 ? "" : "none";
+                });
+
+                // Wire register table
+                const regTable = connEl.querySelector("[data-reg-table]");
+                if (regTable) wireRegTable(regTable);
+            };
+
+            // Wire existing connections
+            mtcpList.querySelectorAll("[data-mtcp-conn]").forEach(wireMtcpConn);
+
+            // Add connection
+            const addConnBtn = mtcpPanel.querySelector("[data-mtcp-add-conn]");
+            if (addConnBtn) {
+                addConnBtn.addEventListener("click", () => {
+                    if (mtcpList.querySelectorAll("[data-mtcp-conn]").length >= MAX_CONN) return;
+                    const empty = mtcpList.querySelector("[data-mtcp-empty]");
+                    if (empty) empty.style.display = "none";
+                    const id = `conn_${Date.now()}`;
+                    const tmpl = document.createElement("template");
+                    tmpl.innerHTML = `
+<div class="iface-alarm-row is-open" data-mtcp-conn>
+    <button type="button" class="iface-alarm-header" data-mtcp-conn-toggle>
+        <span class="iface-conn-status-dot is-idle" data-mtcp-conn-dot></span>
+        <span class="iface-alarm-ch-label" style="min-width:auto;flex:1" data-mtcp-conn-name-label>New Device</span>
+        <span class="iface-alarm-summary" data-mtcp-conn-summary>eth0 · —:502 · Unit 1</span>
+        <span class="iface-alarm-chevron" style="transform:rotate(90deg)">▸</span>
+    </button>
+    <div class="iface-alarm-body" data-mtcp-conn-body style="display:block">
+        <div class="iface-modbus-tcp-grid" style="margin-bottom:1rem">
+            <label class="iface-field-group"><span class="iface-field-label">Name</span><input type="text" class="iface-number" data-mtcp-field="name" value="New Device"></label>
+            <label class="iface-field-group"><span class="iface-field-label">Enabled</span><label class="iface-toggle" style="margin-top:0.35rem"><input type="checkbox" class="iface-toggle-input" data-mtcp-conn-enable><span class="iface-toggle-track" aria-hidden="true"></span></label></label>
+            <label class="iface-field-group"><span class="iface-field-label">Ethernet Interface</span><select class="iface-select" data-mtcp-field="interface"><option value="eth0" selected>eth0 — Primary</option><option value="eth1">eth1 — Secondary</option></select></label>
+            <label class="iface-field-group"><span class="iface-field-label">Device IP</span><input type="text" class="iface-number" data-mtcp-field="ip" placeholder="192.168.1.100"></label>
+            <label class="iface-field-group"><span class="iface-field-label">Port</span><input type="number" class="iface-number" min="1" max="65535" data-mtcp-field="port" value="502"></label>
+            <label class="iface-field-group"><span class="iface-field-label">Unit ID (1–247)</span><input type="number" class="iface-number" min="1" max="247" data-mtcp-field="unit_id" value="1"></label>
+            <label class="iface-field-group"><span class="iface-field-label">Poll Interval</span><select class="iface-select" data-mtcp-field="poll_interval_ms"><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></label>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
+            <p class="iface-section-eyebrow" style="margin:0">Register Map</p>
+            <button type="button" class="iface-reg-delete-btn" style="padding:0.3rem 0.8rem;border-radius:0.5rem" data-mtcp-del-conn>Remove Connection</button>
+        </div>
+        <div data-reg-table><table class="iface-register-table"><thead><tr><th>Name</th><th>Register Type</th><th>Address</th><th>Data Type</th><th>Word Order</th><th>Scale</th><th>Unit</th><th></th></tr></thead><tbody data-reg-tbody><tr class="iface-register-empty" data-reg-empty><td colspan="8">No registers defined — click Add Register to start</td></tr></tbody></table><button type="button" class="iface-add-register-btn" data-reg-add>+ Add Register</button></div>
+    </div>
+</div>`;
+                    const connEl = tmpl.content.firstElementChild;
+                    mtcpList.appendChild(connEl);
+                    wireMtcpConn(connEl);
+                    updateMtcpCount();
+                });
+            }
+
+            // Save
+            const mtcpSaveBtn = mtcpPanel.querySelector("[data-mtcp-save]");
+            const mtcpSaveMsg = mtcpPanel.querySelector("[data-mtcp-save-message]");
+
+            const buildMtcpPayload = () => {
+                const connections = Array.from(mtcpList.querySelectorAll("[data-mtcp-conn]")).map((connEl, i) => {
+                    const f = (attr) => connEl.querySelector(`[data-mtcp-field="${attr}"]`)?.value ?? "";
+                    return {
+                        id: `conn_${i + 1}`,
+                        name: f("name") || "Unnamed Device",
+                        enabled: connEl.querySelector("[data-mtcp-conn-enable]")?.checked ?? false,
+                        interface: f("interface") || "eth0",
+                        ip: f("ip"),
+                        port: parseInt(f("port"), 10) || 502,
+                        unit_id: parseInt(f("unit_id"), 10) || 1,
+                        poll_interval_ms: parseInt(f("poll_interval_ms"), 10) || 1000,
+                        registers: readRegTable(connEl.querySelector("[data-reg-table]")),
+                    };
+                });
+                return { version: 1, max_connections: MAX_CONN, connections };
+            };
+
+            if (mtcpSaveBtn) {
+                mtcpSaveBtn.addEventListener("click", async () => {
+                    if (mtcpSaveMsg) { mtcpSaveMsg.textContent = ""; mtcpSaveMsg.classList.remove("is-success"); }
+                    mtcpSaveBtn.disabled = true; mtcpSaveBtn.textContent = "Saving…";
+                    try {
+                        const res = await fetch("/api/interfaces/modbus-tcp/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(buildMtcpPayload()) });
+                        const data = await res.json();
+                        if (mtcpSaveMsg) { mtcpSaveMsg.textContent = data.message || (res.ok ? "Saved." : "Save failed."); mtcpSaveMsg.classList.toggle("is-success", res.ok && data.ok); }
+                    } catch { if (mtcpSaveMsg) mtcpSaveMsg.textContent = "Could not reach the gateway."; }
+                    finally { mtcpSaveBtn.disabled = false; mtcpSaveBtn.textContent = "Save Modbus TCP Configuration"; }
+                });
+            }
+        }
     }
 
     const loginForm = document.querySelector(".auth-form");

@@ -2465,7 +2465,47 @@ h2 {
     color: var(--muted);
     font: inherit;
     font-size: 0.82rem;
+    cursor: pointer;
+    transition: background 150ms ease, border-color 150ms ease;
+}
+
+.iface-add-register-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+    color: var(--text);
+}
+
+.iface-add-register-btn:disabled {
+    opacity: 0.4;
     cursor: not-allowed;
+}
+
+/* Register table row inputs */
+.iface-reg-input {
+    width: 100%;
+    min-width: 4rem;
+    padding: 0.3rem 0.5rem;
+    font-size: 0.78rem;
+}
+
+.iface-register-table td {
+    padding: 0.4rem 0.5rem;
+    vertical-align: middle;
+}
+
+.iface-reg-delete-btn {
+    background: rgba(220, 60, 60, 0.08);
+    border: 1px solid rgba(220, 60, 60, 0.2);
+    border-radius: 0.4rem;
+    color: rgba(220, 100, 100, 0.85);
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    cursor: pointer;
+    transition: background 150ms ease;
+}
+
+.iface-reg-delete-btn:hover {
+    background: rgba(220, 60, 60, 0.18);
 }
 
 /* --- Modbus TCP connection grid --- */

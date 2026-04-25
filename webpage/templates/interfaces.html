@@ -5,9 +5,9 @@
 
 {% block console_content %}
 
-{# ── Register map preview table (shared by RS485 and Modbus TCP) ── #}
-{% macro _register_map_preview() %}
-<div class="iface-register-table-wrap">
+{# ── Register table (RS485 + Modbus TCP) ── #}
+{% macro _register_table(registers=[]) %}
+<div data-reg-table>
     <table class="iface-register-table">
         <thead>
             <tr>
@@ -15,21 +15,199 @@
                 <th>Register Type</th>
                 <th>Address</th>
                 <th>Data Type</th>
+                <th>Word Order</th>
                 <th>Scale</th>
                 <th>Unit</th>
+                <th></th>
             </tr>
         </thead>
-        <tbody>
-            <tr class="iface-register-empty">
-                <td colspan="6">No registers defined</td>
+        <tbody data-reg-tbody>
+            {% if not registers %}
+            <tr class="iface-register-empty" data-reg-empty>
+                <td colspan="8">No registers defined — click Add Register to start</td>
             </tr>
+            {% endif %}
+            {% for reg in registers %}
+            <tr data-reg-row>
+                <td><input type="text" class="iface-number iface-reg-input" data-reg-field="name" value="{{ reg.name }}"></td>
+                <td>
+                    <select class="iface-select iface-select-sm" data-reg-field="register_type">
+                        <option value="coil"{% if reg.register_type == "coil" %} selected{% endif %}>Coil (0x)</option>
+                        <option value="discrete_input"{% if reg.register_type == "discrete_input" %} selected{% endif %}>Discrete Input (1x)</option>
+                        <option value="input_register"{% if reg.register_type == "input_register" %} selected{% endif %}>Input Reg (3x)</option>
+                        <option value="holding_register"{% if reg.register_type == "holding_register" %} selected{% endif %}>Holding Reg (4x)</option>
+                    </select>
+                </td>
+                <td><input type="number" class="iface-number iface-reg-input" data-reg-field="address" min="0" max="65535" value="{{ reg.address }}"></td>
+                <td>
+                    <select class="iface-select iface-select-sm" data-reg-field="data_type">
+                        <option value="uint16"{% if reg.data_type == "uint16" %} selected{% endif %}>UInt16</option>
+                        <option value="int16"{% if reg.data_type == "int16" %} selected{% endif %}>Int16</option>
+                        <option value="uint32"{% if reg.data_type == "uint32" %} selected{% endif %}>UInt32</option>
+                        <option value="int32"{% if reg.data_type == "int32" %} selected{% endif %}>Int32</option>
+                        <option value="float32"{% if reg.data_type == "float32" %} selected{% endif %}>Float32</option>
+                        <option value="bool"{% if reg.data_type == "bool" %} selected{% endif %}>Bool</option>
+                    </select>
+                </td>
+                <td>
+                    <select class="iface-select iface-select-sm" data-reg-field="word_order">
+                        <option value="big"{% if reg.word_order == "big" %} selected{% endif %}>Big</option>
+                        <option value="little"{% if reg.word_order == "little" %} selected{% endif %}>Little</option>
+                    </select>
+                </td>
+                <td><input type="number" class="iface-number iface-reg-input" data-reg-field="scale" step="any" value="{{ reg.scale }}"></td>
+                <td><input type="text" class="iface-number iface-reg-input" data-reg-field="unit" value="{{ reg.unit }}"></td>
+                <td><button type="button" class="iface-reg-delete-btn" data-reg-delete title="Remove">✕</button></td>
+            </tr>
+            {% endfor %}
         </tbody>
     </table>
-    <button type="button" class="iface-add-register-btn" disabled>
-        + Add Register
-    </button>
+    <button type="button" class="iface-add-register-btn" data-reg-add>+ Add Register</button>
 </div>
 {% endmacro %}
+
+{# ── RS485 port pane macro ── #}
+{% macro _rtu_port(port_id, ch_label, port) %}
+{% set ser = port.serial %}
+{% set rtu = port.modbus_rtu %}
+<div class="iface-port-pane" data-rtu-port="{{ port_id }}"{% if port_id != "0" %} style="display:none"{% endif %}>
+    <div class="iface-port-head">
+        <div class="iface-port-head-left">
+            <div class="iface-port-name-row">
+                <span class="iface-port-name">Port {{ port_id }}</span>
+                <span class="iface-port-channel-badge">{{ ch_label }}</span>
+                <span class="iface-port-status {% if port.enabled %}is-active{% else %}is-idle{% endif %}">{% if port.enabled %}Active{% else %}Idle{% endif %}</span>
+            </div>
+        </div>
+        <label class="iface-toggle">
+            <input type="checkbox" class="iface-toggle-input" data-rtu-enable {% if port.enabled %}checked{% endif %}>
+            <span class="iface-toggle-track" aria-hidden="true"></span>
+        </label>
+    </div>
+    <div class="iface-port-body" data-rtu-port-body {% if not port.enabled %}style="display:none"{% endif %}>
+        <div class="iface-cfg-card">
+            <p class="iface-section-eyebrow">Serial Port</p>
+            <div class="iface-serial-grid">
+                <label class="iface-field-group">
+                    <span class="iface-field-label">Baud Rate</span>
+                    <select class="iface-select" data-rtu-serial="baud_rate">
+                        {% for br in [50,75,110,134,150,200,300,600,1200,1800,2400,4800,9600,19200,38400,57600,115200,230400] %}
+                        <option value="{{ br }}"{% if ser.baud_rate == br %} selected{% endif %}>{{ br }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label class="iface-field-group">
+                    <span class="iface-field-label">Parity</span>
+                    <select class="iface-select" data-rtu-serial="parity">
+                        <option value="none"{% if ser.parity == "none" %} selected{% endif %}>None</option>
+                        <option value="even"{% if ser.parity == "even" %} selected{% endif %}>Even</option>
+                        <option value="odd"{% if ser.parity == "odd" %} selected{% endif %}>Odd</option>
+                    </select>
+                </label>
+                <label class="iface-field-group">
+                    <span class="iface-field-label">Stop Bits</span>
+                    <select class="iface-select" data-rtu-serial="stop_bits">
+                        <option value="1"{% if ser.stop_bits == 1 %} selected{% endif %}>1</option>
+                        <option value="2"{% if ser.stop_bits == 2 %} selected{% endif %}>2</option>
+                    </select>
+                </label>
+                <label class="iface-field-group">
+                    <span class="iface-field-label">Data Bits</span>
+                    <select class="iface-select" data-rtu-serial="data_bits">
+                        {% for db in [5,6,7,8] %}
+                        <option value="{{ db }}"{% if ser.data_bits == db %} selected{% endif %}>{{ db }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+            </div>
+        </div>
+        <div class="iface-cfg-card">
+            <p class="iface-section-eyebrow">Modbus RTU</p>
+            <div class="iface-serial-grid">
+                <label class="iface-field-group">
+                    <span class="iface-field-label">Slave Address (1–247)</span>
+                    <input type="number" class="iface-number" min="1" max="247" data-rtu-modbus="slave_address" value="{{ rtu.slave_address }}">
+                </label>
+                <label class="iface-field-group">
+                    <span class="iface-field-label">Poll Interval</span>
+                    <select class="iface-select" data-rtu-modbus="poll_interval_ms">
+                        {% for ms, lbl in [(500,"500 ms"),(1000,"1 s"),(2000,"2 s"),(5000,"5 s"),(10000,"10 s")] %}
+                        <option value="{{ ms }}"{% if rtu.poll_interval_ms == ms %} selected{% endif %}>{{ lbl }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+            </div>
+        </div>
+        <div class="iface-cfg-card">
+            <p class="iface-section-eyebrow">Register Map</p>
+            {{ _register_table(rtu.registers) }}
+        </div>
+    </div>
+    <div class="iface-port-disabled-note" data-rtu-disabled-note {% if port.enabled %}style="display:none"{% endif %}>
+        <span>Enable this port to configure Modbus RTU settings</span>
+    </div>
+</div>
+{% endmacro %}
+
+{# ── Modbus TCP connection accordion macro ── #}
+{% macro _mtcp_conn(conn) %}
+<div class="iface-alarm-row" data-mtcp-conn>
+    <button type="button" class="iface-alarm-header" data-mtcp-conn-toggle>
+        <span class="iface-conn-status-dot {% if conn.enabled %}is-active{% else %}is-idle{% endif %}" data-mtcp-conn-dot></span>
+        <span class="iface-alarm-ch-label" style="min-width:auto;flex:1" data-mtcp-conn-name-label>{{ conn.name }}</span>
+        <span class="iface-alarm-summary" data-mtcp-conn-summary>{{ conn.interface }} · {{ conn.ip }}:{{ conn.port }} · Unit {{ conn.unit_id }}</span>
+        <span class="iface-alarm-chevron">▸</span>
+    </button>
+    <div class="iface-alarm-body" data-mtcp-conn-body style="display:none">
+        <div class="iface-modbus-tcp-grid" style="margin-bottom:1rem">
+            <label class="iface-field-group">
+                <span class="iface-field-label">Name</span>
+                <input type="text" class="iface-number" data-mtcp-field="name" value="{{ conn.name }}">
+            </label>
+            <label class="iface-field-group">
+                <span class="iface-field-label">Enabled</span>
+                <label class="iface-toggle" style="margin-top:0.35rem">
+                    <input type="checkbox" class="iface-toggle-input" data-mtcp-conn-enable {% if conn.enabled %}checked{% endif %}>
+                    <span class="iface-toggle-track" aria-hidden="true"></span>
+                </label>
+            </label>
+            <label class="iface-field-group">
+                <span class="iface-field-label">Ethernet Interface</span>
+                <select class="iface-select" data-mtcp-field="interface">
+                    <option value="eth0"{% if conn.interface == "eth0" %} selected{% endif %}>eth0 — Primary</option>
+                    <option value="eth1"{% if conn.interface == "eth1" %} selected{% endif %}>eth1 — Secondary</option>
+                </select>
+            </label>
+            <label class="iface-field-group">
+                <span class="iface-field-label">Device IP</span>
+                <input type="text" class="iface-number" data-mtcp-field="ip" value="{{ conn.ip }}" placeholder="192.168.1.100">
+            </label>
+            <label class="iface-field-group">
+                <span class="iface-field-label">Port</span>
+                <input type="number" class="iface-number" min="1" max="65535" data-mtcp-field="port" value="{{ conn.port }}">
+            </label>
+            <label class="iface-field-group">
+                <span class="iface-field-label">Unit ID (1–247)</span>
+                <input type="number" class="iface-number" min="1" max="247" data-mtcp-field="unit_id" value="{{ conn.unit_id }}">
+            </label>
+            <label class="iface-field-group">
+                <span class="iface-field-label">Poll Interval</span>
+                <select class="iface-select" data-mtcp-field="poll_interval_ms">
+                    {% for ms, lbl in [(500,"500 ms"),(1000,"1 s"),(2000,"2 s"),(5000,"5 s"),(10000,"10 s")] %}
+                    <option value="{{ ms }}"{% if conn.poll_interval_ms == ms %} selected{% endif %}>{{ lbl }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
+            <p class="iface-section-eyebrow" style="margin:0">Register Map</p>
+            <button type="button" class="iface-reg-delete-btn" style="padding:0.3rem 0.8rem;border-radius:0.5rem" data-mtcp-del-conn>Remove Connection</button>
+        </div>
+        {{ _register_table(conn.registers) }}
+    </div>
+</div>
+{% endmacro %}
+
 
 {# ── Alarm state <option> list macro ── #}
 {% macro alarm_opts(current) %}
@@ -471,268 +649,63 @@
 
     {# ── RS485 / Modbus RTU panel ── #}
     <div class="iface-type-panel iface-panel-card" data-iface-panel="rs485" style="display:none">
-
-        {# Port tabs #}
+        {% set rtu_ports = [
+            ("0", "Ch2", rs485_config.rs485.port_2),
+            ("1", "Ch3", rs485_config.rs485.port_3),
+        ] %}
         <div class="iface-port-tabs">
-            <button type="button" class="iface-port-tab-btn is-active" data-rtu-tab-btn="0">
-                <span class="iface-port-tab-dot is-idle"></span>
-                Port 0 <span class="iface-port-channel-badge" style="margin-left:0.3rem">Ch2</span>
+            {% for port_id, ch_label, port in rtu_ports %}
+            <button type="button" class="iface-port-tab-btn {% if loop.first %}is-active{% endif %}" data-rtu-tab-btn="{{ port_id }}">
+                <span class="iface-port-tab-dot {% if port.enabled %}is-active{% else %}is-idle{% endif %}" data-rtu-tab-dot="{{ port_id }}"></span>
+                Port {{ port_id }}
             </button>
-            <button type="button" class="iface-port-tab-btn" data-rtu-tab-btn="1">
-                <span class="iface-port-tab-dot is-idle"></span>
-                Port 1 <span class="iface-port-channel-badge" style="margin-left:0.3rem">Ch3</span>
+            {% endfor %}
+        </div>
+        {% for port_id, ch_label, port in rtu_ports %}
+        {{ _rtu_port(port_id, ch_label, port) }}
+        {% endfor %}
+        <div class="iface-save-bar">
+            <p class="iface-save-message" data-rtu-save-message></p>
+            <button type="button" class="primary-action iface-save-btn" data-rtu-save>
+                Save RS485 Configuration
             </button>
         </div>
-
-        {# Port 0 pane #}
-        <div class="iface-port-pane" data-rtu-port="0">
-                <div class="iface-port-head">
-                    <div class="iface-port-head-left">
-                        <div class="iface-port-name-row">
-                            <span class="iface-port-name">Port 0</span>
-                            <span class="iface-port-channel-badge">Ch2</span>
-                            <span class="iface-port-status is-idle">Idle</span>
-                        </div>
-                    </div>
-                    <label class="iface-toggle">
-                        <input type="checkbox" class="iface-toggle-input" disabled>
-                        <span class="iface-toggle-track" aria-hidden="true"></span>
-                    </label>
-                </div>
-                <div class="iface-port-body">
-                    <div class="iface-cfg-card">
-                        <p class="iface-section-eyebrow">Serial Port</p>
-                        <div class="iface-serial-grid">
-                            <label class="iface-field-group">
-                                <span class="iface-field-label">Baud Rate</span>
-                                <select class="iface-select"><option>9600</option></select>
-                            </label>
-                            <label class="iface-field-group">
-                                <span class="iface-field-label">Parity</span>
-                                <select class="iface-select"><option>None</option></select>
-                            </label>
-                            <label class="iface-field-group">
-                                <span class="iface-field-label">Stop Bits</span>
-                                <select class="iface-select"><option>1</option></select>
-                            </label>
-                            <label class="iface-field-group">
-                                <span class="iface-field-label">Data Bits</span>
-                                <select class="iface-select"><option>8</option></select>
-                            </label>
-                        </div>
-                    </div>
-                    <div class="iface-cfg-card">
-                        <p class="iface-section-eyebrow">Modbus RTU</p>
-                        <div class="iface-serial-grid">
-                            <label class="iface-field-group">
-                                <span class="iface-field-label">Slave Address (1–247)</span>
-                                <input type="number" class="iface-number" min="1" max="247" value="1">
-                            </label>
-                            <label class="iface-field-group">
-                                <span class="iface-field-label">Poll Interval</span>
-                                <select class="iface-select">
-                                    <option>500 ms</option>
-                                    <option selected>1 s</option>
-                                    <option>2 s</option>
-                                    <option>5 s</option>
-                                    <option>10 s</option>
-                                </select>
-                            </label>
-                        </div>
-                    </div>
-                    <div class="iface-cfg-card">
-                        <p class="iface-section-eyebrow">Register Map</p>
-                        {{ _register_map_preview() }}
-                    </div>
-                </div>
-        </div>
-
-        {# Port 1 pane #}
-        <div class="iface-port-pane" data-rtu-port="1" style="display:none">
-                <div class="iface-port-head">
-                    <div class="iface-port-head-left">
-                        <div class="iface-port-name-row">
-                            <span class="iface-port-name">Port 1</span>
-                            <span class="iface-port-channel-badge">Ch3</span>
-                            <span class="iface-port-status is-idle">Idle</span>
-                        </div>
-                    </div>
-                    <label class="iface-toggle">
-                        <input type="checkbox" class="iface-toggle-input" disabled>
-                        <span class="iface-toggle-track" aria-hidden="true"></span>
-                    </label>
-                </div>
-                <div class="iface-port-body">
-                    <div class="iface-cfg-card">
-                        <p class="iface-section-eyebrow">Serial Port</p>
-                        <div class="iface-serial-grid">
-                            <label class="iface-field-group">
-                                <span class="iface-field-label">Baud Rate</span>
-                                <select class="iface-select"><option>9600</option></select>
-                            </label>
-                            <label class="iface-field-group">
-                                <span class="iface-field-label">Parity</span>
-                                <select class="iface-select"><option>None</option></select>
-                            </label>
-                            <label class="iface-field-group">
-                                <span class="iface-field-label">Stop Bits</span>
-                                <select class="iface-select"><option>1</option></select>
-                            </label>
-                            <label class="iface-field-group">
-                                <span class="iface-field-label">Data Bits</span>
-                                <select class="iface-select"><option>8</option></select>
-                            </label>
-                        </div>
-                    </div>
-                    <div class="iface-cfg-card">
-                        <p class="iface-section-eyebrow">Modbus RTU</p>
-                        <div class="iface-serial-grid">
-                            <label class="iface-field-group">
-                                <span class="iface-field-label">Slave Address (1–247)</span>
-                                <input type="number" class="iface-number" min="1" max="247" value="1">
-                            </label>
-                            <label class="iface-field-group">
-                                <span class="iface-field-label">Poll Interval</span>
-                                <select class="iface-select">
-                                    <option>500 ms</option>
-                                    <option selected>1 s</option>
-                                    <option>2 s</option>
-                                    <option>5 s</option>
-                                    <option>10 s</option>
-                                </select>
-                            </label>
-                        </div>
-                    </div>
-                    <div class="iface-cfg-card">
-                        <p class="iface-section-eyebrow">Register Map</p>
-                        {{ _register_map_preview() }}
-                    </div>
-                </div>
-        </div>
-
     </div>{# end rs485 panel #}
 
-    {# ── Modbus TCP preview panel ── #}
+
+    {# ── Modbus TCP panel ── #}
     <div class="iface-type-panel iface-panel-card" data-iface-panel="modbus-tcp" style="display:none">
-
         <div class="iface-port-pane">
-                <div class="iface-port-body" style="padding-top:0">
-
-                    {# Connection list header #}
-                    <div class="iface-conn-list-header">
-                        <span class="iface-section-eyebrow" style="margin:0">Connections <span class="iface-conn-count">2 / 10</span></span>
-                        <button type="button" class="iface-add-register-btn" style="padding:0.45rem 1rem">
-                            + Add Connection
-                        </button>
-                    </div>
-
-                    {# Connection accordion list #}
-                    <div class="iface-alarms-list">
-
-                        {# Connection 1 #}
-                        <div class="iface-alarm-row is-open">
-                            <div class="iface-alarm-header" style="cursor:default">
-                                <span class="iface-conn-status-dot is-active"></span>
-                                <span class="iface-alarm-ch-label" style="min-width:auto;flex:1">Device 1</span>
-                                <span class="iface-alarm-summary">eth0 · 192.168.1.100:502 · Unit 1</span>
-                                <span class="iface-alarm-chevron">▸</span>
-                            </div>
-                            <div class="iface-alarm-body" style="display:block">
-                                <div class="iface-modbus-tcp-grid" style="margin-bottom:1rem">
-                                    <label class="iface-field-group">
-                                        <span class="iface-field-label">Name</span>
-                                        <input type="text" class="iface-number" value="Device 1">
-                                    </label>
-                                    <label class="iface-field-group">
-                                        <span class="iface-field-label">Ethernet Interface</span>
-                                        <select class="iface-select">
-                                            <option selected>eth0 — Primary</option>
-                                            <option>eth1 — Secondary</option>
-                                        </select>
-                                    </label>
-                                    <label class="iface-field-group">
-                                        <span class="iface-field-label">Device IP Address</span>
-                                        <input type="text" class="iface-number" value="192.168.1.100">
-                                    </label>
-                                    <label class="iface-field-group">
-                                        <span class="iface-field-label">Port</span>
-                                        <input type="number" class="iface-number" value="502">
-                                    </label>
-                                    <label class="iface-field-group">
-                                        <span class="iface-field-label">Unit ID (1–247)</span>
-                                        <input type="number" class="iface-number" value="1">
-                                    </label>
-                                    <label class="iface-field-group">
-                                        <span class="iface-field-label">Poll Interval</span>
-                                        <select class="iface-select">
-                                            <option>500 ms</option>
-                                            <option selected>1 s</option>
-                                            <option>2 s</option>
-                                            <option>5 s</option>
-                                            <option>10 s</option>
-                                        </select>
-                                    </label>
-                                </div>
-                                <p class="iface-section-eyebrow" style="margin-bottom:0.5rem">Register Map</p>
-                                {{ _register_map_preview() }}
-                            </div>
-                        </div>
-
-                        {# Connection 2 #}
-                        <div class="iface-alarm-row">
-                            <div class="iface-alarm-header" style="cursor:default">
-                                <span class="iface-conn-status-dot is-idle"></span>
-                                <span class="iface-alarm-ch-label" style="min-width:auto;flex:1">Device 2</span>
-                                <span class="iface-alarm-summary">eth0 · 192.168.1.101:502 · Unit 2</span>
-                                <span class="iface-alarm-chevron">▸</span>
-                            </div>
-                            <div class="iface-alarm-body">
-                                <div class="iface-modbus-tcp-grid" style="margin-bottom:1rem">
-                                    <label class="iface-field-group">
-                                        <span class="iface-field-label">Name</span>
-                                        <input type="text" class="iface-number" value="Device 2">
-                                    </label>
-                                    <label class="iface-field-group">
-                                        <span class="iface-field-label">Ethernet Interface</span>
-                                        <select class="iface-select">
-                                            <option selected>eth0 — Primary</option>
-                                            <option>eth1 — Secondary</option>
-                                        </select>
-                                    </label>
-                                    <label class="iface-field-group">
-                                        <span class="iface-field-label">Device IP Address</span>
-                                        <input type="text" class="iface-number" value="192.168.1.101">
-                                    </label>
-                                    <label class="iface-field-group">
-                                        <span class="iface-field-label">Port</span>
-                                        <input type="number" class="iface-number" value="502">
-                                    </label>
-                                    <label class="iface-field-group">
-                                        <span class="iface-field-label">Unit ID (1–247)</span>
-                                        <input type="number" class="iface-number" value="2">
-                                    </label>
-                                    <label class="iface-field-group">
-                                        <span class="iface-field-label">Poll Interval</span>
-                                        <select class="iface-select">
-                                            <option>500 ms</option>
-                                            <option selected>1 s</option>
-                                            <option>2 s</option>
-                                            <option>5 s</option>
-                                            <option>10 s</option>
-                                        </select>
-                                    </label>
-                                </div>
-                                <p class="iface-section-eyebrow" style="margin-bottom:0.5rem">Register Map</p>
-                                {{ _register_map_preview() }}
-                            </div>
-                        </div>
-
-                    </div>{# end connection list #}
-
+            <div class="iface-port-body" style="padding-top:0">
+                <div class="iface-conn-list-header">
+                    <span class="iface-section-eyebrow" style="margin:0">
+                        Connections
+                        <span class="iface-conn-count" data-mtcp-count>{{ modbus_tcp_config.connections | length }} / 10</span>
+                    </span>
+                    <button type="button" class="iface-add-register-btn" style="padding:0.45rem 1rem" data-mtcp-add-conn>
+                        + Add Connection
+                    </button>
                 </div>
+                <div class="iface-alarms-list" data-mtcp-list>
+                    {% if not modbus_tcp_config.connections %}
+                    <div class="iface-register-empty" data-mtcp-empty style="padding:1.5rem;text-align:center;color:var(--muted);font-style:italic">
+                        No connections defined — click Add Connection to start
+                    </div>
+                    {% endif %}
+                    {% for conn in modbus_tcp_config.connections %}
+                    {{ _mtcp_conn(conn) }}
+                    {% endfor %}
+                </div>
+            </div>
         </div>
-
+        <div class="iface-save-bar">
+            <p class="iface-save-message" data-mtcp-save-message></p>
+            <button type="button" class="primary-action iface-save-btn" data-mtcp-save>
+                Save Modbus TCP Configuration
+            </button>
+        </div>
     </div>{# end modbus-tcp panel #}
+
 
     {# ── DI / Digital Inputs preview panel ── #}
     <div class="iface-type-panel iface-panel-card" data-iface-panel="di" style="display:none">

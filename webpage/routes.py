@@ -586,6 +586,8 @@ async def interfaces_page(request: Request) -> HTMLResponse:
         return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
     rs232_config = request.app.state.rs232_config_store.get_config()
+    rs485_config = request.app.state.rs485_config_store.get_config()
+    modbus_tcp_config = request.app.state.modbus_tcp_config_store.get_config()
     return templates.TemplateResponse(
         request,
         "interfaces.html",
@@ -594,6 +596,8 @@ async def interfaces_page(request: Request) -> HTMLResponse:
             "page_title": "Interfaces",
             "primary_sections": _primary_sections("Interfaces"),
             "rs232_config": rs232_config,
+            "rs485_config": rs485_config,
+            "modbus_tcp_config": modbus_tcp_config,
         },
     )
 
