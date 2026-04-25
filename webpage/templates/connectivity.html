@@ -33,9 +33,14 @@
     <article class="network-runtime-card is-hidden" data-network-runtime-panel>
         <div class="network-runtime-grid">
             <div class="network-runtime-item">
-                <span>Ethernet</span>
-                <strong data-runtime-ethernet-status>{{ 'Link up' if network_state.ethernet.link_up else 'Link down' }}</strong>
-                <p data-runtime-ethernet-address>{{ network_state.ethernet.address or 'No address assigned' }}</p>
+                <span>eth0</span>
+                <strong data-runtime-eth0-status>{{ 'Link up' if network_state.get('eth0', {}).get('link_up') else 'Link down' }}</strong>
+                <p data-runtime-eth0-address>{{ network_state.get('eth0', {}).get('address') or 'No address' }}</p>
+            </div>
+            <div class="network-runtime-item">
+                <span>eth1</span>
+                <strong data-runtime-eth1-status>{{ 'Link up' if network_state.get('eth1', {}).get('link_up') else 'Link down' }}</strong>
+                <p data-runtime-eth1-address>{{ network_state.get('eth1', {}).get('address') or 'No address' }}</p>
             </div>
             <div class="network-runtime-item">
                 <span>Wi-Fi Client</span>
@@ -71,82 +76,22 @@
             <div class="system-panel-head">
                 <div>
                     <p class="hero-band-eyebrow">Ethernet</p>
-                    <h2>Ethernet uplink profile</h2>
+                    <h2>Ethernet interfaces</h2>
+                    <p class="settings-section-note">Both ethernet interfaces are always active via DHCP. Static IP and DHCP server configuration will be available in <strong>Network Probe</strong>.</p>
                 </div>
             </div>
-
             <div class="settings-section">
                 <div class="settings-grid settings-grid-three">
-                    <label class="field checkbox-field">
-                        <span>Enable Ethernet</span>
-                        <input type="checkbox" name="ethernet_enabled" {% if net.ethernet.enabled %}checked{% endif %}>
-                    </label>
-
-                    <label class="field">
-                        <span>Interface</span>
-                        <select name="ethernet_interface">
-                            <option value="eth0" {% if net.ethernet.interface == 'eth0' %}selected{% endif %}>eth0</option>
-                            <option value="eth1" {% if net.ethernet.interface == 'eth1' %}selected{% endif %}>eth1</option>
-                        </select>
-                    </label>
-
-                    <label class="field">
-                        <span>Role</span>
-                        <select name="ethernet_role">
-                            <option value="uplink" {% if net.ethernet.role == 'uplink' %}selected{% endif %}>Uplink</option>
-                        </select>
-                    </label>
-
-                    <label class="field checkbox-field">
-                        <span>Use DHCP</span>
-                        <input type="checkbox" name="ethernet_dhcp" {% if net.ethernet.dhcp %}checked{% endif %}>
-                    </label>
-
-                    <label class="field">
-                        <span>Route metric</span>
-                        <input type="number" name="ethernet_route_metric" value="{{ net.ethernet.route_metric }}" min="1" step="1">
-                    </label>
-
-                    <label class="field">
-                        <span>MTU</span>
-                        <input type="number" name="ethernet_mtu" value="{{ net.ethernet.mtu }}" min="576" step="1">
-                    </label>
-
-                    <label class="field checkbox-field">
-                        <span>Allow as uplink</span>
-                        <input type="checkbox" name="ethernet_uplink_allowed" {% if net.ethernet.uplink_allowed %}checked{% endif %}>
-                    </label>
-
-                    <label class="field checkbox-field">
-                        <span>Allow downstream use</span>
-                        <input type="checkbox" name="ethernet_downstream_allowed" {% if net.ethernet.downstream_allowed %}checked{% endif %}>
-                    </label>
-                </div>
-            </div>
-
-            <div class="settings-section" data-network-visible-when="ethernet-static">
-                <div class="settings-section-head">
-                    <div>
-                        <p class="hero-band-eyebrow">Static Addressing</p>
-                        <h3>Manual Ethernet addressing</h3>
+                    <div class="field">
+                        <span>eth0</span>
+                        <strong>{{ 'Link up' if network_state.get('eth0', {}).get('link_up') else 'Link down' }}</strong>
+                        <p class="field-note">{{ network_state.get('eth0', {}).get('address') or 'Waiting for DHCP' }}</p>
                     </div>
-                </div>
-
-                <div class="settings-grid settings-grid-three">
-                    <label class="field">
-                        <span>Static address</span>
-                        <input type="text" name="ethernet_static_address" value="{{ net.ethernet.static_address }}" placeholder="192.168.1.20/24">
-                    </label>
-
-                    <label class="field">
-                        <span>Static gateway</span>
-                        <input type="text" name="ethernet_static_gateway" value="{{ net.ethernet.static_gateway }}" placeholder="192.168.1.1">
-                    </label>
-
-                    <label class="field">
-                        <span>DNS servers</span>
-                        <input type="text" name="ethernet_static_dns" value="{{ net.ethernet.static_dns|join(', ') }}" placeholder="1.1.1.1, 8.8.8.8">
-                    </label>
+                    <div class="field">
+                        <span>eth1</span>
+                        <strong>{{ 'Link up' if network_state.get('eth1', {}).get('link_up') else 'Link down' }}</strong>
+                        <p class="field-note">{{ network_state.get('eth1', {}).get('address') or 'Waiting for DHCP' }}</p>
+                    </div>
                 </div>
             </div>
         </section>
@@ -450,61 +395,63 @@
                 </div>
 
                 <div class="settings-grid settings-grid-three">
+                    {% set uplink_opts = [('eth0','eth0 — Primary Ethernet'),('eth1','eth1 — Secondary Ethernet'),('wifi_client','Wi-Fi Client'),('cellular','Cellular')] %}
                     <label class="field">
                         <span>Priority slot 1</span>
-                        <select name="policy_uplink_priority_1">
-                            <option value="eth0" {% if net.policy.uplink_priority[0] == 'eth0' %}selected{% endif %}>Ethernet</option>
-                            <option value="wifi_client" {% if net.policy.uplink_priority[0] == 'wifi_client' %}selected{% endif %}>Wi-Fi Client</option>
-                            <option value="cellular" {% if net.policy.uplink_priority[0] == 'cellular' %}selected{% endif %}>Cellular</option>
+                        <select name="uplink_priority_1">
+                            {% for val, lbl in uplink_opts %}<option value="{{ val }}" {% if net.uplink.uplink_priority[0] == val %}selected{% endif %}>{{ lbl }}</option>{% endfor %}
                         </select>
                     </label>
 
                     <label class="field">
                         <span>Priority slot 2</span>
-                        <select name="policy_uplink_priority_2">
-                            <option value="eth0" {% if net.policy.uplink_priority[1] == 'eth0' %}selected{% endif %}>Ethernet</option>
-                            <option value="wifi_client" {% if net.policy.uplink_priority[1] == 'wifi_client' %}selected{% endif %}>Wi-Fi Client</option>
-                            <option value="cellular" {% if net.policy.uplink_priority[1] == 'cellular' %}selected{% endif %}>Cellular</option>
+                        <select name="uplink_priority_2">
+                            {% for val, lbl in uplink_opts %}<option value="{{ val }}" {% if net.uplink.uplink_priority[1] == val %}selected{% endif %}>{{ lbl }}</option>{% endfor %}
                         </select>
                     </label>
 
                     <label class="field">
                         <span>Priority slot 3</span>
-                        <select name="policy_uplink_priority_3">
-                            <option value="eth0" {% if net.policy.uplink_priority[2] == 'eth0' %}selected{% endif %}>Ethernet</option>
-                            <option value="wifi_client" {% if net.policy.uplink_priority[2] == 'wifi_client' %}selected{% endif %}>Wi-Fi Client</option>
-                            <option value="cellular" {% if net.policy.uplink_priority[2] == 'cellular' %}selected{% endif %}>Cellular</option>
+                        <select name="uplink_priority_3">
+                            {% for val, lbl in uplink_opts %}<option value="{{ val }}" {% if net.uplink.uplink_priority[2] == val %}selected{% endif %}>{{ lbl }}</option>{% endfor %}
+                        </select>
+                    </label>
+
+                    <label class="field">
+                        <span>Priority slot 4</span>
+                        <select name="uplink_priority_4">
+                            {% for val, lbl in uplink_opts %}<option value="{{ val }}" {% if net.uplink.uplink_priority[3] == val %}selected{% endif %}>{{ lbl }}</option>{% endfor %}
                         </select>
                     </label>
 
                     <label class="field checkbox-field">
                         <span>Fail back to higher priority uplink</span>
-                        <input type="checkbox" name="policy_failback_enabled" {% if net.policy.failback_enabled %}checked{% endif %}>
+                        <input type="checkbox" name="uplink_failback_enabled" {% if net.uplink.failback_enabled %}checked{% endif %}>
                     </label>
 
                     <label class="field">
                         <span>Stable seconds before switch</span>
-                        <input type="number" name="policy_stable_seconds_before_switch" value="{{ net.policy.stable_seconds_before_switch }}" min="0" step="1">
+                        <input type="number" name="uplink_stable_seconds_before_switch" value="{{ net.uplink.stable_seconds_before_switch }}" min="0" step="1">
                     </label>
 
                     <label class="field checkbox-field">
                         <span>Require connectivity check</span>
-                        <input type="checkbox" name="policy_require_connectivity_check" {% if net.policy.require_connectivity_check %}checked{% endif %}>
+                        <input type="checkbox" name="uplink_require_connectivity_check" {% if net.uplink.require_connectivity_check %}checked{% endif %}>
                     </label>
 
                     <label class="field">
                         <span>Fail count threshold</span>
-                        <input type="number" name="policy_fail_count_threshold" value="{{ net.policy.fail_count_threshold }}" min="1" step="1">
+                        <input type="number" name="uplink_fail_count_threshold" value="{{ net.uplink.fail_count_threshold }}" min="1" step="1">
                     </label>
 
                     <label class="field">
                         <span>Recover count threshold</span>
-                        <input type="number" name="policy_recover_count_threshold" value="{{ net.policy.recover_count_threshold }}" min="1" step="1">
+                        <input type="number" name="uplink_recover_count_threshold" value="{{ net.uplink.recover_count_threshold }}" min="1" step="1">
                     </label>
 
                     <label class="field settings-grid-span-3">
                         <span>Connectivity targets</span>
-                        <input type="text" name="policy_connectivity_targets" value="{{ net.policy.connectivity_targets|join(', ') }}" placeholder="1.1.1.1, 8.8.8.8">
+                        <input type="text" name="uplink_connectivity_targets" value="{{ net.uplink.connectivity_targets|join(', ') }}" placeholder="1.1.1.1, 8.8.8.8">
                     </label>
                 </div>
 
@@ -514,5 +461,16 @@
 
         <p class="form-error network-feedback" data-network-message></p>
     </form>
+
+    {# ── Apply status strip (shown after Save and Apply) ── #}
+    <div class="net-apply-strip" data-net-apply-strip style="display:none">
+        <span class="net-apply-strip-dot" data-net-apply-dot></span>
+        <div class="net-apply-strip-body">
+            <p class="net-apply-strip-title" data-net-apply-title>Applying configuration…</p>
+            <p class="net-apply-strip-detail" data-net-apply-detail></p>
+        </div>
+        <span class="net-apply-strip-uplink" data-net-apply-uplink></span>
+    </div>
+
 </section>
 {% endblock %}

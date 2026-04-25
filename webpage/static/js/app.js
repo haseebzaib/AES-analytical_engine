@@ -62,50 +62,52 @@ document.addEventListener("DOMContentLoaded", () => {
         };
 
         const applyOverviewState = (networkState) => {
-            const ethernet = networkState?.ethernet || {};
+            const eth0 = networkState?.eth0 || {};
+            const eth1 = networkState?.eth1 || {};
             const wifiClient = networkState?.wifi_client || {};
             const wifiAp = networkState?.wifi_ap || {};
             const activeUplink = String(networkState?.active_uplink || "none");
 
-            const ethernetConnected = Boolean(ethernet.link_up) && Boolean(ethernet.address);
+            const eth0Connected = Boolean(eth0.link_up) && Boolean(eth0.address);
+            const eth1Connected = Boolean(eth1.link_up) && Boolean(eth1.address);
+            const ethernetConnected = eth0Connected || eth1Connected;
             const wifiConnected = Boolean(wifiClient.connected_ssid);
             const wifiApEnabled = Boolean(wifiAp.enabled);
             const wifiPresent = wifiClient.present !== false;
 
             const gatewayHealth = ethernetConnected || wifiConnected || wifiApEnabled ? "Online" : "Standby";
-            const primaryLink = activeUplink === "eth0" ? "Ethernet" : activeUplink === "wifi_client" ? "Wi-Fi" : "Offline";
+            const primaryLink = ["eth0","eth1"].includes(activeUplink) ? "Ethernet" : activeUplink === "wifi_client" ? "Wi-Fi" : "Offline";
             const wirelessState = wifiConnected ? "Connected" : wifiApEnabled ? "Access Point" : wifiPresent ? "Standby" : "Unavailable";
 
-            if (chipGateway) {
-                chipGateway.textContent = gatewayHealth;
-            }
-            if (chipPrimary) {
-                chipPrimary.textContent = primaryLink;
-            }
-            if (chipWireless) {
-                chipWireless.textContent = wirelessState;
-            }
+            if (chipGateway) chipGateway.textContent = gatewayHealth;
+            if (chipPrimary) chipPrimary.textContent = primaryLink;
+            if (chipWireless) chipWireless.textContent = wirelessState;
 
             if (led) {
                 led.classList.toggle("is-offline", !(ethernetConnected || wifiConnected || wifiApEnabled));
             }
             if (ethLink) {
-                ethLink.classList.toggle("is-inactive", !ethernetConnected && activeUplink !== "eth0");
+                ethLink.classList.toggle("is-inactive", !ethernetConnected && !["eth0","eth1"].includes(activeUplink));
             }
             if (wifiLink) {
                 wifiLink.classList.toggle("is-inactive", !wifiConnected && !wifiApEnabled && activeUplink !== "wifi_client");
             }
             if (ethPort) {
-                ethPort.classList.toggle("is-active", ethernetConnected || activeUplink === "eth0");
+                ethPort.classList.toggle("is-active", ethernetConnected || ["eth0","eth1"].includes(activeUplink));
             }
             if (wifiPort) {
                 wifiPort.classList.toggle("is-active", wifiConnected || wifiApEnabled || activeUplink === "wifi_client");
             }
 
+            // Show active uplink address, fall back to whichever eth has an address
+            const ethAddress = eth0.address || eth1.address || "";
+            const ethDetail = ethAddress
+                ? `${activeUplink === "eth1" ? "eth1" : "eth0"}: ${ethAddress}`
+                : "Waiting for DHCP";
             updateItem(
                 ethernetItem,
                 ethernetConnected ? "Connected" : "Disconnected",
-                ethernetConnected ? (ethernet.address || "Address assigned") : "Cable link unavailable",
+                ethernetConnected ? ethDetail : "No cable link",
                 ethernetConnected ? "active" : "inactive",
             );
 
@@ -265,8 +267,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const scanButton = connectivityShell.querySelector("[data-network-scan]");
         const scanMessage = connectivityShell.querySelector("[data-network-scan-message]");
         const scanResults = connectivityShell.querySelector("[data-network-scan-results]");
-        const runtimeEthernetStatus = connectivityShell.querySelector("[data-runtime-ethernet-status]");
-        const runtimeEthernetAddress = connectivityShell.querySelector("[data-runtime-ethernet-address]");
         const runtimeWifiStatus = connectivityShell.querySelector("[data-runtime-wifi-status]");
         const runtimeWifiDetail = connectivityShell.querySelector("[data-runtime-wifi-detail]");
         const runtimeApStatus = connectivityShell.querySelector("[data-runtime-ap-status]");
@@ -384,25 +384,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const formData = new FormData(networkForm);
             return {
-                version: 1,
+                version: 2,
                 network: {
                     defaults_behavior: {
                         create_defaults_if_missing: true,
                         restore_defaults_if_invalid: true,
                         backup_invalid_file: true,
-                    },
-                    ethernet: {
-                        enabled: formData.get("ethernet_enabled") === "on",
-                        interface: String(formData.get("ethernet_interface") || "eth1"),
-                        role: String(formData.get("ethernet_role") || "uplink"),
-                        dhcp: formData.get("ethernet_dhcp") === "on",
-                        static_address: String(formData.get("ethernet_static_address") || "").trim(),
-                        static_gateway: String(formData.get("ethernet_static_gateway") || "").trim(),
-                        static_dns: parseDns(formData.get("ethernet_static_dns")),
-                        route_metric: Number.parseInt(String(formData.get("ethernet_route_metric") || "100"), 10),
-                        mtu: Number.parseInt(String(formData.get("ethernet_mtu") || "1500"), 10),
-                        uplink_allowed: formData.get("ethernet_uplink_allowed") === "on",
-                        downstream_allowed: formData.get("ethernet_downstream_allowed") === "on",
                     },
                     wifi_client: {
                         enabled: formData.get("wifi_client_enabled") === "on",
@@ -443,18 +430,19 @@ document.addEventListener("DOMContentLoaded", () => {
                         active_modem_id: "",
                         modems: [],
                     },
-                    policy: {
+                    uplink: {
                         uplink_priority: [
-                            String(formData.get("policy_uplink_priority_1") || "eth0"),
-                            String(formData.get("policy_uplink_priority_2") || "wifi_client"),
-                            String(formData.get("policy_uplink_priority_3") || "cellular"),
+                            String(formData.get("uplink_priority_1") || "eth0"),
+                            String(formData.get("uplink_priority_2") || "eth1"),
+                            String(formData.get("uplink_priority_3") || "wifi_client"),
+                            String(formData.get("uplink_priority_4") || "cellular"),
                         ],
-                        failback_enabled: formData.get("policy_failback_enabled") === "on",
-                        stable_seconds_before_switch: Number.parseInt(String(formData.get("policy_stable_seconds_before_switch") || "5"), 10),
-                        require_connectivity_check: formData.get("policy_require_connectivity_check") === "on",
-                        fail_count_threshold: Number.parseInt(String(formData.get("policy_fail_count_threshold") || "1"), 10),
-                        recover_count_threshold: Number.parseInt(String(formData.get("policy_recover_count_threshold") || "1"), 10),
-                        connectivity_targets: parseTargets(formData.get("policy_connectivity_targets") || "1.1.1.1, 8.8.8.8"),
+                        failback_enabled: formData.get("uplink_failback_enabled") === "on",
+                        stable_seconds_before_switch: Number.parseInt(String(formData.get("uplink_stable_seconds_before_switch") || "5"), 10),
+                        require_connectivity_check: formData.get("uplink_require_connectivity_check") === "on",
+                        fail_count_threshold: Number.parseInt(String(formData.get("uplink_fail_count_threshold") || "1"), 10),
+                        recover_count_threshold: Number.parseInt(String(formData.get("uplink_recover_count_threshold") || "1"), 10),
+                        connectivity_targets: parseTargets(formData.get("uplink_connectivity_targets") || "1.1.1.1, 8.8.8.8"),
                     },
                 },
             };
@@ -477,14 +465,14 @@ document.addEventListener("DOMContentLoaded", () => {
         };
 
         const updateRuntimeState = (networkState, applyResult) => {
-            if (runtimeEthernetStatus) {
-                runtimeEthernetStatus.textContent = networkState?.ethernet?.link_up ? "Link up" : "Link down";
-            }
-            if (runtimeEthernetAddress) {
-                const ethAddress = networkState?.ethernet?.address || "No address assigned";
-                const ethInternet = networkState?.ethernet?.internet_ok ? "Internet OK" : "Internet pending";
-                runtimeEthernetAddress.textContent = `${ethAddress} · ${ethInternet}`;
-            }
+            const runtimeEth0Status = connectivityShell.querySelector("[data-runtime-eth0-status]");
+            const runtimeEth0Address = connectivityShell.querySelector("[data-runtime-eth0-address]");
+            const runtimeEth1Status = connectivityShell.querySelector("[data-runtime-eth1-status]");
+            const runtimeEth1Address = connectivityShell.querySelector("[data-runtime-eth1-address]");
+            if (runtimeEth0Status) runtimeEth0Status.textContent = networkState?.eth0?.link_up ? "Link up" : "Link down";
+            if (runtimeEth0Address) runtimeEth0Address.textContent = networkState?.eth0?.address || "No address";
+            if (runtimeEth1Status) runtimeEth1Status.textContent = networkState?.eth1?.link_up ? "Link up" : "Link down";
+            if (runtimeEth1Address) runtimeEth1Address.textContent = networkState?.eth1?.address || "No address";
 
             if (runtimeWifiStatus) {
                 runtimeWifiStatus.textContent = networkState?.wifi_client?.connected_ssid ? "Connected" : "Disconnected";
@@ -531,14 +519,100 @@ document.addEventListener("DOMContentLoaded", () => {
                     fetch("/api/network/state"),
                     fetch("/api/network/apply-result"),
                 ]);
-                if (!stateResponse.ok || !applyResponse.ok) {
-                    return;
-                }
+                if (!stateResponse.ok || !applyResponse.ok) return;
                 const [stateData, applyData] = await Promise.all([stateResponse.json(), applyResponse.json()]);
                 updateRuntimeState(stateData, applyData);
             } catch (error) {
                 console.warn("Failed to refresh runtime network state", error);
             }
+        };
+
+        // Auto-refresh runtime panel every 5s while it's visible
+        let runtimeRefreshTimer = null;
+        const runtimePanel = connectivityShell.querySelector("[data-network-runtime-panel]");
+        const runtimeToggle = connectivityShell.querySelector("[data-network-runtime-toggle]");
+        if (runtimeToggle && runtimePanel) {
+            runtimeToggle.addEventListener("click", () => {
+                const isVisible = !runtimePanel.classList.contains("is-hidden");
+                if (!isVisible) {
+                    refreshRuntimeState();
+                    runtimeRefreshTimer = setInterval(refreshRuntimeState, 5000);
+                } else {
+                    clearInterval(runtimeRefreshTimer);
+                }
+            });
+        }
+
+        // Poll connection status after Save and Apply
+        const startConnectionPoll = (wifiEnabled) => {
+            const strip = connectivityShell.querySelector("[data-net-apply-strip]");
+            const dot   = connectivityShell.querySelector("[data-net-apply-dot]");
+            const title = connectivityShell.querySelector("[data-net-apply-title]");
+            const detail = connectivityShell.querySelector("[data-net-apply-detail]");
+            const uplinkBadge = connectivityShell.querySelector("[data-net-apply-uplink]");
+            if (!strip) return;
+
+            strip.style.display = "";
+            strip.className = "net-apply-strip is-pending";
+            title.textContent = wifiEnabled ? "Connecting to Wi-Fi…" : "Applying network configuration…";
+            detail.textContent = "Waiting for network monitor…";
+            if (uplinkBadge) uplinkBadge.textContent = "";
+
+            const MAX_POLLS = 20;
+            const INTERVAL_MS = 2000;
+            let polls = 0;
+            let pollTimer = null;
+
+            const stopPoll = () => clearTimeout(pollTimer);
+
+            const tick = async () => {
+                polls++;
+                try {
+                    const res = await fetch("/api/network/state");
+                    if (!res.ok) throw new Error("state fetch failed");
+                    const state = await res.json();
+                    updateRuntimeState(state, {});
+
+                    const activeUplink = String(state.active_uplink || "none");
+                    const wifiSsid    = state.wifi_client?.connected_ssid;
+                    const wifiAddr    = state.wifi_client?.address;
+                    const eth0Addr    = state.eth0?.address;
+                    const eth1Addr    = state.eth1?.address;
+
+                    if (wifiEnabled && wifiSsid) {
+                        strip.className = "net-apply-strip is-success";
+                        title.textContent = `Connected — ${wifiSsid}`;
+                        detail.textContent = wifiAddr || "Address assigned";
+                        if (uplinkBadge) uplinkBadge.textContent = "Active uplink";
+                        return stopPoll();
+                    }
+
+                    if (!wifiEnabled && ["eth0", "eth1"].includes(activeUplink)) {
+                        const addr = activeUplink === "eth1" ? eth1Addr : eth0Addr;
+                        strip.className = "net-apply-strip is-success";
+                        title.textContent = "Configuration applied";
+                        detail.textContent = addr ? `${activeUplink}: ${addr}` : activeUplink;
+                        if (uplinkBadge) uplinkBadge.textContent = "Active uplink";
+                        return stopPoll();
+                    }
+
+                    if (polls >= MAX_POLLS) {
+                        strip.className = "net-apply-strip is-error";
+                        title.textContent = wifiEnabled ? "Wi-Fi did not connect" : "No uplink established";
+                        detail.textContent = wifiEnabled
+                            ? "Check SSID, password, and signal strength."
+                            : "Check cable or network configuration.";
+                        return stopPoll();
+                    }
+
+                    detail.textContent = `Checking… (${polls * 2}s elapsed)`;
+                } catch {
+                    detail.textContent = "Could not reach gateway.";
+                }
+                pollTimer = setTimeout(tick, INTERVAL_MS);
+            };
+
+            pollTimer = setTimeout(tick, INTERVAL_MS);
         };
 
         const renderScanResults = (networks) => {
@@ -583,7 +657,7 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         };
 
-        const runNetworkAction = async (endpoint, activeButton, busyLabel, idleLabel) => {
+        const runNetworkAction = async (endpoint, activeButton, busyLabel, idleLabel, afterSuccess = null) => {
             if (!(networkForm instanceof HTMLFormElement) || !networkMessage) {
                 return;
             }
@@ -626,6 +700,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (!response.ok || !data.ok) {
                     throw new Error(message);
                 }
+                if (afterSuccess) afterSuccess();
             } catch (error) {
                 networkMessage.textContent = error instanceof Error ? error.message : "Could not save network settings.";
                 networkMessage.classList.remove("is-success");
@@ -653,7 +728,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (saveApplyButton) {
             saveApplyButton.addEventListener("click", () => {
-                runNetworkAction("/api/network/save-and-apply", saveApplyButton, "Applying...", "Save and Apply");
+                const wifiEnabled = networkForm?.elements?.namedItem("wifi_client_enabled") instanceof HTMLInputElement
+                    && networkForm.elements.namedItem("wifi_client_enabled").checked;
+                runNetworkAction(
+                    "/api/network/save-and-apply",
+                    saveApplyButton,
+                    "Applying…",
+                    "Save and Apply",
+                    () => startConnectionPoll(wifiEnabled),
+                );
             });
         }
 

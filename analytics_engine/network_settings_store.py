@@ -19,25 +19,12 @@ def _timestamp_token() -> str:
 
 def _default_network_document() -> dict[str, object]:
     return {
-        "version": 1,
+        "version": 2,
         "network": {
             "defaults_behavior": {
                 "create_defaults_if_missing": True,
                 "restore_defaults_if_invalid": True,
                 "backup_invalid_file": True,
-            },
-            "ethernet": {
-                "enabled": True,
-                "interface": "eth1",
-                "role": "uplink",
-                "dhcp": True,
-                "static_address": "",
-                "static_gateway": "",
-                "static_dns": [],
-                "route_metric": 100,
-                "mtu": 1500,
-                "uplink_allowed": True,
-                "downstream_allowed": False,
             },
             "wifi_client": {
                 "enabled": False,
@@ -53,8 +40,7 @@ def _default_network_document() -> dict[str, object]:
                 "static_address": "",
                 "static_gateway": "",
                 "static_dns": [],
-                "route_metric": 200,
-                "uplink_allowed": True,
+                "route_metric": 300,
             },
             "wifi_ap": {
                 "enabled": False,
@@ -78,8 +64,8 @@ def _default_network_document() -> dict[str, object]:
                 "active_modem_id": "",
                 "modems": [],
             },
-            "policy": {
-                "uplink_priority": ["eth0", "wifi_client", "cellular"],
+            "uplink": {
+                "uplink_priority": ["eth0", "eth1", "wifi_client", "cellular"],
                 "failback_enabled": True,
                 "stable_seconds_before_switch": 5,
                 "require_connectivity_check": True,
@@ -100,9 +86,13 @@ def _default_network_state() -> dict[str, object]:
             "last_reason": "",
             "last_timestamp": "",
         },
-        "ethernet": {
-            "interface": "eth1",
-            "enabled": True,
+        "eth0": {
+            "link_up": False,
+            "interface_up": False,
+            "address": "",
+            "internet_ok": False,
+        },
+        "eth1": {
             "link_up": False,
             "interface_up": False,
             "address": "",
@@ -123,11 +113,6 @@ def _default_network_state() -> dict[str, object]:
             "enabled": False,
             "address": "",
             "clients": 0,
-        },
-        "cellular": {
-            "active_modem_id": "",
-            "connected": False,
-            "interface": "",
         },
         "last_apply_status": "not_applied",
         "last_apply_timestamp": _utc_timestamp(),
@@ -152,9 +137,7 @@ class NetworkStorageLayout:
     gateway_root: Path
     storage_root: Path
     aes_dir: Path
-    system_related_root: Path
     network_root: Path
-    state_dir: Path
     generated_network_dir: Path
     settings_file: Path
     last_good_file: Path
@@ -164,22 +147,18 @@ class NetworkStorageLayout:
     @classmethod
     def from_roots(cls, gateway_root: Path, storage_root: Path) -> "NetworkStorageLayout":
         aes_dir = storage_root / "AES"
-        system_related_root = gateway_root / "system_related"
-        network_root = system_related_root / "network"
-        state_dir = network_root / "state"
+        network_root = gateway_root / "network"
         generated_network_dir = network_root / "generated"
         return cls(
             gateway_root=gateway_root,
             storage_root=storage_root,
             aes_dir=aes_dir,
-            system_related_root=system_related_root,
             network_root=network_root,
-            state_dir=state_dir,
             generated_network_dir=generated_network_dir,
             settings_file=aes_dir / "network_settings.json",
             last_good_file=aes_dir / "network_settings.last_good.json",
-            state_file=state_dir / "network_state.json",
-            apply_result_file=state_dir / "network_apply_result.json",
+            state_file=network_root / "state.json",
+            apply_result_file=network_root / "apply-result.json",
         )
 
     def ensure_directories(self) -> None:
@@ -187,9 +166,7 @@ class NetworkStorageLayout:
             self.gateway_root,
             self.storage_root,
             self.aes_dir,
-            self.system_related_root,
             self.network_root,
-            self.state_dir,
             self.generated_network_dir,
         ):
             directory.mkdir(parents=True, exist_ok=True)
@@ -233,12 +210,12 @@ class NetworkSettingsStore:
             return [{"scope": "network", "code": "invalid_root", "message": "Network settings root must be a JSON object."}]
 
         version = document.get("version")
-        if version != 1:
+        if version != 2:
             errors.append(
                 {
                     "scope": "network",
                     "code": "invalid_version",
-                    "message": "Network settings version must be 1.",
+                    "message": "Network settings version must be 2.",
                 }
             )
 
@@ -253,7 +230,7 @@ class NetworkSettingsStore:
             )
             return errors
 
-        required_sections = ("defaults_behavior", "ethernet", "wifi_client", "wifi_ap", "cellular", "policy")
+        required_sections = ("defaults_behavior", "wifi_client", "wifi_ap", "cellular", "uplink")
         for section in required_sections:
             if not isinstance(network.get(section), dict):
                 errors.append(
@@ -267,25 +244,10 @@ class NetworkSettingsStore:
         if errors:
             return errors
 
-        ethernet = network["ethernet"]
         wifi_client = network["wifi_client"]
         wifi_ap = network["wifi_ap"]
         cellular = network["cellular"]
-        policy = network["policy"]
-
-        if not str(ethernet.get("interface", "")).strip():
-            errors.append({"scope": "ethernet", "code": "missing_interface", "message": "Ethernet interface is required."})
-        if not self._is_positive_int(ethernet.get("route_metric")):
-            errors.append({"scope": "ethernet", "code": "invalid_metric", "message": "Ethernet route metric must be a positive integer."})
-        if not self._is_positive_int(ethernet.get("mtu")):
-            errors.append({"scope": "ethernet", "code": "invalid_mtu", "message": "Ethernet MTU must be a positive integer."})
-        if not bool(ethernet.get("dhcp", True)):
-            if not str(ethernet.get("static_address", "")).strip():
-                errors.append({"scope": "ethernet", "code": "missing_static_address", "message": "Ethernet static address is required when DHCP is disabled."})
-            if not str(ethernet.get("static_gateway", "")).strip():
-                errors.append({"scope": "ethernet", "code": "missing_static_gateway", "message": "Ethernet static gateway is required when DHCP is disabled."})
-        if not self._is_string_list(ethernet.get("static_dns")):
-            errors.append({"scope": "ethernet", "code": "invalid_dns", "message": "Ethernet DNS must be an array of strings."})
+        uplink = network["uplink"]
 
         if not str(wifi_client.get("interface", "")).strip():
             errors.append({"scope": "wifi_client", "code": "missing_interface", "message": "Wi-Fi client interface is required."})
@@ -361,21 +323,21 @@ class NetworkSettingsStore:
             if active_modem_id and active_modem_id not in modem_ids:
                 errors.append({"scope": "cellular", "code": "invalid_active_modem", "message": "Active modem id does not match any modem profile."})
 
-        uplink_priority = policy.get("uplink_priority")
+        uplink_priority = uplink.get("uplink_priority")
         if not isinstance(uplink_priority, list) or not all(isinstance(item, str) for item in uplink_priority):
-            errors.append({"scope": "policy", "code": "invalid_priority_list", "message": "Uplink priority must be an array of strings."})
+            errors.append({"scope": "uplink", "code": "invalid_priority_list", "message": "Uplink priority must be an array of strings."})
         else:
-            unknown = [item for item in uplink_priority if item not in {"eth0", "wifi_client", "cellular"}]
+            unknown = [item for item in uplink_priority if item not in {"eth0", "eth1", "wifi_client", "cellular"}]
             if unknown:
-                errors.append({"scope": "policy", "code": "unknown_uplink", "message": f"Unknown uplinks in priority list: {', '.join(unknown)}."})
-        if not self._is_non_negative_int(policy.get("stable_seconds_before_switch")):
-            errors.append({"scope": "policy", "code": "invalid_stable_seconds", "message": "Stable seconds before switch must be zero or a positive integer."})
-        if not self._is_positive_int(policy.get("fail_count_threshold")):
-            errors.append({"scope": "policy", "code": "invalid_fail_threshold", "message": "Fail count threshold must be a positive integer."})
-        if not self._is_positive_int(policy.get("recover_count_threshold")):
-            errors.append({"scope": "policy", "code": "invalid_recover_threshold", "message": "Recover count threshold must be a positive integer."})
-        if not self._is_string_list(policy.get("connectivity_targets")):
-            errors.append({"scope": "policy", "code": "invalid_connectivity_targets", "message": "Connectivity targets must be an array of strings."})
+                errors.append({"scope": "uplink", "code": "unknown_uplink", "message": f"Unknown uplinks in priority list: {', '.join(unknown)}."})
+        if not self._is_non_negative_int(uplink.get("stable_seconds_before_switch")):
+            errors.append({"scope": "uplink", "code": "invalid_stable_seconds", "message": "Stable seconds before switch must be zero or a positive integer."})
+        if not self._is_positive_int(uplink.get("fail_count_threshold")):
+            errors.append({"scope": "uplink", "code": "invalid_fail_threshold", "message": "Fail count threshold must be a positive integer."})
+        if not self._is_positive_int(uplink.get("recover_count_threshold")):
+            errors.append({"scope": "uplink", "code": "invalid_recover_threshold", "message": "Recover count threshold must be a positive integer."})
+        if not self._is_string_list(uplink.get("connectivity_targets")):
+            errors.append({"scope": "uplink", "code": "invalid_connectivity_targets", "message": "Connectivity targets must be an array of strings."})
 
         return errors
 

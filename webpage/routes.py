@@ -29,30 +29,37 @@ def _system_metrics_store(request: Request):
 
 def _overview_status_payload(network_state: dict[str, object]) -> dict[str, object]:
     active_uplink = str(network_state.get("active_uplink", "none"))
-    ethernet = network_state.get("ethernet", {}) if isinstance(network_state.get("ethernet"), dict) else {}
+    eth0 = network_state.get("eth0", {}) if isinstance(network_state.get("eth0"), dict) else {}
+    eth1 = network_state.get("eth1", {}) if isinstance(network_state.get("eth1"), dict) else {}
     wifi_client = network_state.get("wifi_client", {}) if isinstance(network_state.get("wifi_client"), dict) else {}
     wifi_ap = network_state.get("wifi_ap", {}) if isinstance(network_state.get("wifi_ap"), dict) else {}
 
-    ethernet_connected = bool(ethernet.get("link_up")) and bool(ethernet.get("address"))
+    eth0_connected = bool(eth0.get("link_up")) and bool(eth0.get("address"))
+    eth1_connected = bool(eth1.get("link_up")) and bool(eth1.get("address"))
+    ethernet_connected = eth0_connected or eth1_connected
     wifi_connected = bool(wifi_client.get("connected_ssid"))
     wifi_ap_enabled = bool(wifi_ap.get("enabled"))
     wifi_present = bool(wifi_client.get("present", True))
 
-    if active_uplink == "eth0":
+    if active_uplink in ("eth0", "eth1"):
         primary_link = "Ethernet"
     elif active_uplink == "wifi_client":
         primary_link = "Wi-Fi"
     else:
         primary_link = "Offline"
 
-    if ethernet_connected:
+    if eth0_connected:
         ethernet_state = "Connected"
         ethernet_tone = "active"
-        ethernet_detail = ethernet.get("address") or "Address assigned"
+        ethernet_detail = eth0.get("address") or "eth0 address assigned"
+    elif eth1_connected:
+        ethernet_state = "Connected"
+        ethernet_tone = "active"
+        ethernet_detail = eth1.get("address") or "eth1 address assigned"
     else:
         ethernet_state = "Disconnected"
         ethernet_tone = "inactive"
-        ethernet_detail = "Cable link unavailable"
+        ethernet_detail = "No cable link on eth0 or eth1"
 
     if wifi_connected:
         wifi_state = "Connected"
@@ -95,7 +102,7 @@ def _overview_status_payload(network_state: dict[str, object]) -> dict[str, obje
         ],
         "visual": {
             "gateway_online": ethernet_connected or wifi_connected or wifi_ap_enabled,
-            "ethernet_active": ethernet_connected or active_uplink == "eth0",
+            "ethernet_active": ethernet_connected or active_uplink in ("eth0", "eth1"),
             "wifi_active": wifi_connected or wifi_ap_enabled or active_uplink == "wifi_client",
         },
     }
@@ -107,7 +114,7 @@ def _primary_sections(active_label: str) -> list[dict[str, object]]:
         ("Monitor", "Mon", "/monitor"),
         ("Insights", "Info", "#"),
         ("Interfaces", "I/O", "/interfaces"),
-        ("Network Intelligence", "Net", "#"),
+        ("Network Probe", "Probe", "#"),
         ("Destinations", "Dest", "#"),
         ("Connectivity", "Conn", "/connectivity"),
         ("Security", "Sec", "#"),
@@ -349,7 +356,7 @@ async def dashboard_page(request: Request) -> HTMLResponse:
                     "description": "RS232, RS485, Modbus RTU, GPS, IMU, DI/DO, and attached field devices.",
                 },
                 {
-                    "title": "Network Intelligence",
+                    "title": "Network Probe",
                     "description": "Ping, SNMP, discovery, interface statistics, and later flow visibility.",
                 },
                 {
