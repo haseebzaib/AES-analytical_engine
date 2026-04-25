@@ -622,6 +622,54 @@ async def save_rs232_config(request: Request) -> JSONResponse:
     return JSONResponse(response, status_code=status_code)
 
 
+@router.get("/api/interfaces/rs485/config")
+async def get_rs485_config(request: Request) -> JSONResponse:
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+
+    config = request.app.state.rs485_config_store.get_config()
+    config["ok"] = True
+    return JSONResponse(config)
+
+
+@router.post("/api/interfaces/rs485/config")
+async def save_rs485_config(request: Request) -> JSONResponse:
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+
+    payload = await request.json()
+    success, response = request.app.state.rs485_config_store.save_config(payload)
+    if success:
+        request.app.state.redis_notifier.notify_changed("rs485_config")
+    response["ok"] = success
+    status_code = status.HTTP_200_OK if success else status.HTTP_400_BAD_REQUEST
+    return JSONResponse(response, status_code=status_code)
+
+
+@router.get("/api/interfaces/modbus-tcp/config")
+async def get_modbus_tcp_config(request: Request) -> JSONResponse:
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+
+    config = request.app.state.modbus_tcp_config_store.get_config()
+    config["ok"] = True
+    return JSONResponse(config)
+
+
+@router.post("/api/interfaces/modbus-tcp/config")
+async def save_modbus_tcp_config(request: Request) -> JSONResponse:
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+
+    payload = await request.json()
+    success, response = request.app.state.modbus_tcp_config_store.save_config(payload)
+    if success:
+        request.app.state.redis_notifier.notify_changed("modbus_tcp_config")
+    response["ok"] = success
+    status_code = status.HTTP_200_OK if success else status.HTTP_400_BAD_REQUEST
+    return JSONResponse(response, status_code=status_code)
+
+
 @router.post("/api/network/wifi/scan")
 async def scan_wifi_networks(request: Request) -> JSONResponse:
     if not _is_authenticated(request):

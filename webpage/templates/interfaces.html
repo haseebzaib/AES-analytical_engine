@@ -5,6 +5,32 @@
 
 {% block console_content %}
 
+{# ── Register map preview table (shared by RS485 and Modbus TCP) ── #}
+{% macro _register_map_preview() %}
+<div class="iface-register-table-wrap">
+    <table class="iface-register-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Register Type</th>
+                <th>Address</th>
+                <th>Data Type</th>
+                <th>Scale</th>
+                <th>Unit</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr class="iface-register-empty">
+                <td colspan="6">No registers defined</td>
+            </tr>
+        </tbody>
+    </table>
+    <button type="button" class="iface-add-register-btn" disabled>
+        + Add Register
+    </button>
+</div>
+{% endmacro %}
+
 {# ── Alarm state <option> list macro ── #}
 {% macro alarm_opts(current) %}
 <option value="off"{% if current == 'off' %} selected{% endif %}>Off</option>
@@ -370,7 +396,8 @@
             <span class="iface-type-label">RS232</span>
             <span class="iface-type-sub">2 ports</span>
         </button>
-        <button type="button" class="iface-type-btn is-locked" disabled aria-disabled="true">
+        <button type="button" class="iface-type-btn"
+                data-iface-type="rs485">
             <span class="iface-type-icon iface-type-icon-grid">
                 <span class="iface-type-icon-dot"></span>
                 <span class="iface-type-icon-dot"></span>
@@ -378,16 +405,27 @@
                 <span class="iface-type-icon-dot"></span>
             </span>
             <span class="iface-type-label">RS485</span>
-            <span class="iface-type-sub">2 ports</span>
+            <span class="iface-type-sub">Modbus RTU</span>
         </button>
-        <button type="button" class="iface-type-btn is-locked" disabled aria-disabled="true">
+        <button type="button" class="iface-type-btn"
+                data-iface-type="modbus-tcp">
+            <span class="iface-type-icon">
+                <span class="iface-type-icon-dot"></span>
+                <span class="iface-type-icon-dot"></span>
+            </span>
+            <span class="iface-type-label">Modbus TCP</span>
+            <span class="iface-type-sub">over Ethernet</span>
+        </button>
+        <button type="button" class="iface-type-btn is-preview"
+                data-iface-type="di">
             <span class="iface-type-icon">
                 <span class="iface-type-icon-bar"></span>
             </span>
             <span class="iface-type-label">DI</span>
             <span class="iface-type-sub">2 inputs</span>
         </button>
-        <button type="button" class="iface-type-btn is-locked" disabled aria-disabled="true">
+        <button type="button" class="iface-type-btn is-preview"
+                data-iface-type="do">
             <span class="iface-type-icon">
                 <span class="iface-type-icon-bar"></span>
             </span>
@@ -430,6 +468,491 @@
         </div>
 
     </div>{# end rs232 panel #}
+
+    {# ── RS485 / Modbus RTU panel ── #}
+    <div class="iface-type-panel iface-panel-card" data-iface-panel="rs485" style="display:none">
+
+        {# Port tabs #}
+        <div class="iface-port-tabs">
+            <button type="button" class="iface-port-tab-btn is-active" data-rtu-tab-btn="0">
+                <span class="iface-port-tab-dot is-idle"></span>
+                Port 0 <span class="iface-port-channel-badge" style="margin-left:0.3rem">Ch2</span>
+            </button>
+            <button type="button" class="iface-port-tab-btn" data-rtu-tab-btn="1">
+                <span class="iface-port-tab-dot is-idle"></span>
+                Port 1 <span class="iface-port-channel-badge" style="margin-left:0.3rem">Ch3</span>
+            </button>
+        </div>
+
+        {# Port 0 pane #}
+        <div class="iface-port-pane" data-rtu-port="0">
+                <div class="iface-port-head">
+                    <div class="iface-port-head-left">
+                        <div class="iface-port-name-row">
+                            <span class="iface-port-name">Port 0</span>
+                            <span class="iface-port-channel-badge">Ch2</span>
+                            <span class="iface-port-status is-idle">Idle</span>
+                        </div>
+                    </div>
+                    <label class="iface-toggle">
+                        <input type="checkbox" class="iface-toggle-input" disabled>
+                        <span class="iface-toggle-track" aria-hidden="true"></span>
+                    </label>
+                </div>
+                <div class="iface-port-body">
+                    <div class="iface-cfg-card">
+                        <p class="iface-section-eyebrow">Serial Port</p>
+                        <div class="iface-serial-grid">
+                            <label class="iface-field-group">
+                                <span class="iface-field-label">Baud Rate</span>
+                                <select class="iface-select"><option>9600</option></select>
+                            </label>
+                            <label class="iface-field-group">
+                                <span class="iface-field-label">Parity</span>
+                                <select class="iface-select"><option>None</option></select>
+                            </label>
+                            <label class="iface-field-group">
+                                <span class="iface-field-label">Stop Bits</span>
+                                <select class="iface-select"><option>1</option></select>
+                            </label>
+                            <label class="iface-field-group">
+                                <span class="iface-field-label">Data Bits</span>
+                                <select class="iface-select"><option>8</option></select>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="iface-cfg-card">
+                        <p class="iface-section-eyebrow">Modbus RTU</p>
+                        <div class="iface-serial-grid">
+                            <label class="iface-field-group">
+                                <span class="iface-field-label">Slave Address (1–247)</span>
+                                <input type="number" class="iface-number" min="1" max="247" value="1">
+                            </label>
+                            <label class="iface-field-group">
+                                <span class="iface-field-label">Poll Interval</span>
+                                <select class="iface-select">
+                                    <option>500 ms</option>
+                                    <option selected>1 s</option>
+                                    <option>2 s</option>
+                                    <option>5 s</option>
+                                    <option>10 s</option>
+                                </select>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="iface-cfg-card">
+                        <p class="iface-section-eyebrow">Register Map</p>
+                        {{ _register_map_preview() }}
+                    </div>
+                </div>
+        </div>
+
+        {# Port 1 pane #}
+        <div class="iface-port-pane" data-rtu-port="1" style="display:none">
+                <div class="iface-port-head">
+                    <div class="iface-port-head-left">
+                        <div class="iface-port-name-row">
+                            <span class="iface-port-name">Port 1</span>
+                            <span class="iface-port-channel-badge">Ch3</span>
+                            <span class="iface-port-status is-idle">Idle</span>
+                        </div>
+                    </div>
+                    <label class="iface-toggle">
+                        <input type="checkbox" class="iface-toggle-input" disabled>
+                        <span class="iface-toggle-track" aria-hidden="true"></span>
+                    </label>
+                </div>
+                <div class="iface-port-body">
+                    <div class="iface-cfg-card">
+                        <p class="iface-section-eyebrow">Serial Port</p>
+                        <div class="iface-serial-grid">
+                            <label class="iface-field-group">
+                                <span class="iface-field-label">Baud Rate</span>
+                                <select class="iface-select"><option>9600</option></select>
+                            </label>
+                            <label class="iface-field-group">
+                                <span class="iface-field-label">Parity</span>
+                                <select class="iface-select"><option>None</option></select>
+                            </label>
+                            <label class="iface-field-group">
+                                <span class="iface-field-label">Stop Bits</span>
+                                <select class="iface-select"><option>1</option></select>
+                            </label>
+                            <label class="iface-field-group">
+                                <span class="iface-field-label">Data Bits</span>
+                                <select class="iface-select"><option>8</option></select>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="iface-cfg-card">
+                        <p class="iface-section-eyebrow">Modbus RTU</p>
+                        <div class="iface-serial-grid">
+                            <label class="iface-field-group">
+                                <span class="iface-field-label">Slave Address (1–247)</span>
+                                <input type="number" class="iface-number" min="1" max="247" value="1">
+                            </label>
+                            <label class="iface-field-group">
+                                <span class="iface-field-label">Poll Interval</span>
+                                <select class="iface-select">
+                                    <option>500 ms</option>
+                                    <option selected>1 s</option>
+                                    <option>2 s</option>
+                                    <option>5 s</option>
+                                    <option>10 s</option>
+                                </select>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="iface-cfg-card">
+                        <p class="iface-section-eyebrow">Register Map</p>
+                        {{ _register_map_preview() }}
+                    </div>
+                </div>
+        </div>
+
+    </div>{# end rs485 panel #}
+
+    {# ── Modbus TCP preview panel ── #}
+    <div class="iface-type-panel iface-panel-card" data-iface-panel="modbus-tcp" style="display:none">
+
+        <div class="iface-port-pane">
+                <div class="iface-port-body" style="padding-top:0">
+
+                    {# Connection list header #}
+                    <div class="iface-conn-list-header">
+                        <span class="iface-section-eyebrow" style="margin:0">Connections <span class="iface-conn-count">2 / 10</span></span>
+                        <button type="button" class="iface-add-register-btn" style="padding:0.45rem 1rem">
+                            + Add Connection
+                        </button>
+                    </div>
+
+                    {# Connection accordion list #}
+                    <div class="iface-alarms-list">
+
+                        {# Connection 1 #}
+                        <div class="iface-alarm-row is-open">
+                            <div class="iface-alarm-header" style="cursor:default">
+                                <span class="iface-conn-status-dot is-active"></span>
+                                <span class="iface-alarm-ch-label" style="min-width:auto;flex:1">Device 1</span>
+                                <span class="iface-alarm-summary">eth0 · 192.168.1.100:502 · Unit 1</span>
+                                <span class="iface-alarm-chevron">▸</span>
+                            </div>
+                            <div class="iface-alarm-body" style="display:block">
+                                <div class="iface-modbus-tcp-grid" style="margin-bottom:1rem">
+                                    <label class="iface-field-group">
+                                        <span class="iface-field-label">Name</span>
+                                        <input type="text" class="iface-number" value="Device 1">
+                                    </label>
+                                    <label class="iface-field-group">
+                                        <span class="iface-field-label">Ethernet Interface</span>
+                                        <select class="iface-select">
+                                            <option selected>eth0 — Primary</option>
+                                            <option>eth1 — Secondary</option>
+                                        </select>
+                                    </label>
+                                    <label class="iface-field-group">
+                                        <span class="iface-field-label">Device IP Address</span>
+                                        <input type="text" class="iface-number" value="192.168.1.100">
+                                    </label>
+                                    <label class="iface-field-group">
+                                        <span class="iface-field-label">Port</span>
+                                        <input type="number" class="iface-number" value="502">
+                                    </label>
+                                    <label class="iface-field-group">
+                                        <span class="iface-field-label">Unit ID (1–247)</span>
+                                        <input type="number" class="iface-number" value="1">
+                                    </label>
+                                    <label class="iface-field-group">
+                                        <span class="iface-field-label">Poll Interval</span>
+                                        <select class="iface-select">
+                                            <option>500 ms</option>
+                                            <option selected>1 s</option>
+                                            <option>2 s</option>
+                                            <option>5 s</option>
+                                            <option>10 s</option>
+                                        </select>
+                                    </label>
+                                </div>
+                                <p class="iface-section-eyebrow" style="margin-bottom:0.5rem">Register Map</p>
+                                {{ _register_map_preview() }}
+                            </div>
+                        </div>
+
+                        {# Connection 2 #}
+                        <div class="iface-alarm-row">
+                            <div class="iface-alarm-header" style="cursor:default">
+                                <span class="iface-conn-status-dot is-idle"></span>
+                                <span class="iface-alarm-ch-label" style="min-width:auto;flex:1">Device 2</span>
+                                <span class="iface-alarm-summary">eth0 · 192.168.1.101:502 · Unit 2</span>
+                                <span class="iface-alarm-chevron">▸</span>
+                            </div>
+                            <div class="iface-alarm-body">
+                                <div class="iface-modbus-tcp-grid" style="margin-bottom:1rem">
+                                    <label class="iface-field-group">
+                                        <span class="iface-field-label">Name</span>
+                                        <input type="text" class="iface-number" value="Device 2">
+                                    </label>
+                                    <label class="iface-field-group">
+                                        <span class="iface-field-label">Ethernet Interface</span>
+                                        <select class="iface-select">
+                                            <option selected>eth0 — Primary</option>
+                                            <option>eth1 — Secondary</option>
+                                        </select>
+                                    </label>
+                                    <label class="iface-field-group">
+                                        <span class="iface-field-label">Device IP Address</span>
+                                        <input type="text" class="iface-number" value="192.168.1.101">
+                                    </label>
+                                    <label class="iface-field-group">
+                                        <span class="iface-field-label">Port</span>
+                                        <input type="number" class="iface-number" value="502">
+                                    </label>
+                                    <label class="iface-field-group">
+                                        <span class="iface-field-label">Unit ID (1–247)</span>
+                                        <input type="number" class="iface-number" value="2">
+                                    </label>
+                                    <label class="iface-field-group">
+                                        <span class="iface-field-label">Poll Interval</span>
+                                        <select class="iface-select">
+                                            <option>500 ms</option>
+                                            <option selected>1 s</option>
+                                            <option>2 s</option>
+                                            <option>5 s</option>
+                                            <option>10 s</option>
+                                        </select>
+                                    </label>
+                                </div>
+                                <p class="iface-section-eyebrow" style="margin-bottom:0.5rem">Register Map</p>
+                                {{ _register_map_preview() }}
+                            </div>
+                        </div>
+
+                    </div>{# end connection list #}
+
+                </div>
+        </div>
+
+    </div>{# end modbus-tcp panel #}
+
+    {# ── DI / Digital Inputs preview panel ── #}
+    <div class="iface-type-panel iface-panel-card" data-iface-panel="di" style="display:none">
+
+        <div class="iface-unavail-banner">
+            <span class="iface-unavail-icon">⚠</span>
+            <div>
+                <p class="iface-unavail-title">Hardware driver not yet available</p>
+                <p class="iface-unavail-desc">Digital Input support is in development. Configuration shown below is a read-only preview.</p>
+            </div>
+        </div>
+
+        <div class="iface-port-pane">
+            <fieldset class="iface-preview-fieldset" disabled>
+                <div class="iface-port-body" style="padding-top:0">
+                    <div class="iface-di-do-grid">
+
+                        {# Ch0 #}
+                        <div class="iface-cfg-card">
+                            <div class="iface-port-name-row" style="margin-bottom:0.75rem">
+                                <span class="iface-port-name" style="font-size:0.95rem">Channel 0</span>
+                                <span class="iface-port-channel-badge">Ch0</span>
+                                <span class="iface-port-status is-idle">Idle</span>
+                            </div>
+                            <div class="iface-di-fields">
+                                <label class="iface-field-group">
+                                    <span class="iface-field-label">Label</span>
+                                    <input type="text" class="iface-number" placeholder="e.g. Door Sensor">
+                                </label>
+                                <label class="iface-field-group">
+                                    <span class="iface-field-label">Active State</span>
+                                    <select class="iface-select">
+                                        <option>Active High</option>
+                                        <option>Active Low</option>
+                                    </select>
+                                </label>
+                                <label class="iface-field-group">
+                                    <span class="iface-field-label">Debounce (ms)</span>
+                                    <input type="number" class="iface-number" value="50" min="0" max="5000">
+                                </label>
+                                <label class="iface-field-group">
+                                    <span class="iface-field-label">Detection Mode</span>
+                                    <select class="iface-select">
+                                        <option>Edge — trigger on change</option>
+                                        <option>Level — continuous state</option>
+                                    </select>
+                                </label>
+                                <label class="iface-field-group">
+                                    <span class="iface-field-label">On Trigger</span>
+                                    <select class="iface-select">
+                                        <option>Log event</option>
+                                        <option>Log + Cloud alert</option>
+                                        <option>Activate DO</option>
+                                        <option>Log + Activate DO</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </div>
+
+                        {# Ch1 #}
+                        <div class="iface-cfg-card">
+                            <div class="iface-port-name-row" style="margin-bottom:0.75rem">
+                                <span class="iface-port-name" style="font-size:0.95rem">Channel 1</span>
+                                <span class="iface-port-channel-badge">Ch1</span>
+                                <span class="iface-port-status is-idle">Idle</span>
+                            </div>
+                            <div class="iface-di-fields">
+                                <label class="iface-field-group">
+                                    <span class="iface-field-label">Label</span>
+                                    <input type="text" class="iface-number" placeholder="e.g. Flow Switch">
+                                </label>
+                                <label class="iface-field-group">
+                                    <span class="iface-field-label">Active State</span>
+                                    <select class="iface-select">
+                                        <option>Active High</option>
+                                        <option>Active Low</option>
+                                    </select>
+                                </label>
+                                <label class="iface-field-group">
+                                    <span class="iface-field-label">Debounce (ms)</span>
+                                    <input type="number" class="iface-number" value="50" min="0" max="5000">
+                                </label>
+                                <label class="iface-field-group">
+                                    <span class="iface-field-label">Detection Mode</span>
+                                    <select class="iface-select">
+                                        <option>Edge — trigger on change</option>
+                                        <option>Level — continuous state</option>
+                                    </select>
+                                </label>
+                                <label class="iface-field-group">
+                                    <span class="iface-field-label">On Trigger</span>
+                                    <select class="iface-select">
+                                        <option>Log event</option>
+                                        <option>Log + Cloud alert</option>
+                                        <option>Activate DO</option>
+                                        <option>Log + Activate DO</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </fieldset>
+        </div>
+
+    </div>{# end di panel #}
+
+    {# ── DO / Digital Outputs preview panel ── #}
+    <div class="iface-type-panel iface-panel-card" data-iface-panel="do" style="display:none">
+
+        <div class="iface-unavail-banner">
+            <span class="iface-unavail-icon">⚠</span>
+            <div>
+                <p class="iface-unavail-title">Hardware driver not yet available</p>
+                <p class="iface-unavail-desc">Digital Output support is in development. Configuration shown below is a read-only preview.</p>
+            </div>
+        </div>
+
+        <div class="iface-port-pane">
+            <fieldset class="iface-preview-fieldset" disabled>
+                <div class="iface-port-body" style="padding-top:0">
+                    <div class="iface-di-do-grid">
+
+                        {# Ch0 #}
+                        <div class="iface-cfg-card">
+                            <div class="iface-port-name-row" style="margin-bottom:0.75rem">
+                                <span class="iface-port-name" style="font-size:0.95rem">Channel 0</span>
+                                <span class="iface-port-channel-badge">Ch0</span>
+                                <span class="iface-port-status is-idle">Off</span>
+                            </div>
+                            <div class="iface-di-fields">
+                                <label class="iface-field-group">
+                                    <span class="iface-field-label">Label</span>
+                                    <input type="text" class="iface-number" placeholder="e.g. Alarm Relay">
+                                </label>
+                                <label class="iface-field-group">
+                                    <span class="iface-field-label">Active State</span>
+                                    <select class="iface-select">
+                                        <option>Active High</option>
+                                        <option>Active Low</option>
+                                    </select>
+                                </label>
+                                <label class="iface-field-group">
+                                    <span class="iface-field-label">Initial State</span>
+                                    <select class="iface-select">
+                                        <option>Off</option>
+                                        <option>On</option>
+                                    </select>
+                                </label>
+                                <label class="iface-field-group">
+                                    <span class="iface-field-label">Control Mode</span>
+                                    <select class="iface-select">
+                                        <option>Manual — dashboard toggle</option>
+                                        <option>Alarm-driven — sensor threshold</option>
+                                        <option>Interlock — triggered by DI</option>
+                                    </select>
+                                </label>
+                                <label class="iface-field-group">
+                                    <span class="iface-field-label">Failsafe State</span>
+                                    <select class="iface-select">
+                                        <option>Off</option>
+                                        <option>On</option>
+                                        <option>Hold last</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </div>
+
+                        {# Ch1 #}
+                        <div class="iface-cfg-card">
+                            <div class="iface-port-name-row" style="margin-bottom:0.75rem">
+                                <span class="iface-port-name" style="font-size:0.95rem">Channel 1</span>
+                                <span class="iface-port-channel-badge">Ch1</span>
+                                <span class="iface-port-status is-idle">Off</span>
+                            </div>
+                            <div class="iface-di-fields">
+                                <label class="iface-field-group">
+                                    <span class="iface-field-label">Label</span>
+                                    <input type="text" class="iface-number" placeholder="e.g. Ventilation Fan">
+                                </label>
+                                <label class="iface-field-group">
+                                    <span class="iface-field-label">Active State</span>
+                                    <select class="iface-select">
+                                        <option>Active High</option>
+                                        <option>Active Low</option>
+                                    </select>
+                                </label>
+                                <label class="iface-field-group">
+                                    <span class="iface-field-label">Initial State</span>
+                                    <select class="iface-select">
+                                        <option>Off</option>
+                                        <option>On</option>
+                                    </select>
+                                </label>
+                                <label class="iface-field-group">
+                                    <span class="iface-field-label">Control Mode</span>
+                                    <select class="iface-select">
+                                        <option>Manual — dashboard toggle</option>
+                                        <option>Alarm-driven — sensor threshold</option>
+                                        <option>Interlock — triggered by DI</option>
+                                    </select>
+                                </label>
+                                <label class="iface-field-group">
+                                    <span class="iface-field-label">Failsafe State</span>
+                                    <select class="iface-select">
+                                        <option>Off</option>
+                                        <option>On</option>
+                                        <option>Hold last</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </fieldset>
+        </div>
+
+    </div>{# end do panel #}
 
 </section>
 {% endblock %}

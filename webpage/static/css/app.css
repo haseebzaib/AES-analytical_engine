@@ -2363,3 +2363,183 @@ h2 {
     padding: 1rem 1.6rem 1.4rem;
     border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
+
+/* --- Preview type button (clickable but not active) --- */
+.iface-type-btn.is-preview {
+    opacity: 0.6;
+    cursor: pointer;
+}
+
+.iface-type-btn.is-preview:hover {
+    opacity: 0.85;
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.18);
+}
+
+.iface-type-btn.is-preview.is-current {
+    opacity: 1;
+}
+
+/* --- Unavailability banner --- */
+.iface-unavail-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.9rem;
+    padding: 0.9rem 1.4rem;
+    background: rgba(240, 166, 75, 0.07);
+    border-bottom: 1px solid rgba(240, 166, 75, 0.18);
+}
+
+.iface-unavail-icon {
+    font-size: 1rem;
+    color: var(--accent);
+    flex-shrink: 0;
+    line-height: 1.4;
+}
+
+.iface-unavail-title {
+    margin: 0 0 0.15rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--accent);
+}
+
+.iface-unavail-desc {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--muted);
+    line-height: 1.5;
+}
+
+/* --- Preview fieldset (disables all children natively) --- */
+.iface-preview-fieldset {
+    border: none;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+    opacity: 0.55;
+}
+
+/* --- Register map table --- */
+.iface-register-table-wrap {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.iface-register-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+}
+
+.iface-register-table th {
+    text-align: left;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.iface-register-table td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    color: var(--text);
+}
+
+.iface-register-empty td {
+    text-align: center;
+    color: var(--muted);
+    font-style: italic;
+    padding: 1.2rem 0.75rem;
+}
+
+.iface-add-register-btn {
+    align-self: flex-start;
+    padding: 0.45rem 1rem;
+    border-radius: 0.6rem;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.82rem;
+    cursor: not-allowed;
+}
+
+/* --- Modbus TCP connection grid --- */
+.iface-modbus-tcp-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 0.75rem 1rem;
+}
+
+@media (max-width: 1080px) {
+    .iface-modbus-tcp-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 720px) {
+    .iface-modbus-tcp-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* --- Modbus TCP connection list header --- */
+.iface-conn-list-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.iface-conn-count {
+    display: inline-block;
+    margin-left: 0.5rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    background: rgba(57, 208, 200, 0.1);
+    border: 1px solid rgba(57, 208, 200, 0.2);
+    color: var(--accent-cool);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    vertical-align: middle;
+}
+
+.iface-conn-status-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 999px;
+    flex-shrink: 0;
+}
+
+.iface-conn-status-dot.is-active {
+    background: var(--success);
+    box-shadow: 0 0 6px rgba(98, 211, 158, 0.5);
+}
+
+.iface-conn-status-dot.is-idle {
+    background: rgba(255, 255, 255, 0.22);
+}
+
+/* --- DI / DO 2-column channel grid --- */
+.iface-di-do-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    align-items: start;
+}
+
+.iface-di-fields {
+    display: grid;
+    gap: 0.65rem;
+}
+
+@media (max-width: 900px) {
+    .iface-di-do-grid {
+        grid-template-columns: 1fr;
+    }
+}

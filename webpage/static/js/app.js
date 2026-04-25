@@ -1011,7 +1011,43 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const interfacesShell = document.querySelector("[data-interfaces-shell]");
     if (interfacesShell) {
-        // ── Port tabs ──────────────────────────────────────────────────────────
+        // ── Interface type panel switching ─────────────────────────────────────
+        const ifaceTypeBtns = Array.from(interfacesShell.querySelectorAll("[data-iface-type]"));
+        const ifacePanels = Array.from(interfacesShell.querySelectorAll("[data-iface-panel]"));
+
+        const switchIfacePanel = (type) => {
+            ifaceTypeBtns.forEach((btn) => {
+                const isActive = btn.getAttribute("data-iface-type") === type;
+                btn.classList.toggle("is-current", isActive);
+                if (!btn.classList.contains("is-locked")) {
+                    btn.classList.toggle("is-preview", !isActive);
+                }
+                btn.setAttribute("aria-pressed", isActive ? "true" : "false");
+            });
+            ifacePanels.forEach((panel) => {
+                panel.style.display = panel.getAttribute("data-iface-panel") === type ? "" : "none";
+            });
+        };
+
+        ifaceTypeBtns.forEach((btn) => {
+            btn.addEventListener("click", () => switchIfacePanel(btn.getAttribute("data-iface-type")));
+        });
+
+        // ── RS485 port tab switching ───────────────────────────────────────────
+        const rtuTabBtns = Array.from(interfacesShell.querySelectorAll("[data-rtu-tab-btn]"));
+        const rtuPanes = Array.from(interfacesShell.querySelectorAll("[data-rtu-port]"));
+
+        rtuTabBtns.forEach((btn) => {
+            btn.addEventListener("click", () => {
+                const portId = btn.getAttribute("data-rtu-tab-btn");
+                rtuTabBtns.forEach((b) => b.classList.toggle("is-active", b === btn));
+                rtuPanes.forEach((p) => {
+                    p.style.display = p.getAttribute("data-rtu-port") === portId ? "" : "none";
+                });
+            });
+        });
+
+        // ── RS232 port tabs ────────────────────────────────────────────────────
         const tabBtns = Array.from(interfacesShell.querySelectorAll("[data-rs232-tab-btn]"));
         const portPanes = Array.from(interfacesShell.querySelectorAll("[data-rs232-port]"));
 
