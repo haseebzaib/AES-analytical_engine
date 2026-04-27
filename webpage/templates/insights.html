@@ -1,125 +1,125 @@
 {% extends "console_layout.html" %}
 
-{% block page_eyebrow %}System Health{% endblock %}
+{% block page_eyebrow %}Sensor Analytics{% endblock %}
 {% block page_title %}Insights{% endblock %}
 
 {% block console_content %}
-<section class="insights-shell" data-insights-shell>
+<section class="ins-shell" data-insights-shell>
 
-    <div class="insights-kpi-strip">
-        <article class="insights-kpi-card">
-            <p class="kpi-label">CPU Usage</p>
-            <p class="kpi-value" data-kpi-value="cpu">--</p>
-            <div class="kpi-bar-track"><div class="kpi-bar-fill" data-kpi-bar="cpu"></div></div>
-            <p class="kpi-sub" data-kpi-sub="cpu">Loading&hellip;</p>
+    {# ── KPI strip ──────────────────────────────────────────────────────── #}
+    <div class="ins-kpi-strip">
+
+        <article class="ins-kpi-card">
+            <p class="ins-kpi-label">Active Devices</p>
+            <p class="ins-kpi-value" data-ins-kpi="devices">--</p>
+            <p class="ins-kpi-sub" data-ins-kpi-sub="devices">Awaiting sensor bus&hellip;</p>
         </article>
-        <article class="insights-kpi-card">
-            <p class="kpi-label">Memory</p>
-            <p class="kpi-value" data-kpi-value="memory">--</p>
-            <div class="kpi-bar-track"><div class="kpi-bar-fill" data-kpi-bar="memory"></div></div>
-            <p class="kpi-sub" data-kpi-sub="memory">Loading&hellip;</p>
+
+        <article class="ins-kpi-card">
+            <p class="ins-kpi-label">Data Quality</p>
+            <p class="ins-kpi-value" data-ins-kpi="quality">--%</p>
+            <div class="ins-kpi-bar-track">
+                <div class="ins-kpi-bar-fill" data-ins-kpi-bar="quality"></div>
+            </div>
+            <p class="ins-kpi-sub" data-ins-kpi-sub="quality">Good metrics / total</p>
         </article>
-        <article class="insights-kpi-card">
-            <p class="kpi-label">Temperature</p>
-            <p class="kpi-value" data-kpi-value="temp">--</p>
-            <div class="kpi-bar-track"><div class="kpi-bar-fill" data-kpi-bar="temp"></div></div>
-            <p class="kpi-sub" data-kpi-sub="temp">Sensor reading</p>
+
+        <article class="ins-kpi-card">
+            <p class="ins-kpi-label">Active Anomalies</p>
+            <p class="ins-kpi-value" data-ins-kpi="anomalies">--</p>
+            <p class="ins-kpi-sub" data-ins-kpi-sub="anomalies">Gaps or sensor errors</p>
         </article>
-        <article class="insights-kpi-card">
-            <p class="kpi-label">Storage</p>
-            <p class="kpi-value" data-kpi-value="disk">--</p>
-            <div class="kpi-bar-track"><div class="kpi-bar-fill" data-kpi-bar="disk"></div></div>
-            <p class="kpi-sub" data-kpi-sub="disk">Loading&hellip;</p>
+
+        <article class="ins-kpi-card">
+            <p class="ins-kpi-label">Last Event</p>
+            <p class="ins-kpi-value ins-kpi-value-sm" data-ins-kpi="last-event">--</p>
+            <p class="ins-kpi-sub" data-ins-kpi-sub="last-event">No events recorded</p>
         </article>
+
     </div>
 
-    <div class="insights-chart-grid">
-        <article class="insight-chart-card">
-            <div class="chart-card-head">
-                <div>
-                    <p class="chart-eyebrow">10 min history</p>
-                    <h3 class="chart-title">CPU Usage</h3>
-                </div>
-                <p class="chart-live-value" data-chart-live="cpu">--%</p>
+    {# ── Live devices ───────────────────────────────────────────────────── #}
+    <div class="ins-section">
+        <header class="ins-section-head">
+            <div>
+                <p class="ins-section-eyebrow">Live Sensor Data</p>
+                <h2 class="ins-section-title">Active Devices</h2>
             </div>
-            <div class="chart-svg-wrap" data-chart-svg="cpu"></div>
-        </article>
-        <article class="insight-chart-card">
-            <div class="chart-card-head">
-                <div>
-                    <p class="chart-eyebrow">10 min history</p>
-                    <h3 class="chart-title">Memory</h3>
-                </div>
-                <p class="chart-live-value" data-chart-live="memory">--%</p>
+            <div class="ins-section-actions">
+                <span class="ins-refresh-pill">
+                    <span class="ins-refresh-dot"></span>
+                    Auto-refreshing
+                </span>
             </div>
-            <div class="chart-svg-wrap" data-chart-svg="memory"></div>
-        </article>
-        <article class="insight-chart-card">
-            <div class="chart-card-head">
-                <div>
-                    <p class="chart-eyebrow">10 min history</p>
-                    <h3 class="chart-title">Temperature</h3>
-                </div>
-                <p class="chart-live-value" data-chart-live="temp">-- &deg;C</p>
-            </div>
-            <div class="chart-svg-wrap" data-chart-svg="temp"></div>
-        </article>
-        <article class="insight-chart-card">
-            <div class="chart-card-head">
-                <div>
-                    <p class="chart-eyebrow">10 min history</p>
-                    <h3 class="chart-title">Network I/O</h3>
-                </div>
-                <p class="chart-live-value" data-chart-live="network">-- B/s</p>
-            </div>
-            <div class="chart-svg-wrap" data-chart-svg="network"></div>
-        </article>
+        </header>
+        <div class="ins-device-grid" data-ins-device-grid>
+            <p class="ins-empty-state" data-ins-device-empty>Connecting to sensor bus&hellip;</p>
+        </div>
     </div>
 
-    <div class="insights-detail-row">
-        <article class="insight-detail-card">
-            <h3 class="detail-card-title">Per-Core CPU</h3>
-            <div class="core-grid" data-core-grid>
-                <p class="insights-empty-note">Waiting for data&hellip;</p>
-            </div>
-        </article>
-        <article class="insight-detail-card">
-            <h3 class="detail-card-title">Load Average</h3>
-            <div class="load-avg-grid">
-                <div class="load-avg-item">
-                    <p class="load-avg-value" data-load-avg="1m">--</p>
-                    <p class="load-avg-label">1 min</p>
+    {# ── History drawer ─────────────────────────────────────────────────── #}
+    <div class="ins-history-drawer is-hidden" data-ins-history-drawer>
+        <header class="ins-history-head">
+            <div class="ins-history-title-row">
+                <div class="ins-history-labels">
+                    <p class="ins-history-device" data-ins-history-device>--</p>
+                    <p class="ins-history-metric" data-ins-history-metric>--</p>
                 </div>
-                <div class="load-avg-item">
-                    <p class="load-avg-value" data-load-avg="5m">--</p>
-                    <p class="load-avg-label">5 min</p>
-                </div>
-                <div class="load-avg-item">
-                    <p class="load-avg-value" data-load-avg="15m">--</p>
-                    <p class="load-avg-label">15 min</p>
+                <div class="ins-history-controls">
+                    <div class="ins-window-sel" data-ins-window-sel>
+                        <button class="ins-window-btn" data-window="1">1h</button>
+                        <button class="ins-window-btn is-current" data-window="6">6h</button>
+                        <button class="ins-window-btn" data-window="24">24h</button>
+                        <button class="ins-window-btn" data-window="168">7d</button>
+                    </div>
+                    <button class="ins-history-close" data-ins-history-close>&times;</button>
                 </div>
             </div>
-        </article>
-        <article class="insight-detail-card">
-            <h3 class="detail-card-title">Network Rates</h3>
-            <div class="network-totals-grid">
-                <div class="network-totals-row">
-                    <span class="network-iface-label">eth0</span>
-                    <span class="network-total-item" data-net-rx="eth0">rx --</span>
-                    <span class="network-total-item" data-net-tx="eth0">tx --</span>
+            <div class="ins-history-stats" data-ins-history-stats>
+                <div class="ins-hstat">
+                    <span class="ins-hstat-label">Current</span>
+                    <span class="ins-hstat-value" data-hstat="current">--</span>
                 </div>
-                <div class="network-totals-row">
-                    <span class="network-iface-label">eth1</span>
-                    <span class="network-total-item" data-net-rx="eth1">rx --</span>
-                    <span class="network-total-item" data-net-tx="eth1">tx --</span>
+                <div class="ins-hstat">
+                    <span class="ins-hstat-label">Average</span>
+                    <span class="ins-hstat-value" data-hstat="avg">--</span>
                 </div>
-                <div class="network-totals-row">
-                    <span class="network-iface-label">wlan0</span>
-                    <span class="network-total-item" data-net-rx="wlan0">rx --</span>
-                    <span class="network-total-item" data-net-tx="wlan0">tx --</span>
+                <div class="ins-hstat">
+                    <span class="ins-hstat-label">Min</span>
+                    <span class="ins-hstat-value" data-hstat="min">--</span>
+                </div>
+                <div class="ins-hstat">
+                    <span class="ins-hstat-label">Max</span>
+                    <span class="ins-hstat-value" data-hstat="max">--</span>
+                </div>
+                <div class="ins-hstat">
+                    <span class="ins-hstat-label">Samples</span>
+                    <span class="ins-hstat-value" data-hstat="samples">--</span>
                 </div>
             </div>
-        </article>
+        </header>
+        <div class="ins-history-chart-wrap" data-ins-history-chart>
+            <p class="ins-empty-state">Select a metric from a device card to view history.</p>
+        </div>
+    </div>
+
+    {# ── Events & anomalies ─────────────────────────────────────────────── #}
+    <div class="ins-section">
+        <header class="ins-section-head">
+            <div>
+                <p class="ins-section-eyebrow">Diagnostics</p>
+                <h2 class="ins-section-title">Events &amp; Anomalies</h2>
+            </div>
+            <div class="ins-event-filter-bar" data-ins-event-filter>
+                <button class="ins-filter-btn is-current" data-filter="all">All</button>
+                <button class="ins-filter-btn" data-filter="error">Error</button>
+                <button class="ins-filter-btn" data-filter="warning">Warning</button>
+                <button class="ins-filter-btn" data-filter="info">Info</button>
+            </div>
+        </header>
+        <div class="ins-event-list" data-ins-event-list>
+            <p class="ins-empty-state" data-ins-event-empty>Loading events&hellip;</p>
+        </div>
     </div>
 
 </section>

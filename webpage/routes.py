@@ -26,6 +26,12 @@ def _network_settings_store(request: Request):
 def _system_metrics_store(request: Request):
     return request.app.state.system_metrics_store
 
+def _sensor_store(request: Request):
+    return request.app.state.sensor_store
+
+def _continuity_state(request: Request):
+    return getattr(request.app.state, "continuity_state", None)
+
 
 def _overview_status_payload(network_state: dict[str, object]) -> dict[str, object]:
     active_uplink = str(network_state.get("active_uplink", "none"))
@@ -112,7 +118,7 @@ def _primary_sections(active_label: str) -> list[dict[str, object]]:
     items = [
         ("Overview", "Over", "/dashboard"),
         ("Monitor", "Mon", "/monitor"),
-        ("Insights", "Info", "#"),
+        ("Insights", "Info", "/insights"),
         ("Interfaces", "I/O", "/interfaces"),
         ("Network Probe", "Probe", "#"),
         ("Destinations", "Dest", "#"),
@@ -679,6 +685,88 @@ async def save_modbus_tcp_config(request: Request) -> JSONResponse:
     response["ok"] = success
     status_code = status.HTTP_200_OK if success else status.HTTP_400_BAD_REQUEST
     return JSONResponse(response, status_code=status_code)
+
+
+@router.get("/insights", response_class=HTMLResponse)
+async def insights_page(request: Request) -> HTMLResponse:
+    if not _is_authenticated(request):
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+
+    return templates.TemplateResponse(
+        request,
+        "insights.html",
+        {
+            "product_name":    "MetaCrust Edge Gateway",
+            "page_title":      "Insights",
+            "primary_sections": _primary_sections("Insights"),
+        },
+    )
+
+
+@router.get("/api/insights/live")
+async def insights_live(request: Request) -> JSONResponse:
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+
+    devices = _sensor_store(request).live_devices()
+    return JSONResponse({"ok": True, "devices": devices})
+
+
+@router.get("/api/insights/history")
+async def insights_history(request: Request) -> JSONResponse:
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+
+    source    = request.query_params.get("source", "").strip()
+    device_id = request.query_params.get("device_id", "").strip()
+    metric    = request.query_params.get("metric", "").strip()
+    try:
+        window = max(1, min(744, int(request.query_params.get("window", "24"))))
+    except ValueError:
+        window = 24
+
+    if not (source and device_id and metric):
+        return JSONResponse(
+            {"ok": False, "message": "source, device_id, and metric are required."},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    data = _sensor_store(request).metric_history(source, device_id, metric, window_hours=window)
+    data["ok"] = True
+    return JSONResponse(data)
+
+
+@router.get("/api/insights/events")
+async def insights_events(request: Request) -> JSONResponse:
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+
+    try:
+        limit = max(1, min(500, int(request.query_params.get("limit", "100"))))
+    except ValueError:
+        limit = 100
+    source    = request.query_params.get("source")    or None
+    device_id = request.query_params.get("device_id") or None
+
+    events = _sensor_store(request).recent_events(limit=limit, source=source, device_id=device_id)
+    return JSONResponse({"ok": True, "events": events})
+
+
+@router.get("/api/insights/summary")
+async def insights_summary(request: Request) -> JSONResponse:
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+
+    store   = _sensor_store(request)
+    devices = store.live_devices()
+    stats   = store.summary_stats(devices)
+
+    continuity = _continuity_state(request)
+    if continuity is not None:
+        stats["anomaly_count"] = continuity.anomaly_count()
+
+    stats["ok"] = True
+    return JSONResponse(stats)
 
 
 @router.post("/api/network/wifi/scan")

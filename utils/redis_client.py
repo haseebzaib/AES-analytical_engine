@@ -74,3 +74,70 @@ class RedisClient:
     def notify_changed(self, key: str) -> None:
         """Signal to PES that config key has been updated. PES polls and reacts."""
         self.set(key, "1")
+
+    # ── Full RESP2 reader ────────────────────────────────────────────────
+    def _read_line(self, sock: socket.socket) -> bytes:
+        buf = bytearray()
+        while True:
+            b = sock.recv(1)
+            if not b:
+                break
+            buf += b
+            if buf.endswith(b"\r\n"):
+                return bytes(buf[:-2])
+        return bytes(buf)
+
+    def _read_n(self, sock: socket.socket, n: int) -> bytes:
+        data = bytearray()
+        while len(data) < n:
+            chunk = sock.recv(n - len(data))
+            if not chunk:
+                break
+            data += chunk
+        return bytes(data)
+
+    def _parse_resp2(self, sock: socket.socket):
+        line = self._read_line(sock)
+        if not line:
+            return None
+        indicator = chr(line[0])
+        rest = line[1:].decode("utf-8", errors="replace")
+        if indicator == "+":
+            return rest
+        if indicator == "-":
+            return None
+        if indicator == ":":
+            return int(rest)
+        if indicator == "$":
+            length = int(rest)
+            if length == -1:
+                return None
+            data = self._read_n(sock, length + 2)
+            return data[:-2].decode("utf-8", errors="replace")
+        if indicator == "*":
+            count = int(rest)
+            if count == -1:
+                return None
+            return [self._parse_resp2(sock) for _ in range(count)]
+        return None
+
+    def _send_full(self, *args: str):
+        try:
+            with socket.create_connection((self._host, self._port), timeout=self._timeout) as sock:
+                sock.sendall(self._build_command(*args))
+                return self._parse_resp2(sock)
+        except Exception as exc:
+            logger.debug("Redis %s failed: %s", args[0] if args else "cmd", exc)
+            return None
+
+    def get_full(self, key: str) -> Optional[str]:
+        """GET with full RESP2 parsing — supports arbitrarily large values."""
+        result = self._send_full("GET", key)
+        return result if isinstance(result, str) else None
+
+    def lrange(self, key: str, start: int, stop: int) -> list[str]:
+        """LRANGE — returns list of string elements."""
+        result = self._send_full("LRANGE", key, str(start), str(stop))
+        if isinstance(result, list):
+            return [r for r in result if isinstance(r, str)]
+        return []

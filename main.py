@@ -10,7 +10,13 @@ import uvicorn
 
 
 class _PollingEndpointFilter(logging.Filter):
-    _SKIP = frozenset(["/api/network/state", "/api/network/apply-result", "/api/system/metrics"])  # substring match covers /metrics/history too
+    _SKIP = frozenset([
+        "/api/network/state",
+        "/api/network/apply-result",
+        "/api/system/metrics",
+        "/api/insights/live",
+        "/api/insights/summary",
+    ])
 
     def filter(self, record: logging.LogRecord) -> bool:
         msg = record.getMessage()
@@ -23,6 +29,8 @@ from analytics_engine.network_settings_store import NetworkSettingsStore
 from analytics_engine.interfaces.rs232_config_store import Rs232ConfigStore
 from analytics_engine.interfaces.rs485_config_store import Rs485ConfigStore
 from analytics_engine.interfaces.modbus_tcp_config_store import ModbusTcpConfigStore
+from analytics_engine.sensor_store import SensorStore
+from analytics_engine.analytics.continuity import ContinuityState
 from utils.redis_client import RedisClient as RedisNotifier
 from analytics_engine.runtime import AnalyticsRuntime
 from analytics_engine.settings_store import SettingsStore
@@ -30,16 +38,20 @@ from analytics_engine.system_metrics_store import SystemMetricsStore
 from webpage.app import configure_webpage
 
 
-runtime = AnalyticsRuntime()
-gateway_root = Path(os.environ.get("METACRUST_GATEWAY_ROOT", "/opt/gateway"))
-storage_root = Path(os.environ.get("METACRUST_STORAGE_ROOT", str(gateway_root / "software_storage")))
-settings_store = SettingsStore(storage_root)
-network_settings_store = NetworkSettingsStore(gateway_root=gateway_root, storage_root=storage_root)
-system_metrics_store = SystemMetricsStore(gateway_root=gateway_root)
-rs232_config_store = Rs232ConfigStore(storage_root=storage_root)
-rs485_config_store = Rs485ConfigStore(storage_root=storage_root)
+gateway_root  = Path(os.environ.get("METACRUST_GATEWAY_ROOT",  "/opt/gateway"))
+storage_root  = Path(os.environ.get("METACRUST_STORAGE_ROOT",  str(gateway_root / "software_storage")))
+pes_db_path   = Path(os.environ.get("PES_DB_PATH", str(storage_root / "PES" / "pes.db")))
+
+settings_store          = SettingsStore(storage_root)
+network_settings_store  = NetworkSettingsStore(gateway_root=gateway_root, storage_root=storage_root)
+system_metrics_store    = SystemMetricsStore(gateway_root=gateway_root)
+rs232_config_store      = Rs232ConfigStore(storage_root=storage_root)
+rs485_config_store      = Rs485ConfigStore(storage_root=storage_root)
 modbus_tcp_config_store = ModbusTcpConfigStore(storage_root=storage_root)
-redis_notifier = RedisNotifier()
+redis_notifier          = RedisNotifier()
+sensor_store            = SensorStore(redis_notifier, db_path=pes_db_path)
+continuity_state        = ContinuityState()
+runtime                 = AnalyticsRuntime(sensor_store=sensor_store, continuity_state=continuity_state)
 
 
 @asynccontextmanager
@@ -50,15 +62,17 @@ async def lifespan(app: FastAPI):
     rs485_config_store.ensure_initialized()
     modbus_tcp_config_store.ensure_initialized()
     runtime.start()
-    app.state.runtime = runtime
-    app.state.gateway_root = gateway_root
-    app.state.settings_store = settings_store
-    app.state.network_settings_store = network_settings_store
-    app.state.system_metrics_store = system_metrics_store
-    app.state.rs232_config_store = rs232_config_store
-    app.state.rs485_config_store = rs485_config_store
+    app.state.runtime                 = runtime
+    app.state.gateway_root            = gateway_root
+    app.state.settings_store          = settings_store
+    app.state.network_settings_store  = network_settings_store
+    app.state.system_metrics_store    = system_metrics_store
+    app.state.rs232_config_store      = rs232_config_store
+    app.state.rs485_config_store      = rs485_config_store
     app.state.modbus_tcp_config_store = modbus_tcp_config_store
-    app.state.redis_notifier = redis_notifier
+    app.state.redis_notifier          = redis_notifier
+    app.state.sensor_store            = sensor_store
+    app.state.continuity_state        = continuity_state
     try:
         yield
     finally:
