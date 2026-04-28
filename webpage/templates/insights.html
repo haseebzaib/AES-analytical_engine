@@ -4,98 +4,89 @@
 {% block page_title %}Insights{% endblock %}
 
 {% block console_content %}
-<section class="ids-shell" data-insights-shell>
+<section class="ov-shell" data-insights-shell>
 
-    {# ── KPI strip ──────────────────────────────────────────────────────── #}
-    <div class="ids-kpi-strip">
-        <article class="ids-kpi-card">
-            <p class="ids-kpi-label">Active Devices</p>
-            <p class="ids-kpi-value" data-ins-kpi="devices">--</p>
-            <p class="ids-kpi-sub" data-ins-kpi-sub="devices">Awaiting sensor bus&hellip;</p>
-        </article>
-        <article class="ids-kpi-card">
-            <p class="ids-kpi-label">Data Quality</p>
-            <p class="ids-kpi-value" data-ins-kpi="quality">--%</p>
-            <div class="ids-kpi-bar-track"><div class="ids-kpi-bar-fill" data-ins-kpi-bar="quality"></div></div>
-            <p class="ids-kpi-sub" data-ins-kpi-sub="quality">Good / total metrics</p>
-        </article>
-        <article class="ids-kpi-card">
-            <p class="ids-kpi-label">Active Anomalies</p>
-            <p class="ids-kpi-value" data-ins-kpi="anomalies">--</p>
-            <p class="ids-kpi-sub" data-ins-kpi-sub="anomalies">Gaps or sensor errors</p>
-        </article>
-        <article class="ids-kpi-card">
-            <p class="ids-kpi-label">Last Event</p>
-            <p class="ids-kpi-value ids-kpi-value-sm" data-ins-kpi="last-event">--</p>
-            <p class="ids-kpi-sub" data-ins-kpi-sub="last-event">No events recorded</p>
-        </article>
-    </div>
+    {# ── Tab navigation ─────────────────────────────────────────────── #}
+    <nav class="ov-tabs" data-ov-tabs>
+        <button class="ov-tab is-current" data-ov-tab="overview">Overview</button>
+        <button class="ov-tab" data-ov-tab="sensors" disabled title="Coming in next phase">Sensors</button>
+        <button class="ov-tab" data-ov-tab="events"  disabled title="Coming in next phase">Events</button>
+    </nav>
 
-    {# ── Sensor dashboard ───────────────────────────────────────────────── #}
-    <div class="ids-section">
-        <header class="ids-section-head">
-            <div>
-                <p class="ids-section-label">Live Sensor Data</p>
-                <h2 class="ids-section-title">Active Sensors</h2>
-            </div>
-            <span class="ids-refresh-pill">
-                <span class="ids-refresh-dot"></span>
-                Refreshing every 3s
-            </span>
-        </header>
-
-        <p class="ids-empty-msg ids-hidden" data-ids-no-sensors>
-            No sensor interfaces are enabled. Go to <a href="/interfaces" class="ids-link">Interfaces</a> to configure your sensors.
-        </p>
-        <div class="ids-sensor-grid" data-ids-sensor-grid></div>
-    </div>
-
-    {# ── History drawer ─────────────────────────────────────────────────── #}
-    <div class="ids-history-drawer ids-hidden" data-ids-history-drawer>
-        <header class="ids-history-head">
-            <div class="ids-history-title-row">
-                <div>
-                    <p class="ids-history-device-name" data-ids-history-device>--</p>
-                    <p class="ids-history-metric-name" data-ids-history-metric>--</p>
-                </div>
-                <div class="ids-history-controls">
-                    <div class="ids-window-sel" data-ids-window-sel>
-                        <button class="ids-window-btn" data-window="1">1h</button>
-                        <button class="ids-window-btn ids-current" data-window="6">6h</button>
-                        <button class="ids-window-btn" data-window="24">24h</button>
-                        <button class="ids-window-btn" data-window="168">7d</button>
-                    </div>
-                    <button class="ids-close-btn" data-ids-history-close>&times;</button>
-                </div>
-            </div>
-            <div class="ids-history-stats">
-                <div class="ids-hstat"><span class="ids-hstat-label">Current</span><span class="ids-hstat-value" data-hstat="current">--</span></div>
-                <div class="ids-hstat"><span class="ids-hstat-label">Average</span><span class="ids-hstat-value" data-hstat="avg">--</span></div>
-                <div class="ids-hstat"><span class="ids-hstat-label">Min</span><span class="ids-hstat-value" data-hstat="min">--</span></div>
-                <div class="ids-hstat"><span class="ids-hstat-label">Max</span><span class="ids-hstat-value" data-hstat="max">--</span></div>
-                <div class="ids-hstat"><span class="ids-hstat-label">Samples</span><span class="ids-hstat-value" data-hstat="samples">--</span></div>
-            </div>
-        </header>
-        <div class="ids-history-chart-area" data-ids-history-chart>
-            <p class="ids-empty-msg" style="text-align:center">Select a metric to view history.</p>
+    {# ── No-sensors disabled state ───────────────────────────────────── #}
+    <div class="ov-no-sensors ov-hidden" data-ov-no-sensors>
+        <div class="ov-no-sensors-inner">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" style="opacity:.35">
+                <circle cx="24" cy="24" r="22" stroke="currentColor" stroke-width="2"/>
+                <path d="M14 24h4M30 24h4M24 14v4M24 30v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <circle cx="24" cy="24" r="4" stroke="currentColor" stroke-width="2"/>
+            </svg>
+            <h3 class="ov-no-sensors-title">No Active Sensors</h3>
+            <p class="ov-no-sensors-desc">
+                No sensor interfaces are currently enabled.<br>
+                Configure your interfaces to begin collecting data.
+            </p>
+            <a href="/interfaces" class="ov-no-sensors-action">Go to Interfaces &rarr;</a>
         </div>
     </div>
 
-    {# ── Event log ──────────────────────────────────────────────────────── #}
-    <div class="ids-section">
-        <header class="ids-section-head ids-section-head-wrap">
-            <div>
-                <p class="ids-section-label">Diagnostics</p>
-                <h2 class="ids-section-title">Event Log</h2>
-            </div>
-            <div class="ids-filter-bar">
-                <button class="ids-filter-btn ids-current" data-ids-filter="all">All</button>
-                <button class="ids-filter-btn" data-ids-filter="error">Error</button>
-                <button class="ids-filter-btn" data-ids-filter="warning">Warning</button>
-                <button class="ids-filter-btn" data-ids-filter="info">Info</button>
-            </div>
-        </header>
-        <div class="ids-event-list" data-ids-event-list></div>
+    {# ── Overview panel ──────────────────────────────────────────────── #}
+    <div class="ov-panel" data-ov-panel="overview">
+
+        {# KPI strip #}
+        <div class="ov-kpi-strip">
+            <article class="ov-kpi-card">
+                <p class="ov-kpi-label">Active Devices</p>
+                <p class="ov-kpi-value" data-ov-kpi="devices">--</p>
+                <p class="ov-kpi-sub" data-ov-kpi-sub="devices">of -- configured</p>
+            </article>
+            <article class="ov-kpi-card">
+                <p class="ov-kpi-label">Data Quality</p>
+                <p class="ov-kpi-value" data-ov-kpi="quality">--%</p>
+                <div class="ov-kpi-bar"><div class="ov-kpi-bar-fill" data-ov-kpi-bar="quality"></div></div>
+                <p class="ov-kpi-sub" data-ov-kpi-sub="quality">Good / total readings</p>
+            </article>
+            <article class="ov-kpi-card">
+                <p class="ov-kpi-label">Anomalies</p>
+                <p class="ov-kpi-value" data-ov-kpi="anomalies">--</p>
+                <p class="ov-kpi-sub" data-ov-kpi-sub="anomalies">Across all devices</p>
+            </article>
+            <article class="ov-kpi-card">
+                <p class="ov-kpi-label">System Health</p>
+                <p class="ov-kpi-value" data-ov-kpi="health">--%</p>
+                <div class="ov-kpi-bar"><div class="ov-kpi-bar-fill" data-ov-kpi-bar="health"></div></div>
+                <p class="ov-kpi-sub">Good readings / last hour</p>
+            </article>
+        </div>
+
+        {# Device card grid — populated by JS #}
+        <div class="ov-device-grid" data-ov-device-grid></div>
+
+        {# Active anomalies panel — shown only when issues exist #}
+        <div class="ov-anomalies-panel ov-hidden" data-ov-anomalies-panel>
+            <header class="ov-anomalies-head">
+                <span class="ov-anomalies-title">Active Issues</span>
+                <span class="ov-anomalies-count" data-ov-anomalies-count>0</span>
+            </header>
+            <div class="ov-anomalies-list" data-ov-anomalies-list></div>
+        </div>
+
+    </div>
+
+    {# ── Sensors panel (placeholder) ────────────────────────────────── #}
+    <div class="ov-panel ov-hidden" data-ov-panel="sensors">
+        <div class="ov-coming-soon">
+            <p class="ov-coming-soon-label">Sensors</p>
+            <p class="ov-coming-soon-desc">Per-device deep dive with full metric charts — coming next.</p>
+        </div>
+    </div>
+
+    {# ── Events panel (placeholder) ─────────────────────────────────── #}
+    <div class="ov-panel ov-hidden" data-ov-panel="events">
+        <div class="ov-coming-soon">
+            <p class="ov-coming-soon-label">Events</p>
+            <p class="ov-coming-soon-desc">Diagnostic timeline and event log — coming next.</p>
+        </div>
     </div>
 
 </section>

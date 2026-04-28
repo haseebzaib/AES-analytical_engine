@@ -1630,30 +1630,23 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     // ══════════════════════════════════════════════════════════════════════
-    //  Insights — IoT sensor analytics dashboard
+    //  Insights — Overview Command Dashboard
     // ══════════════════════════════════════════════════════════════════════
     const insightsShell = document.querySelector("[data-insights-shell]");
     if (insightsShell) {
 
         // ── State ────────────────────────────────────────────────────────
-        let idsConfigured    = [];           // static manifest from /api/insights/configured
-        let idsHistSrc       = null;
-        let idsHistDevId     = null;
-        let idsHistMetric    = null;
-        let idsHistWindow    = 6;
-        let idsEventFilter   = "all";
-        let idsAllEvents     = [];
+        let ovConfiguredCount = 0;   // total from /api/insights/configured
+        let ovLiveDevices     = [];  // latest from /api/insights/live
 
         // ── DOM refs ─────────────────────────────────────────────────────
-        const idsSensorGrid   = insightsShell.querySelector("[data-ids-sensor-grid]");
-        const idsNoSensors    = insightsShell.querySelector("[data-ids-no-sensors]");
-        const idsHistDrawer   = insightsShell.querySelector("[data-ids-history-drawer]");
-        const idsHistChart    = insightsShell.querySelector("[data-ids-history-chart]");
-        const idsEventList    = insightsShell.querySelector("[data-ids-event-list]");
-        const idsFilterBar    = insightsShell.querySelector(".ids-filter-bar");
-        const idsWindowSel    = insightsShell.querySelector("[data-ids-window-sel]");
+        const ovDeviceGrid    = insightsShell.querySelector("[data-ov-device-grid]");
+        const ovNoSensors     = insightsShell.querySelector("[data-ov-no-sensors]");
+        const ovAnomaliesPanel = insightsShell.querySelector("[data-ov-anomalies-panel]");
+        const ovAnomaliesList  = insightsShell.querySelector("[data-ov-anomalies-list]");
+        const ovAnomaliesCount = insightsShell.querySelector("[data-ov-anomalies-count]");
 
-        // ── Helpers ──────────────────────────────────────────────────────
+        // ── Helpers ───────────────────────────────────────────────────────
         const fmtAge = (s) => {
             if (s < 5)    return "just now";
             if (s < 60)   return `${Math.round(s)}s ago`;
@@ -1661,433 +1654,392 @@ document.addEventListener("DOMContentLoaded", () => {
             return `${Math.round(s / 3600)}h ago`;
         };
 
-        const fmtTs = (ms) =>
-            new Date(ms).toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-
-        const fmtDate = (ms) =>
-            new Date(ms).toLocaleDateString([], { month: "short", day: "numeric" });
-
-        const fmtNum = (v, decimals = 3) => {
+        const fmtVal = (v) => {
             if (v === null || v === undefined) return "--";
-            if (typeof v !== "number") return String(v);
-            return Number.isInteger(v) ? String(v) : v.toFixed(decimals);
+            if (typeof v !== "number") return String(v).trim();
+            if (Number.isInteger(v)) return String(v);
+            // Smart decimal: show enough significant digits without trailing zeros
+            const abs = Math.abs(v);
+            if (abs >= 100)  return v.toFixed(1);
+            if (abs >= 10)   return v.toFixed(2);
+            if (abs >= 1)    return v.toFixed(3);
+            return v.toFixed(4);
         };
 
-        const tpLabel = (tp) => {
+        // Known display names for common metric keys
+        const METRIC_LABELS = {
+            pm1: "PM1", pm25: "PM2.5", pm4: "PM4", pm10: "PM10", total: "Total PM",
+        };
+
+        const displayLabel = (rawName) => {
+            const clean = (rawName || "").trim();
+            return METRIC_LABELS[clean.toLowerCase()] ||
+                clean.replace(/[_]+/g, " ")
+                     .split(" ")
+                     .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+                     .join(" ");
+        };
+
+        const tpStr = (tp) => {
             if (!tp) return "";
-            if (tp.type === "serial")     return tp.endpoint || "";
-            if (tp.type === "modbus_rtu") return `${tp.endpoint || ""} · slave ${tp.slave_address || ""}`.trimEnd().replace(/ · $/, "");
+            if (tp.type === "serial")     return `${tp.endpoint || ""}`;
+            if (tp.type === "modbus_rtu") return `${tp.endpoint || ""}`;
             if (tp.type === "modbus_tcp") return `${tp.endpoint || ""}:${tp.port || 502} · ${tp.interface || "eth0"}`;
             return tp.endpoint || "";
         };
 
-        // ── Sparkline ────────────────────────────────────────────────────
-        const drawSparkline = (svgEl, values) => {
+        // ── Trend from sample array ────────────────────────────────────────
+        const computeTrend = (values) => {
+            if (!values || values.length < 10) return "flat";
+            const recent  = values.slice(-5);
+            const earlier = values.slice(-20, -15);
+            if (earlier.length < 3) return "flat";
+            const avg = (arr) => arr.reduce((a, b) => a + b, 0) / arr.length;
+            const recentAvg  = avg(recent);
+            const earlierAvg = avg(earlier);
+            const base = Math.abs(earlierAvg) || 1;
+            const pct  = (recentAvg - earlierAvg) / base * 100;
+            if (pct > 3)  return "up";
+            if (pct < -3) return "down";
+            return "flat";
+        };
+
+        // ── Sparkline SVG ────────────────────────────────────────────────
+        const drawSparkline = (svgEl, values, quality) => {
             if (!svgEl) return;
-            const W = 90, H = 28, pad = 2;
-            const uW = W - pad * 2, uH = H - pad * 2;
+            const W = svgEl.clientWidth || 100;
+            const H = 22;
+            const pad = 2;
+            const uH  = H - pad * 2;
+            const color = quality === "good"  ? "rgba(57,208,200,0.72)" :
+                          quality === "stale" ? "rgba(240,166,75,0.6)"  :
+                                               "rgba(220,80,80,0.55)";
 
             if (!values || values.length < 2) {
-                svgEl.innerHTML = `<line x1="0" y1="${H / 2}" x2="${W}" y2="${H / 2}" stroke="rgba(255,255,255,0.1)" stroke-dasharray="2,3"/>`;
+                svgEl.innerHTML = `<line x1="0" y1="${H/2}" x2="${W}" y2="${H/2}" stroke="rgba(255,255,255,0.08)" stroke-dasharray="2,3"/>`;
                 return;
             }
 
-            const min   = Math.min(...values);
-            const max   = Math.max(...values);
-            const range = max - min || 1;
-            const step  = uW / (values.length - 1);
-            const toX   = (i) => pad + i * step;
-            const toY   = (v) => pad + uH - ((v - min) / range) * uH;
+            const min = Math.min(...values);
+            const max = Math.max(...values);
+            const rng = max - min || 1;
+            const step = (W - pad * 2) / (values.length - 1);
+            const toX = (i) => pad + i * step;
+            const toY = (v) => pad + uH - ((v - min) / rng) * uH;
 
-            const path = values.map((v, i) => `${i === 0 ? "M" : "L"} ${toX(i).toFixed(1)},${toY(v).toFixed(1)}`).join(" ");
-            svgEl.innerHTML = `<path d="${path}" fill="none" stroke="rgba(57,208,200,0.72)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`;
+            // Area fill
+            const pathD = values.map((v, i) => `${i === 0 ? "M" : "L"} ${toX(i).toFixed(1)},${toY(v).toFixed(1)}`).join(" ");
+            const areaD = `${pathD} L ${toX(values.length-1).toFixed(1)},${H} L ${pad},${H} Z`;
+
+            svgEl.setAttribute("viewBox", `0 0 ${W} ${H}`);
+            svgEl.innerHTML = `
+                <path d="${areaD}" fill="${color.replace('0.72','0.1').replace('0.6','0.08').replace('0.55','0.07')}" stroke="none"/>
+                <path d="${pathD}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`;
         };
 
-        // ── KPI strip ────────────────────────────────────────────────────
-        const updateKPIs = async () => {
-            try {
-                const r = await fetch("/api/insights/summary");
-                const d = await r.json();
-                if (!d.ok) return;
+        // ── Build card skeleton from configured device ─────────────────────
+        const buildCard = (device) => {
+            const key     = `${device.source}:${device.device_id}`;
+            const type    = device.device_type || device.source || "sensor";
+            const tp      = tpStr(device.transport);
+            const metrics = device.expected_metrics || [];
 
-                const kpi    = (key) => insightsShell.querySelector(`[data-ins-kpi="${key}"]`);
-                const kpiSub = (key) => insightsShell.querySelector(`[data-ins-kpi-sub="${key}"]`);
-
-                const devEl = kpi("devices");
-                if (devEl) devEl.textContent = d.active_devices ?? "--";
-                const devSub = kpiSub("devices");
-                if (devSub) devSub.textContent = d.active_devices === 0 ? "No live sensors" : `of ${idsConfigured.length} configured`;
-
-                const qEl = kpi("quality");
-                if (qEl) qEl.textContent = `${d.quality_pct ?? "--"}%`;
-                const qBar = insightsShell.querySelector(`[data-ins-kpi-bar="quality"]`);
-                if (qBar) {
-                    const pct = d.quality_pct ?? 0;
-                    qBar.style.width = `${pct}%`;
-                    qBar.classList.toggle("is-warm", pct < 90 && pct >= 70);
-                    qBar.classList.toggle("is-hot",  pct < 70);
-                }
-
-                const anEl  = kpi("anomalies");
-                if (anEl)  anEl.textContent  = d.anomaly_count ?? "--";
-                const anSub = kpiSub("anomalies");
-                if (anSub) anSub.textContent = d.anomaly_count === 0 ? "All systems nominal" : "Gaps or errors detected";
-
-                const evEl  = kpi("last-event");
-                const evSub = kpiSub("last-event");
-                if (d.last_event_ms) {
-                    const age = (Date.now() - d.last_event_ms) / 1000;
-                    if (evEl)  evEl.textContent  = fmtAge(age);
-                    if (evSub) evSub.textContent = `${fmtDate(d.last_event_ms)} ${fmtTs(d.last_event_ms)}`;
-                }
-            } catch (_) { /* silent */ }
-        };
-
-        // ── Step 1: Load configured devices and build card skeletons ─────
-        const buildCardSkeleton = (device) => {
-            const key    = `${device.source}:${device.device_id}`;
-            const tpStr  = tpLabel(device.transport);
-            const type   = device.device_type || device.source || "sensor";
-
-            const metricsHTML = (device.expected_metrics || []).map((m) => `
-                <button class="ids-metric-row"
-                    data-ids-metric-btn
-                    data-source="${device.source}"
-                    data-device-id="${device.device_id}"
-                    data-metric="${m.name}">
-                    <div class="ids-metric-info">
-                        <span class="ids-metric-label">${m.name.toUpperCase()}</span>
-                        <div class="ids-metric-reading">
-                            <span class="ids-metric-val" data-ids-val="${m.name}">--</span>
-                            <span class="ids-metric-unit">${m.unit || ""}</span>
+            const metricRows = metrics.map((m) => {
+                const label = displayLabel(m.name);
+                const unit  = (m.unit || "").trim();
+                return `
+                    <div class="ov-metric-row" data-ov-metric="${m.name}">
+                        <span class="ov-metric-label" title="${label}">${label}</span>
+                        <div class="ov-metric-reading">
+                            <span class="ov-metric-val" data-ov-val>--</span>
+                            <span class="ov-metric-unit">${unit}</span>
+                            <span class="ov-trend" data-ov-trend></span>
                         </div>
-                    </div>
-                    <div class="ids-metric-chart-col">
-                        <svg class="ids-sparkline" data-ids-spark="${m.name}"
-                             viewBox="0 0 90 28" preserveAspectRatio="none">
-                            <line x1="0" y1="14" x2="90" y2="14"
-                                  stroke="rgba(255,255,255,0.1)" stroke-dasharray="2,3"/>
+                        <svg class="ov-sparkline" data-ov-spark height="22" preserveAspectRatio="none">
+                            <line x1="0" y1="11" x2="100" y2="11" stroke="rgba(255,255,255,0.08)" stroke-dasharray="2,3"/>
                         </svg>
-                        <span class="ids-quality-dot" data-ids-quality="${m.name}"></span>
-                    </div>
-                </button>`).join("");
+                        <span class="ov-quality-dot" data-ov-quality></span>
+                    </div>`;
+            }).join("");
 
             return `
-                <article class="ids-card" data-ids-card="${key}">
-                    <header class="ids-card-head">
+                <article class="ov-card" data-ov-card="${key}">
+                    <header class="ov-card-head">
                         <div>
-                            <p class="ids-card-name">${device.name}</p>
-                            <div class="ids-card-chips">
-                                <span class="ids-chip ids-chip-type">${type}</span>
-                                ${tpStr ? `<span class="ids-chip ids-chip-transport">${tpStr}</span>` : ""}
+                            <p class="ov-card-name">${device.name || device.device_id}</p>
+                            <div class="ov-card-chips">
+                                <span class="ov-chip ov-chip-type">${type}</span>
+                                ${tp ? `<span class="ov-chip ov-chip-transport">${tp}</span>` : ""}
                             </div>
                         </div>
-                        <span class="ids-card-status ids-status-awaiting" data-ids-card-status>
-                            <span class="ids-status-pulse"></span>
-                            <span class="ids-status-label">Awaiting</span>
+                        <span class="ov-status-badge ov-status-awaiting" data-ov-status>
+                            <span class="ov-status-pulse"></span>
+                            <span class="ov-status-text">Awaiting</span>
                         </span>
                     </header>
-                    <div class="ids-metric-list">${metricsHTML || "<p style='padding:1rem;color:var(--muted);font-size:.84rem'>No registers configured.</p>"}</div>
-                    <footer class="ids-card-foot" data-ids-last-seen>Awaiting first sample&hellip;</footer>
+                    <div class="ov-metric-list">
+                        ${metricRows || `<p style="padding:1rem;color:var(--muted);font-size:.84rem">No registers configured.</p>`}
+                    </div>
+                    <footer class="ov-card-foot">
+                        <div class="ov-health-row">
+                            <span class="ov-health-pct" data-ov-health-pct>-- health</span>
+                            <span class="ov-last-seen" data-ov-last-seen></span>
+                        </div>
+                        <div class="ov-health-bar-track">
+                            <div class="ov-health-bar-fill" data-ov-health-bar></div>
+                        </div>
+                    </footer>
                 </article>`;
         };
 
-        const loadConfigured = async () => {
-            try {
-                const r = await fetch("/api/insights/configured");
-                const d = await r.json();
-                if (!d.ok || !idsSensorGrid) return;
-
-                idsConfigured = d.devices || [];
-
-                if (idsConfigured.length === 0) {
-                    idsNoSensors?.classList.remove("ids-hidden");
-                    return;
-                }
-
-                idsNoSensors?.classList.add("ids-hidden");
-                idsSensorGrid.innerHTML = idsConfigured.map(buildCardSkeleton).join("");
-                wireMetricBtns();
-            } catch (_) { /* silent */ }
-        };
-
-        const wireMetricBtns = () => {
-            idsSensorGrid?.querySelectorAll("[data-ids-metric-btn]").forEach((btn) => {
-                btn.addEventListener("click", () => {
-                    openHistory(
-                        btn.getAttribute("data-source"),
-                        btn.getAttribute("data-device-id"),
-                        btn.getAttribute("data-metric"),
-                    );
-                });
-            });
-        };
-
-        // ── Step 2: Overlay live Redis data every 3s ─────────────────────
-        const applyLiveData = (devices) => {
-            if (!idsSensorGrid) return;
+        // ── Apply live data to existing card skeletons ─────────────────────
+        const applyLiveToCards = () => {
+            if (!ovDeviceGrid) return;
 
             const liveMap = {};
-            for (const d of devices) {
+            for (const d of ovLiveDevices) {
                 liveMap[`${d.source}:${d.device_id}`] = d;
             }
 
-            idsSensorGrid.querySelectorAll("[data-ids-card]").forEach((card) => {
-                const key        = card.getAttribute("data-ids-card");
-                const live       = liveMap[key];
-                const statusEl   = card.querySelector("[data-ids-card-status]");
-                const statusLabel = statusEl?.querySelector(".ids-status-label");
-                const lastSeenEl = card.querySelector("[data-ids-last-seen]");
+            const anomalies = [];
+
+            ovDeviceGrid.querySelectorAll("[data-ov-card]").forEach((card) => {
+                const key    = card.getAttribute("data-ov-card");
+                const live   = liveMap[key];
+                const status = card.querySelector("[data-ov-status]");
+                const stText = status?.querySelector(".ov-status-text");
 
                 if (!live) {
-                    if (statusEl) {
-                        statusEl.className = "ids-card-status ids-status-offline";
-                        if (statusLabel) statusLabel.textContent = "Offline";
+                    // Device configured but not live in Redis
+                    if (status) {
+                        status.className = "ov-status-badge ov-status-offline";
+                        if (stText) stText.textContent = "Offline";
                     }
                     return;
                 }
 
-                // Status badge
-                const sc = live.status === "ok" ? "ids-status-live" :
-                           live.status === "warning" ? "ids-status-warning" : "ids-status-error";
-                const sl = live.status === "ok" ? "Live" :
-                           live.status === "warning" ? "Warning" : "Error";
-                if (statusEl) {
-                    statusEl.className = `ids-card-status ${sc}`;
-                    if (statusLabel) statusLabel.textContent = sl;
+                // ── Status badge ──────────────────────────────────────────
+                const devStatus = live.status || "ok";
+                const sc = devStatus === "ok"      ? "ov-status-live"    :
+                           devStatus === "warning"  ? "ov-status-warning" :
+                                                     "ov-status-error";
+                const sl = devStatus === "ok" ? "Live" :
+                           devStatus === "warning" ? "Warning" : "Error";
+                if (status) {
+                    status.className = `ov-status-badge ${sc}`;
+                    if (stText) stText.textContent = sl;
                 }
+                card.classList.toggle("is-warning", devStatus === "warning");
+                card.classList.toggle("is-error",   devStatus === "error");
 
-                // Card border
-                card.classList.toggle("ids-card-warning", live.status === "warning");
-                card.classList.toggle("ids-card-error",   live.status === "error");
-
-                // Last seen
+                // ── Last seen ─────────────────────────────────────────────
+                const lastSeenEl = card.querySelector("[data-ov-last-seen]");
                 if (lastSeenEl && live.timestamp_ms) {
-                    const age = (Date.now() - live.timestamp_ms) / 1000;
-                    lastSeenEl.textContent = `Updated ${fmtAge(age)}`;
+                    lastSeenEl.textContent = fmtAge((Date.now() - live.timestamp_ms) / 1000);
                 }
 
-                // Metrics
-                const metrics = live.metrics  || {};
-                const samples = live._samples || {};
+                // ── Metric rows ───────────────────────────────────────────
+                const metrics  = live.metrics  || {};
+                const samples  = live._samples || {};
+                let goodCount  = 0;
+                let totalCount = 0;
 
-                for (const [mKey, m] of Object.entries(metrics)) {
-                    const valEl  = card.querySelector(`[data-ids-val="${mKey}"]`);
-                    const sparkEl = card.querySelector(`[data-ids-spark="${mKey}"]`);
-                    const qualEl = card.querySelector(`[data-ids-quality="${mKey}"]`);
+                card.querySelectorAll("[data-ov-metric]").forEach((row) => {
+                    const mkey    = row.getAttribute("data-ov-metric");
+                    const m       = metrics[mkey];
+                    const valEl   = row.querySelector("[data-ov-val]");
+                    const sparkEl = row.querySelector("[data-ov-spark]");
+                    const qualEl  = row.querySelector("[data-ov-quality]");
+                    const trendEl = row.querySelector("[data-ov-trend]");
 
+                    if (!m) return;
+
+                    totalCount++;
+                    const q = m.quality || "good";
+                    if (q === "good") goodCount++;
+
+                    // Value
                     if (valEl) {
-                        const decimals = (m.value !== null && typeof m.value === "number" && !Number.isInteger(m.value)) ? 3 : 0;
-                        valEl.textContent = fmtNum(m.value, decimals);
+                        valEl.textContent = fmtVal(m.value);
+                        valEl.className = `ov-metric-val${q === "stale" ? " is-stale" : q === "error" ? " is-error" : ""}`;
                     }
 
+                    // Sparkline
                     if (sparkEl) {
-                        drawSparkline(sparkEl, samples[mKey] || []);
+                        drawSparkline(sparkEl, samples[mkey] || [], q);
                     }
 
-                    if (qualEl) {
-                        const qc = m.quality === "good"  ? "ids-q-good"  :
-                                   m.quality === "stale" ? "ids-q-stale" : "ids-q-error";
-                        qualEl.className = `ids-quality-dot ${qc}`;
+                    // Trend arrow
+                    if (trendEl) {
+                        const trend = computeTrend(samples[mkey] || []);
+                        trendEl.textContent = trend === "up" ? "↑" : trend === "down" ? "↓" : "";
+                        trendEl.className   = `ov-trend ov-trend-${trend}`;
                     }
+
+                    // Quality dot
+                    if (qualEl) {
+                        qualEl.className = `ov-quality-dot${q === "good" ? " is-good" : q === "stale" ? " is-stale" : " is-error"}`;
+                    }
+
+                    // Collect anomaly
+                    if (q !== "good") {
+                        anomalies.push({
+                            device:   live.name || live.device_id,
+                            type:     q === "stale" ? "stale_data" : "metric_error",
+                            message:  `${displayLabel(mkey)}: ${q}`,
+                            severity: q === "stale" ? "warning" : "error",
+                        });
+                    }
+                });
+
+                // Device-level error
+                if (live.error) {
+                    anomalies.push({
+                        device:   live.name || live.device_id,
+                        type:     live.error.type || "device_error",
+                        message:  live.error.message || "",
+                        severity: live.error.severity || "error",
+                    });
+                }
+
+                // ── Health bar ────────────────────────────────────────────
+                const pct      = totalCount > 0 ? Math.round((goodCount / totalCount) * 100) : 100;
+                const hPctEl   = card.querySelector("[data-ov-health-pct]");
+                const hBarEl   = card.querySelector("[data-ov-health-bar]");
+                if (hPctEl)  hPctEl.textContent  = `${pct}% health`;
+                if (hBarEl) {
+                    hBarEl.style.width = `${pct}%`;
+                    hBarEl.className   = `ov-health-bar-fill${pct < 70 ? " is-crit" : pct < 90 ? " is-warn" : ""}`;
                 }
             });
+
+            // ── Anomalies panel ───────────────────────────────────────────
+            if (ovAnomaliesPanel) {
+                if (anomalies.length > 0) {
+                    ovAnomaliesPanel.classList.remove("ov-hidden");
+                    if (ovAnomaliesCount) ovAnomaliesCount.textContent = String(anomalies.length);
+                    if (ovAnomaliesList) {
+                        ovAnomaliesList.innerHTML = anomalies.map((a) => `
+                            <div class="ov-anomaly-item">
+                                <span class="ov-anomaly-sev is-${a.severity}"></span>
+                                <span class="ov-anomaly-device">${a.device}</span>
+                                <span class="ov-anomaly-type">${a.type}</span>
+                                <span class="ov-anomaly-msg">${a.message}</span>
+                            </div>`).join("");
+                    }
+                } else {
+                    ovAnomaliesPanel.classList.add("ov-hidden");
+                }
+            }
         };
 
+        // ── KPI Strip ─────────────────────────────────────────────────────
+        const updateKPIs = () => {
+            const kpi    = (k) => insightsShell.querySelector(`[data-ov-kpi="${k}"]`);
+            const kpiSub = (k) => insightsShell.querySelector(`[data-ov-kpi-sub="${k}"]`);
+
+            const liveCount = ovLiveDevices.length;
+            const devEl     = kpi("devices");
+            if (devEl) devEl.textContent = String(liveCount);
+            const devSub = kpiSub("devices");
+            if (devSub) devSub.textContent = `of ${ovConfiguredCount} configured`;
+
+            // Quality + health from live devices
+            let totalMetrics = 0, goodMetrics = 0;
+            for (const d of ovLiveDevices) {
+                for (const m of Object.values(d.metrics || {})) {
+                    totalMetrics++;
+                    if (m.quality === "good") goodMetrics++;
+                }
+            }
+            const qualPct   = totalMetrics > 0 ? Math.round((goodMetrics / totalMetrics) * 100) : (liveCount > 0 ? 100 : 0);
+            const healthPct = qualPct;  // same calculation for now; will use SQLite rollup later
+
+            const qEl = kpi("quality");
+            if (qEl) qEl.textContent = liveCount > 0 ? `${qualPct}%` : "--%";
+            const qBar = insightsShell.querySelector(`[data-ov-kpi-bar="quality"]`);
+            if (qBar) {
+                qBar.style.width  = `${qualPct}%`;
+                qBar.className    = `ov-kpi-bar-fill${qualPct < 70 ? " is-hot" : qualPct < 90 ? " is-warm" : ""}`;
+            }
+
+            const hEl = kpi("health");
+            if (hEl) hEl.textContent = liveCount > 0 ? `${healthPct}%` : "--%";
+            const hBar = insightsShell.querySelector(`[data-ov-kpi-bar="health"]`);
+            if (hBar) {
+                hBar.style.width = `${healthPct}%`;
+                hBar.className   = `ov-kpi-bar-fill${healthPct < 70 ? " is-hot" : healthPct < 90 ? " is-warm" : ""}`;
+            }
+
+            // Anomalies count
+            const anCount = ovLiveDevices.filter((d) => {
+                if (d.status !== "ok" || d.error) return true;
+                return Object.values(d.metrics || {}).some(m => m.quality !== "good");
+            }).length;
+            const anEl  = kpi("anomalies");
+            if (anEl) anEl.textContent = String(anCount);
+            const anSub = kpiSub("anomalies");
+            if (anSub) anSub.textContent = anCount === 0 ? "All systems nominal" : `${anCount} device${anCount > 1 ? "s" : ""} affected`;
+        };
+
+        // ── Load live data → overlay on skeletons ──────────────────────────
         const loadLive = async () => {
             try {
                 const r = await fetch("/api/insights/live");
-                const d = await r.json();
-                if (d.ok) applyLiveData(d.devices || []);
-            } catch (_) { /* silent */ }
-        };
-
-        // ── History drawer ───────────────────────────────────────────────
-        const openHistory = async (source, deviceId, metric) => {
-            idsHistSrc    = source;
-            idsHistDevId  = deviceId;
-            idsHistMetric = metric;
-
-            const devNameEl = idsHistDrawer?.querySelector("[data-ids-history-device]");
-            const metricEl  = idsHistDrawer?.querySelector("[data-ids-history-metric]");
-
-            const card    = idsSensorGrid?.querySelector(`[data-ids-card="${source}:${deviceId}"]`);
-            const devName = card?.querySelector(".ids-card-name")?.textContent ?? deviceId;
-
-            if (devNameEl) devNameEl.textContent = devName;
-            if (metricEl)  metricEl.textContent  = metric;
-
-            idsHistDrawer?.classList.remove("ids-hidden");
-            idsHistDrawer?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-
-            await loadHistory();
-        };
-
-        const loadHistory = async () => {
-            if (!idsHistSrc || !idsHistDevId || !idsHistMetric) return;
-
-            const params = new URLSearchParams({
-                source:    idsHistSrc,
-                device_id: idsHistDevId,
-                metric:    idsHistMetric,
-                window:    String(idsHistWindow),
-            });
-
-            try {
-                const r = await fetch(`/api/insights/history?${params}`);
+                if (!r.ok) return;
                 const d = await r.json();
                 if (!d.ok) return;
-
-                const ts  = d.timestamps || [];
-                const avg = d.avg || [];
-                const mn  = d.min || [];
-                const mx  = d.max || [];
-                const cnt = d.count || [];
-
-                const setHStat = (key, val) => {
-                    const el = idsHistDrawer?.querySelector(`[data-hstat="${key}"]`);
-                    if (el) el.textContent = typeof val === "number" ? fmtNum(val, 3) : (val ?? "--");
-                };
-
-                const last  = avg.length  > 0 ? avg[avg.length - 1] : null;
-                const mean  = avg.length  > 0 ? avg.reduce((a, b) => a + (b ?? 0), 0) / avg.length : null;
-                const allMn = mn.length   > 0 ? Math.min(...mn.filter((v) => v !== null)) : null;
-                const allMx = mx.length   > 0 ? Math.max(...mx.filter((v) => v !== null)) : null;
-                const sampleCount = cnt.reduce((a, b) => a + b, 0);
-
-                setHStat("current", last);
-                setHStat("avg",     mean);
-                setHStat("min",     allMn);
-                setHStat("max",     allMx);
-                setHStat("samples", sampleCount);
-
-                if (ts.length === 0) {
-                    if (idsHistChart) idsHistChart.innerHTML = `<p class="ids-empty-msg" style="width:100%;text-align:center">No history in this window. Data appears as sensors report.</p>`;
-                    return;
-                }
-
-                drawHistoryChart(ts, avg, mn, mx);
-            } catch (_) { /* silent */ }
-        };
-
-        const drawHistoryChart = (ts, avgVals, minVals, maxVals) => {
-            if (!idsHistChart) return;
-            const W   = idsHistChart.clientWidth || 600;
-            const H   = 130;
-            const pad = { t: 14, r: 16, b: 30, l: 44 };
-            const uW  = W - pad.l - pad.r;
-            const uH  = H - pad.t - pad.b;
-            const n   = ts.length;
-
-            const allV = [...avgVals, ...minVals, ...maxVals].filter((v) => v !== null);
-            const minV = allV.length > 0 ? Math.min(...allV) : 0;
-            const maxV = allV.length > 0 ? Math.max(...allV) : 1;
-            const rng  = maxV - minV || 1;
-
-            const toX = (i) => pad.l + (i / Math.max(1, n - 1)) * uW;
-            const toY = (v) => pad.t + uH - ((v - minV) / rng) * uH;
-            const safe = (arr, i) => (arr[i] !== null && arr[i] !== undefined) ? arr[i] : (minV + maxV) / 2;
-
-            const bandTop = maxVals.map((_, i) => `${i === 0 ? "M" : "L"} ${toX(i).toFixed(1)},${toY(safe(maxVals, i)).toFixed(1)}`).join(" ");
-            const bandBot = minVals.slice().reverse().map((_, i) => `L ${toX(n - 1 - i).toFixed(1)},${toY(safe(minVals, n - 1 - i)).toFixed(1)}`).join(" ");
-            const avgPath = avgVals.map((_, i) => `${i === 0 ? "M" : "L"} ${toX(i).toFixed(1)},${toY(safe(avgVals, i)).toFixed(1)}`).join(" ");
-
-            const labelStep = Math.max(1, Math.floor(n / 5));
-            const tLabels = ts.filter((_, i) => i % labelStep === 0 || i === n - 1).map((t, li, arr) => {
-                const origI = li === arr.length - 1 ? n - 1 : li * labelStep;
-                return `<text x="${toX(origI).toFixed(1)}" y="${H - 5}" text-anchor="middle" class="ids-chart-axis">${fmtTs(t)}</text>`;
-            }).join("");
-
-            const yLabels = [0, 0.5, 1].map((f) => {
-                const v = minV + f * rng;
-                return `<text x="${(pad.l - 5).toFixed(1)}" y="${toY(v).toFixed(1)}" text-anchor="end" dominant-baseline="middle" class="ids-chart-axis">${v.toFixed(2)}</text>`;
-            }).join("");
-
-            idsHistChart.innerHTML = `
-                <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">
-                    <path d="${bandTop} ${bandBot} Z" fill="rgba(57,208,200,0.1)" stroke="none"/>
-                    <path d="${avgPath}" fill="none" stroke="rgba(57,208,200,0.85)" stroke-width="1.8"
-                          stroke-linecap="round" stroke-linejoin="round"/>
-                    ${tLabels}
-                    ${yLabels}
-                </svg>`;
-        };
-
-        // History controls
-        idsHistDrawer?.querySelector("[data-ids-history-close]")?.addEventListener("click", () => {
-            idsHistDrawer.classList.add("ids-hidden");
-        });
-
-        idsWindowSel?.querySelectorAll(".ids-window-btn").forEach((btn) => {
-            btn.addEventListener("click", () => {
-                idsWindowSel.querySelectorAll(".ids-window-btn").forEach((b) => b.classList.remove("ids-current"));
-                btn.classList.add("ids-current");
-                idsHistWindow = parseInt(btn.getAttribute("data-window"), 10);
-                loadHistory();
-            });
-        });
-
-        // ── Event log ────────────────────────────────────────────────────
-        const renderEvents = () => {
-            if (!idsEventList) return;
-            const shown = idsEventFilter === "all"
-                ? idsAllEvents
-                : idsAllEvents.filter((e) => e.severity === idsEventFilter);
-
-            if (shown.length === 0) {
-                idsEventList.innerHTML = `<p class="ids-empty-msg">${
-                    idsAllEvents.length === 0
-                        ? "No events recorded — sensors reporting clean."
-                        : `No ${idsEventFilter} events found.`
-                }</p>`;
-                return;
+                ovLiveDevices = d.devices || [];
+                applyLiveToCards();
+                updateKPIs();
+            } catch (e) {
+                console.warn("[Insights] loadLive failed:", e);
             }
-
-            idsEventList.innerHTML = shown.map((ev) => {
-                const cls     = `ids-sev-${ev.severity || "info"}`;
-                const devName = ev.device_name || ev.device_id || "--";
-                const ts      = ev.timestamp_ms ? `${fmtDate(ev.timestamp_ms)} ${fmtTs(ev.timestamp_ms)}` : "--";
-                return `
-                    <div class="ids-event-item ${cls}" data-severity="${ev.severity}">
-                        <div class="ids-event-head">
-                            <span class="ids-sev-dot"></span>
-                            <span class="ids-ev-time">${ts}</span>
-                            <span class="ids-ev-device">${devName}</span>
-                            <span class="ids-ev-type">${ev.event_type || "--"}</span>
-                            <span class="ids-ev-source">${ev.source || ""}</span>
-                        </div>
-                        <p class="ids-ev-msg">${ev.message || ""}</p>
-                    </div>`;
-            }).join("");
         };
 
-        const loadEvents = async () => {
-            try {
-                const r = await fetch("/api/insights/events?limit=100");
-                const d = await r.json();
-                if (!d.ok) return;
-                idsAllEvents = d.events || [];
-                renderEvents();
-            } catch (_) { /* silent */ }
-        };
-
-        // Filter buttons
-        idsFilterBar?.querySelectorAll("[data-ids-filter]").forEach((btn) => {
+        // ── Tab switching ─────────────────────────────────────────────────
+        insightsShell.querySelectorAll("[data-ov-tab]").forEach((btn) => {
             btn.addEventListener("click", () => {
-                idsFilterBar.querySelectorAll("[data-ids-filter]").forEach((b) => b.classList.remove("ids-current"));
-                btn.classList.add("ids-current");
-                idsEventFilter = btn.getAttribute("data-ids-filter");
-                renderEvents();
+                if (btn.disabled) return;
+                insightsShell.querySelectorAll("[data-ov-tab]").forEach((b) => b.classList.remove("is-current"));
+                insightsShell.querySelectorAll("[data-ov-panel]").forEach((p) => p.classList.add("ov-hidden"));
+                btn.classList.add("is-current");
+                const panel = insightsShell.querySelector(`[data-ov-panel="${btn.getAttribute("data-ov-tab")}"]`);
+                panel?.classList.remove("ov-hidden");
             });
         });
 
-        // ── Bootstrap ────────────────────────────────────────────────────
-        loadConfigured().then(() => loadLive());
-        updateKPIs();
-        loadEvents();
+        // ── Bootstrap ─────────────────────────────────────────────────────
+        // Rebuild cards only when the configured device set changes
+        let ovConfiguredKeys = "";
 
-        setInterval(() => { loadLive(); updateKPIs(); }, 3000);
-        setInterval(loadEvents, 15000);
+        const refresh = async () => {
+            try {
+                const r = await fetch("/api/insights/configured");
+                if (r.ok) {
+                    const d = await r.json();
+                    if (d.ok) {
+                        const devices = d.devices || [];
+                        const keys    = devices.map((x) => `${x.source}:${x.device_id}`).join(",");
+                        ovConfiguredCount = devices.length;
+                        if (devices.length === 0) {
+                            ovNoSensors?.classList.remove("ov-hidden");
+                            if (ovDeviceGrid) ovDeviceGrid.innerHTML = "";
+                        } else {
+                            ovNoSensors?.classList.add("ov-hidden");
+                            if (keys !== ovConfiguredKeys && ovDeviceGrid) {
+                                ovDeviceGrid.innerHTML = devices.map(buildCard).join("");
+                                ovConfiguredKeys = keys;
+                            }
+                        }
+                    }
+                }
+            } catch (_) { /* silent */ }
+            await loadLive();
+        };
+
+        refresh();
+        setInterval(refresh, 3000);
     }
 
 });
