@@ -75,69 +75,99 @@ class SensorStore:
         return result
 
     def _log_device_state(self, state: dict, key: str) -> None:
-        """Log a single device state — compact summary at INFO, detail at DEBUG, problems at WARNING."""
+        """
+        Log one device state snapshot using the three-layer health model:
+          Layer 1 — device.status      (ok / warning / error)
+          Layer 2 — device.error       (null or active error block from PES)
+          Layer 3 — per-metric.quality (good / stale / error — authoritative)
+
+        Zeros are NOT treated as anomalies (doc rule: zeros are valid sensor values).
+        """
         metrics = state.get("metrics") or {}
         status  = state.get("status", "?")
-        error   = state.get("error")
+        error   = state.get("error")        # None when healthy, dict when PES reports a fault
         name    = state.get("name", key)
         now_ms  = int(time.time() * 1000)
         age_ms  = now_ms - (state.get("timestamp_ms") or 0)
 
-        # Analyse metric health
-        bad_quality   = {k: m for k, m in metrics.items() if m.get("quality") != "good"}
-        numeric_vals  = [m.get("value") for m in metrics.values()
-                         if isinstance(m.get("value"), (int, float))]
-        all_zero      = numeric_vals and all(v == 0 for v in numeric_vals)
-        no_numeric    = bool(metrics) and not numeric_vals
+        # Layer 3 — classify metrics by quality
+        stale_metrics = {k: m for k, m in metrics.items() if m.get("quality") == "stale"}
+        error_metrics = {k: m for k, m in metrics.items() if m.get("quality") == "error"}
 
-        # Compact metric summary for INFO line  e.g.  pm25=0.016 pm10=0.024
-        metric_summary = "  ".join(
-            f"{k}={m.get('value')!s:.8}"
-            for k, m in list(metrics.items())[:4]   # first 4 to keep line short
-        )
+        # Belt-and-suspenders: metrics whose own timestamp_ms is very old
+        # (covers cases where PES stops writing entirely without changing quality)
+        aged_metrics = {
+            k: m for k, m in metrics.items()
+            if m.get("timestamp_ms") and (now_ms - m["timestamp_ms"]) / 1000 > 30
+        }
+
+        # Compact metric summary: first 4 metrics with value + quality flag
+        parts = []
+        for k, m in list(metrics.items())[:4]:
+            q   = m.get("quality", "?")
+            val = m.get("value")
+            v   = f"{val:.5g}" if isinstance(val, (int, float)) else str(val)
+            flag = "" if q == "good" else f"[{q.upper()}]"
+            parts.append(f"{k}={v}{flag}")
+        summary = "  ".join(parts)
         if len(metrics) > 4:
-            metric_summary += f"  (+{len(metrics)-4} more)"
+            summary += f"  (+{len(metrics) - 4} more)"
 
         logger.info(
             "Device %-28s  status=%-8s  age=%4dms  %s",
-            name, status, age_ms, metric_summary,
+            name, status, age_ms, summary,
         )
 
-        # Device-level error block from PES
+        # Layer 2 — device error block set by PES
         if error:
+            details = error.get("details") or {}
             logger.warning(
-                "  └─ ERROR on %s: type=%-20s severity=%s  msg=%s",
-                name,
+                "  └─ PES ERROR  type=%-20s  severity=%-8s  msg=%s",
                 error.get("type", "?"),
                 error.get("severity", "?"),
                 error.get("message", ""),
             )
-
-        # Stale / bad quality metrics
-        if bad_quality:
-            for mkey, m in bad_quality.items():
+            if details.get("consecutive_failures"):
                 logger.warning(
-                    "  └─ STALE/BAD  %-20s quality=%-8s  last_val=%s",
-                    mkey,
-                    m.get("quality", "?"),
-                    m.get("value"),
+                    "  └─ consecutive_failures=%s  last_error=%s",
+                    details.get("consecutive_failures"),
+                    details.get("last_error", "?"),
                 )
 
-        # Connected but all-zero — likely not in measurement mode
-        if all_zero and status == "ok":
+        # Layer 3 — stale metrics (PES kept last known value but it is old)
+        for mkey, m in stale_metrics.items():
             logger.warning(
-                "  └─ NO MEASUREMENTS on %s — all numeric metrics are 0. "
-                "Device may not be in measurement mode.",
-                name,
+                "  └─ STALE  %-22s  last_val=%-12s  metric_age=%dms",
+                mkey,
+                m.get("value"),
+                now_ms - (m.get("timestamp_ms") or now_ms),
             )
 
-        # Per-metric full detail at DEBUG (file log only)
+        # Layer 3 — error metrics (this metric failed in the latest poll)
+        for mkey, m in error_metrics.items():
+            logger.warning(
+                "  └─ METRIC ERROR  %-22s  last_val=%s",
+                mkey,
+                m.get("value"),
+            )
+
+        # Belt-and-suspenders aged metrics
+        for mkey, m in aged_metrics.items():
+            if mkey not in stale_metrics and mkey not in error_metrics:
+                logger.warning(
+                    "  └─ AGED (no PES refresh)  %-22s  metric_age=%.0fs",
+                    mkey,
+                    (now_ms - m["timestamp_ms"]) / 1000,
+                )
+
+        # Full per-metric detail at DEBUG (log file only — not console)
         for mkey, m in metrics.items():
             val     = m.get("value")
             unit    = (m.get("unit") or "").strip()
             quality = m.get("quality", "?")
+            mage    = f"  mage={(now_ms - m['timestamp_ms'])//1000}s" if m.get("timestamp_ms") else ""
             val_str = f"{val:.5g}" if isinstance(val, (int, float)) else str(val)
-            logger.debug("    %-22s = %-12s %-8s [%s]", mkey, val_str, unit, quality)
+            logger.debug("    %-24s = %-12s %-8s [%s]%s", mkey, val_str, unit, quality, mage)
 
     def device_samples(self, source: str, device_id: str, limit: int = 100) -> list[dict]:
         """Read the rolling Redis sample buffer for one device."""
@@ -301,13 +331,17 @@ class SensorStore:
         anomaly_count = 0
 
         for device in devices:
+            status = device.get("status", "ok")
+            error  = device.get("error")
+            has_anomaly = status != "ok" or error is not None
             for m in (device.get("metrics") or {}).values():
                 total_metrics += 1
-                if m.get("quality") == "good":
+                q = m.get("quality", "good")
+                if q == "good":
                     good_metrics += 1
-            status = device.get("status", "ok")
-            age_s  = (now_ms - (device.get("timestamp_ms") or 0)) / 1000
-            if status in ("error", "warning") or age_s > 120:
+                else:
+                    has_anomaly = True   # stale or error metric counts as anomaly
+            if has_anomaly:
                 anomaly_count += 1
 
         quality_pct = round(100 * good_metrics / total_metrics) if total_metrics else 100
