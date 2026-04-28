@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import logging
+import logging.handlers
 import os
 import secrets
 from pathlib import Path
@@ -9,7 +10,43 @@ from starlette.middleware.sessions import SessionMiddleware
 import uvicorn
 
 
+# ── Logging setup ─────────────────────────────────────────────────────────────
+def _setup_logging(log_dir: Path) -> None:
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "aes.log"
+
+    fmt = logging.Formatter(
+        fmt="%(asctime)s  %(levelname)-8s  [%(name)s]  %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    # Console — INFO and above
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    console.setFormatter(fmt)
+
+    # Rotating file — DEBUG and above (10 MB × 5 files)
+    file_handler = logging.handlers.RotatingFileHandler(
+        log_file, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"
+    )
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(fmt)
+
+    root = logging.getLogger()
+    root.handlers.clear()          # remove any pre-existing handlers (prevents duplication)
+    root.setLevel(logging.DEBUG)
+    root.addHandler(console)
+    root.addHandler(file_handler)
+
+    # Silence noisy third-party loggers
+    logging.getLogger("uvicorn.error").setLevel(logging.INFO)
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    logging.getLogger("fastapi").setLevel(logging.WARNING)
+    logging.getLogger("multipart").setLevel(logging.WARNING)
+
+
 class _PollingEndpointFilter(logging.Filter):
+    """Keep high-frequency polling endpoints out of the access log."""
     _SKIP = frozenset([
         "/api/network/state",
         "/api/network/apply-result",
@@ -23,8 +60,18 @@ class _PollingEndpointFilter(logging.Filter):
         return not any(ep in msg for ep in self._SKIP)
 
 
+# ── Paths ─────────────────────────────────────────────────────────────────────
+gateway_root = Path(os.environ.get("METACRUST_GATEWAY_ROOT", "/opt/gateway"))
+storage_root = Path(os.environ.get("METACRUST_STORAGE_ROOT", str(gateway_root / "software_storage")))
+pes_db_path  = Path(os.environ.get("PES_DB_PATH", str(storage_root / "PES" / "pes.db")))
+log_dir      = Path(os.environ.get("AES_LOG_DIR",  str(gateway_root / "logs")))
+
+_setup_logging(log_dir)
 logging.getLogger("uvicorn.access").addFilter(_PollingEndpointFilter())
 
+logger = logging.getLogger(__name__)
+
+# ── Imports after logging is configured ───────────────────────────────────────
 from analytics_engine.network_settings_store import NetworkSettingsStore
 from analytics_engine.interfaces.rs232_config_store import Rs232ConfigStore
 from analytics_engine.interfaces.rs485_config_store import Rs485ConfigStore
@@ -37,11 +84,7 @@ from analytics_engine.settings_store import SettingsStore
 from analytics_engine.system_metrics_store import SystemMetricsStore
 from webpage.app import configure_webpage
 
-
-gateway_root  = Path(os.environ.get("METACRUST_GATEWAY_ROOT",  "/opt/gateway"))
-storage_root  = Path(os.environ.get("METACRUST_STORAGE_ROOT",  str(gateway_root / "software_storage")))
-pes_db_path   = Path(os.environ.get("PES_DB_PATH", str(storage_root / "PES" / "pes.db")))
-
+# ── Store instances ───────────────────────────────────────────────────────────
 settings_store          = SettingsStore(storage_root)
 network_settings_store  = NetworkSettingsStore(gateway_root=gateway_root, storage_root=storage_root)
 system_metrics_store    = SystemMetricsStore(gateway_root=gateway_root)
@@ -56,12 +99,26 @@ runtime                 = AnalyticsRuntime(sensor_store=sensor_store, continuity
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info("━━━ MetaCrust AES starting ━━━")
+    logger.info("  gateway_root : %s", gateway_root)
+    logger.info("  storage_root : %s", storage_root)
+    logger.info("  pes_db_path  : %s  (exists=%s)", pes_db_path, pes_db_path.exists())
+    logger.info("  log_dir      : %s", log_dir)
+
     app.state.session_nonce = secrets.token_urlsafe(16)
+
     network_settings_store.ensure_initialized()
     rs232_config_store.ensure_initialized()
     rs485_config_store.ensure_initialized()
     modbus_tcp_config_store.ensure_initialized()
+
+    redis_ok = redis_notifier.ping()
+    logger.info("  redis        : %s", "OK" if redis_ok else "UNREACHABLE — sensor data will be empty")
+
     runtime.start()
+    logger.info("  workers      : started (%d)", len(runtime._workers))
+    logger.info("━━━ AES ready ━━━")
+
     app.state.runtime                 = runtime
     app.state.gateway_root            = gateway_root
     app.state.settings_store          = settings_store
@@ -77,6 +134,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         runtime.stop()
+        logger.info("━━━ AES stopped ━━━")
 
 
 app = FastAPI(title="MetaCrust Edge Gateway", lifespan=lifespan)
@@ -85,4 +143,4 @@ configure_webpage(app)
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, log_config=None)

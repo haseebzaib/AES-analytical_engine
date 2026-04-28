@@ -1630,253 +1630,339 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     // ══════════════════════════════════════════════════════════════════════
-    //  Insights page — sensor analytics
+    //  Insights — IoT sensor analytics dashboard
     // ══════════════════════════════════════════════════════════════════════
     const insightsShell = document.querySelector("[data-insights-shell]");
     if (insightsShell) {
 
         // ── State ────────────────────────────────────────────────────────
-        let insHistorySource   = null;
-        let insHistoryDeviceId = null;
-        let insHistoryMetric   = null;
-        let insHistoryWindow   = 6;
-        let insEventFilter     = "all";
+        let idsConfigured    = [];           // static manifest from /api/insights/configured
+        let idsHistSrc       = null;
+        let idsHistDevId     = null;
+        let idsHistMetric    = null;
+        let idsHistWindow    = 6;
+        let idsEventFilter   = "all";
+        let idsAllEvents     = [];
 
-        // ── Element refs ─────────────────────────────────────────────────
-        const insDeviceGrid  = insightsShell.querySelector("[data-ins-device-grid]");
-        const insHistDrawer  = insightsShell.querySelector("[data-ins-history-drawer]");
-        const insHistChart   = insightsShell.querySelector("[data-ins-history-chart]");
-        const insEventList   = insightsShell.querySelector("[data-ins-event-list]");
-        const insEventFilter_ = insightsShell.querySelector("[data-ins-event-filter]");
+        // ── DOM refs ─────────────────────────────────────────────────────
+        const idsSensorGrid   = insightsShell.querySelector("[data-ids-sensor-grid]");
+        const idsNoSensors    = insightsShell.querySelector("[data-ids-no-sensors]");
+        const idsHistDrawer   = insightsShell.querySelector("[data-ids-history-drawer]");
+        const idsHistChart    = insightsShell.querySelector("[data-ids-history-chart]");
+        const idsEventList    = insightsShell.querySelector("[data-ids-event-list]");
+        const idsFilterBar    = insightsShell.querySelector(".ids-filter-bar");
+        const idsWindowSel    = insightsShell.querySelector("[data-ids-window-sel]");
 
         // ── Helpers ──────────────────────────────────────────────────────
-        const fmtAge = (seconds) => {
-            if (seconds < 5)    return "just now";
-            if (seconds < 60)   return `${Math.round(seconds)}s ago`;
-            if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
-            return `${Math.round(seconds / 3600)}h ago`;
+        const fmtAge = (s) => {
+            if (s < 5)    return "just now";
+            if (s < 60)   return `${Math.round(s)}s ago`;
+            if (s < 3600) return `${Math.round(s / 60)}m ago`;
+            return `${Math.round(s / 3600)}h ago`;
         };
 
-        const fmtTs = (ms) => new Date(ms).toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-        const fmtDate = (ms) => new Date(ms).toLocaleDateString([], { month: "short", day: "numeric" });
+        const fmtTs = (ms) =>
+            new Date(ms).toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
-        const fmtVal = (v) => {
+        const fmtDate = (ms) =>
+            new Date(ms).toLocaleDateString([], { month: "short", day: "numeric" });
+
+        const fmtNum = (v, decimals = 3) => {
             if (v === null || v === undefined) return "--";
             if (typeof v !== "number") return String(v);
-            return Number.isInteger(v) ? String(v) : v.toFixed(3);
+            return Number.isInteger(v) ? String(v) : v.toFixed(decimals);
+        };
+
+        const tpLabel = (tp) => {
+            if (!tp) return "";
+            if (tp.type === "serial")     return tp.endpoint || "";
+            if (tp.type === "modbus_rtu") return `${tp.endpoint || ""} · slave ${tp.slave_address || ""}`.trimEnd().replace(/ · $/, "");
+            if (tp.type === "modbus_tcp") return `${tp.endpoint || ""}:${tp.port || 502} · ${tp.interface || "eth0"}`;
+            return tp.endpoint || "";
+        };
+
+        // ── Sparkline ────────────────────────────────────────────────────
+        const drawSparkline = (svgEl, values) => {
+            if (!svgEl) return;
+            const W = 90, H = 28, pad = 2;
+            const uW = W - pad * 2, uH = H - pad * 2;
+
+            if (!values || values.length < 2) {
+                svgEl.innerHTML = `<line x1="0" y1="${H / 2}" x2="${W}" y2="${H / 2}" stroke="rgba(255,255,255,0.1)" stroke-dasharray="2,3"/>`;
+                return;
+            }
+
+            const min   = Math.min(...values);
+            const max   = Math.max(...values);
+            const range = max - min || 1;
+            const step  = uW / (values.length - 1);
+            const toX   = (i) => pad + i * step;
+            const toY   = (v) => pad + uH - ((v - min) / range) * uH;
+
+            const path = values.map((v, i) => `${i === 0 ? "M" : "L"} ${toX(i).toFixed(1)},${toY(v).toFixed(1)}`).join(" ");
+            svgEl.innerHTML = `<path d="${path}" fill="none" stroke="rgba(57,208,200,0.72)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`;
         };
 
         // ── KPI strip ────────────────────────────────────────────────────
-        const loadSummary = async () => {
+        const updateKPIs = async () => {
             try {
-                const res  = await fetch("/api/insights/summary");
-                const data = await res.json();
-                if (!data.ok) return;
+                const r = await fetch("/api/insights/summary");
+                const d = await r.json();
+                if (!d.ok) return;
 
-                const kpi = (key) => insightsShell.querySelector(`[data-ins-kpi="${key}"]`);
+                const kpi    = (key) => insightsShell.querySelector(`[data-ins-kpi="${key}"]`);
                 const kpiSub = (key) => insightsShell.querySelector(`[data-ins-kpi-sub="${key}"]`);
 
                 const devEl = kpi("devices");
-                if (devEl) devEl.textContent = data.active_devices ?? "--";
+                if (devEl) devEl.textContent = d.active_devices ?? "--";
+                const devSub = kpiSub("devices");
+                if (devSub) devSub.textContent = d.active_devices === 0 ? "No live sensors" : `of ${idsConfigured.length} configured`;
 
                 const qEl = kpi("quality");
-                if (qEl) qEl.textContent = `${data.quality_pct ?? "--"}%`;
-
+                if (qEl) qEl.textContent = `${d.quality_pct ?? "--"}%`;
                 const qBar = insightsShell.querySelector(`[data-ins-kpi-bar="quality"]`);
                 if (qBar) {
-                    const pct = data.quality_pct ?? 0;
+                    const pct = d.quality_pct ?? 0;
                     qBar.style.width = `${pct}%`;
                     qBar.classList.toggle("is-warm", pct < 90 && pct >= 70);
                     qBar.classList.toggle("is-hot",  pct < 70);
                 }
 
-                const anEl = kpi("anomalies");
-                if (anEl) anEl.textContent = data.anomaly_count ?? "--";
+                const anEl  = kpi("anomalies");
+                if (anEl)  anEl.textContent  = d.anomaly_count ?? "--";
                 const anSub = kpiSub("anomalies");
-                if (anSub) anSub.textContent = data.anomaly_count === 0 ? "All systems nominal" : "Gaps or sensor errors";
+                if (anSub) anSub.textContent = d.anomaly_count === 0 ? "All systems nominal" : "Gaps or errors detected";
 
-                const evEl = kpi("last-event");
+                const evEl  = kpi("last-event");
                 const evSub = kpiSub("last-event");
-                if (data.last_event_ms) {
-                    const age = (Date.now() - data.last_event_ms) / 1000;
+                if (d.last_event_ms) {
+                    const age = (Date.now() - d.last_event_ms) / 1000;
                     if (evEl)  evEl.textContent  = fmtAge(age);
-                    if (evSub) evSub.textContent = `${fmtDate(data.last_event_ms)} ${fmtTs(data.last_event_ms)}`;
+                    if (evSub) evSub.textContent = `${fmtDate(d.last_event_ms)} ${fmtTs(d.last_event_ms)}`;
                 }
             } catch (_) { /* silent */ }
         };
 
-        // ── Device card HTML ─────────────────────────────────────────────
-        const deviceCardHTML = (device) => {
-            const statusCls   = device.status === "ok" ? "is-ok" : device.status === "warning" ? "is-warning" : "is-error";
-            const statusLabel = device.status === "ok" ? "OK" : device.status === "warning" ? "Warning" : "Error";
-            const typeLabel   = device.device_type ?? device.source ?? "unknown";
-            const tp          = device.transport ?? {};
-            const tpStr       = [tp.type, tp.endpoint].filter(Boolean).join(" · ");
-            const now         = Date.now();
-            const age         = device.timestamp_ms ? (now - device.timestamp_ms) / 1000 : null;
-            const ageStr      = age !== null ? fmtAge(age) : "Never";
+        // ── Step 1: Load configured devices and build card skeletons ─────
+        const buildCardSkeleton = (device) => {
+            const key    = `${device.source}:${device.device_id}`;
+            const tpStr  = tpLabel(device.transport);
+            const type   = device.device_type || device.source || "sensor";
 
-            const metrics   = device.metrics ?? {};
-            const metricKeys = Object.keys(metrics);
-
-            const metricsHTML = metricKeys.length === 0
-                ? `<p class="ins-no-metrics">No metrics available</p>`
-                : metricKeys.map((mKey) => {
-                    const m        = metrics[mKey];
-                    const val      = fmtVal(m.value);
-                    const unit     = m.unit || "";
-                    const qCls     = m.quality === "good" ? "is-good" : m.quality === "stale" ? "is-stale" : "is-error";
-                    return `
-                        <button class="ins-metric-btn"
-                            data-mkey="${mKey}"
-                            data-source="${device.source}"
-                            data-device-id="${device.device_id}">
-                            <span class="ins-metric-name">${mKey}</span>
-                            <span class="ins-metric-value">${val}</span>
-                            <span class="ins-metric-row">
-                                <span class="ins-metric-unit">${unit}</span>
-                                <span class="ins-metric-quality ${qCls}"></span>
-                            </span>
-                        </button>`;
-                }).join("");
+            const metricsHTML = (device.expected_metrics || []).map((m) => `
+                <button class="ids-metric-row"
+                    data-ids-metric-btn
+                    data-source="${device.source}"
+                    data-device-id="${device.device_id}"
+                    data-metric="${m.name}">
+                    <div class="ids-metric-info">
+                        <span class="ids-metric-label">${m.name.toUpperCase()}</span>
+                        <div class="ids-metric-reading">
+                            <span class="ids-metric-val" data-ids-val="${m.name}">--</span>
+                            <span class="ids-metric-unit">${m.unit || ""}</span>
+                        </div>
+                    </div>
+                    <div class="ids-metric-chart-col">
+                        <svg class="ids-sparkline" data-ids-spark="${m.name}"
+                             viewBox="0 0 90 28" preserveAspectRatio="none">
+                            <line x1="0" y1="14" x2="90" y2="14"
+                                  stroke="rgba(255,255,255,0.1)" stroke-dasharray="2,3"/>
+                        </svg>
+                        <span class="ids-quality-dot" data-ids-quality="${m.name}"></span>
+                    </div>
+                </button>`).join("");
 
             return `
-                <article class="ins-device-card ${statusCls !== "is-ok" ? statusCls : ""}"
-                    data-device-key="${device.source}:${device.device_id}">
-                    <header class="ins-device-head">
-                        <div class="ins-device-head-left">
-                            <p class="ins-device-name">${device.name ?? device.device_id}</p>
-                            <div class="ins-device-chips">
-                                <span class="ins-type-badge">${typeLabel}</span>
-                                ${tpStr ? `<span class="ins-transport-chip">${tpStr}</span>` : ""}
+                <article class="ids-card" data-ids-card="${key}">
+                    <header class="ids-card-head">
+                        <div>
+                            <p class="ids-card-name">${device.name}</p>
+                            <div class="ids-card-chips">
+                                <span class="ids-chip ids-chip-type">${type}</span>
+                                ${tpStr ? `<span class="ids-chip ids-chip-transport">${tpStr}</span>` : ""}
                             </div>
                         </div>
-                        <span class="ins-status-badge ${statusCls}">
-                            <span class="ins-status-dot"></span>
-                            ${statusLabel}
+                        <span class="ids-card-status ids-status-awaiting" data-ids-card-status>
+                            <span class="ids-status-pulse"></span>
+                            <span class="ids-status-label">Awaiting</span>
                         </span>
                     </header>
-                    <div class="ins-metrics-grid">${metricsHTML}</div>
-                    <footer class="ins-device-foot">
-                        <span class="ins-last-seen">Last seen: ${ageStr}</span>
-                    </footer>
+                    <div class="ids-metric-list">${metricsHTML || "<p style='padding:1rem;color:var(--muted);font-size:.84rem'>No registers configured.</p>"}</div>
+                    <footer class="ids-card-foot" data-ids-last-seen>Awaiting first sample&hellip;</footer>
                 </article>`;
         };
 
-        // ── Wire metric buttons ──────────────────────────────────────────
+        const loadConfigured = async () => {
+            try {
+                const r = await fetch("/api/insights/configured");
+                const d = await r.json();
+                if (!d.ok || !idsSensorGrid) return;
+
+                idsConfigured = d.devices || [];
+
+                if (idsConfigured.length === 0) {
+                    idsNoSensors?.classList.remove("ids-hidden");
+                    return;
+                }
+
+                idsNoSensors?.classList.add("ids-hidden");
+                idsSensorGrid.innerHTML = idsConfigured.map(buildCardSkeleton).join("");
+                wireMetricBtns();
+            } catch (_) { /* silent */ }
+        };
+
         const wireMetricBtns = () => {
-            if (!insDeviceGrid) return;
-            insDeviceGrid.querySelectorAll(".ins-metric-btn").forEach((btn) => {
+            idsSensorGrid?.querySelectorAll("[data-ids-metric-btn]").forEach((btn) => {
                 btn.addEventListener("click", () => {
                     openHistory(
                         btn.getAttribute("data-source"),
                         btn.getAttribute("data-device-id"),
-                        btn.getAttribute("data-mkey"),
+                        btn.getAttribute("data-metric"),
                     );
                 });
             });
         };
 
-        // ── Load live devices ────────────────────────────────────────────
-        const loadDevices = async () => {
-            try {
-                const res  = await fetch("/api/insights/live");
-                const data = await res.json();
-                if (!data.ok || !insDeviceGrid) return;
+        // ── Step 2: Overlay live Redis data every 3s ─────────────────────
+        const applyLiveData = (devices) => {
+            if (!idsSensorGrid) return;
 
-                const devices  = data.devices ?? [];
-                const incoming = new Set(devices.map((d) => `${d.source}:${d.device_id}`));
+            const liveMap = {};
+            for (const d of devices) {
+                liveMap[`${d.source}:${d.device_id}`] = d;
+            }
 
-                if (devices.length === 0) {
-                    insDeviceGrid.innerHTML = `<p class="ins-empty-state" data-ins-device-empty>No active sensors detected. Enable interfaces and connect sensors.</p>`;
+            idsSensorGrid.querySelectorAll("[data-ids-card]").forEach((card) => {
+                const key        = card.getAttribute("data-ids-card");
+                const live       = liveMap[key];
+                const statusEl   = card.querySelector("[data-ids-card-status]");
+                const statusLabel = statusEl?.querySelector(".ids-status-label");
+                const lastSeenEl = card.querySelector("[data-ids-last-seen]");
+
+                if (!live) {
+                    if (statusEl) {
+                        statusEl.className = "ids-card-status ids-status-offline";
+                        if (statusLabel) statusLabel.textContent = "Offline";
+                    }
                     return;
                 }
 
-                // Remove stale cards
-                insDeviceGrid.querySelectorAll("[data-device-key]").forEach((el) => {
-                    if (!incoming.has(el.getAttribute("data-device-key"))) el.remove();
-                });
-
-                // Update/insert cards
-                for (const device of devices) {
-                    const key      = `${device.source}:${device.device_id}`;
-                    const existing = insDeviceGrid.querySelector(`[data-device-key="${key}"]`);
-                    const html     = deviceCardHTML(device);
-                    if (existing) {
-                        const tmp = document.createElement("div");
-                        tmp.innerHTML = html.trim();
-                        existing.replaceWith(tmp.firstElementChild);
-                    } else {
-                        insDeviceGrid.insertAdjacentHTML("beforeend", html);
-                    }
+                // Status badge
+                const sc = live.status === "ok" ? "ids-status-live" :
+                           live.status === "warning" ? "ids-status-warning" : "ids-status-error";
+                const sl = live.status === "ok" ? "Live" :
+                           live.status === "warning" ? "Warning" : "Error";
+                if (statusEl) {
+                    statusEl.className = `ids-card-status ${sc}`;
+                    if (statusLabel) statusLabel.textContent = sl;
                 }
 
-                insDeviceGrid.querySelector("[data-ins-device-empty]")?.remove();
-                wireMetricBtns();
+                // Card border
+                card.classList.toggle("ids-card-warning", live.status === "warning");
+                card.classList.toggle("ids-card-error",   live.status === "error");
+
+                // Last seen
+                if (lastSeenEl && live.timestamp_ms) {
+                    const age = (Date.now() - live.timestamp_ms) / 1000;
+                    lastSeenEl.textContent = `Updated ${fmtAge(age)}`;
+                }
+
+                // Metrics
+                const metrics = live.metrics  || {};
+                const samples = live._samples || {};
+
+                for (const [mKey, m] of Object.entries(metrics)) {
+                    const valEl  = card.querySelector(`[data-ids-val="${mKey}"]`);
+                    const sparkEl = card.querySelector(`[data-ids-spark="${mKey}"]`);
+                    const qualEl = card.querySelector(`[data-ids-quality="${mKey}"]`);
+
+                    if (valEl) {
+                        const decimals = (m.value !== null && typeof m.value === "number" && !Number.isInteger(m.value)) ? 3 : 0;
+                        valEl.textContent = fmtNum(m.value, decimals);
+                    }
+
+                    if (sparkEl) {
+                        drawSparkline(sparkEl, samples[mKey] || []);
+                    }
+
+                    if (qualEl) {
+                        const qc = m.quality === "good"  ? "ids-q-good"  :
+                                   m.quality === "stale" ? "ids-q-stale" : "ids-q-error";
+                        qualEl.className = `ids-quality-dot ${qc}`;
+                    }
+                }
+            });
+        };
+
+        const loadLive = async () => {
+            try {
+                const r = await fetch("/api/insights/live");
+                const d = await r.json();
+                if (d.ok) applyLiveData(d.devices || []);
             } catch (_) { /* silent */ }
         };
 
         // ── History drawer ───────────────────────────────────────────────
         const openHistory = async (source, deviceId, metric) => {
-            insHistorySource   = source;
-            insHistoryDeviceId = deviceId;
-            insHistoryMetric   = metric;
+            idsHistSrc    = source;
+            idsHistDevId  = deviceId;
+            idsHistMetric = metric;
 
-            const devNameEl    = insHistDrawer?.querySelector("[data-ins-history-device]");
-            const metricLabelEl = insHistDrawer?.querySelector("[data-ins-history-metric]");
+            const devNameEl = idsHistDrawer?.querySelector("[data-ids-history-device]");
+            const metricEl  = idsHistDrawer?.querySelector("[data-ids-history-metric]");
 
-            const card = insDeviceGrid?.querySelector(`[data-device-key="${source}:${deviceId}"]`);
-            const devName = card?.querySelector(".ins-device-name")?.textContent ?? deviceId;
+            const card    = idsSensorGrid?.querySelector(`[data-ids-card="${source}:${deviceId}"]`);
+            const devName = card?.querySelector(".ids-card-name")?.textContent ?? deviceId;
 
-            if (devNameEl)    devNameEl.textContent    = devName;
-            if (metricLabelEl) metricLabelEl.textContent = metric;
+            if (devNameEl) devNameEl.textContent = devName;
+            if (metricEl)  metricEl.textContent  = metric;
 
-            insHistDrawer?.classList.remove("is-hidden");
-            insHistDrawer?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            idsHistDrawer?.classList.remove("ids-hidden");
+            idsHistDrawer?.scrollIntoView({ behavior: "smooth", block: "nearest" });
 
             await loadHistory();
         };
 
         const loadHistory = async () => {
-            if (!insHistorySource || !insHistoryDeviceId || !insHistoryMetric) return;
+            if (!idsHistSrc || !idsHistDevId || !idsHistMetric) return;
 
             const params = new URLSearchParams({
-                source:    insHistorySource,
-                device_id: insHistoryDeviceId,
-                metric:    insHistoryMetric,
-                window:    String(insHistoryWindow),
+                source:    idsHistSrc,
+                device_id: idsHistDevId,
+                metric:    idsHistMetric,
+                window:    String(idsHistWindow),
             });
 
             try {
-                const res  = await fetch(`/api/insights/history?${params}`);
-                const data = await res.json();
-                if (!data.ok) return;
+                const r = await fetch(`/api/insights/history?${params}`);
+                const d = await r.json();
+                if (!d.ok) return;
 
-                const ts  = data.timestamps ?? [];
-                const avg = data.avg ?? [];
-                const mn  = data.min ?? [];
-                const mx  = data.max ?? [];
-                const cnt = data.count ?? [];
+                const ts  = d.timestamps || [];
+                const avg = d.avg || [];
+                const mn  = d.min || [];
+                const mx  = d.max || [];
+                const cnt = d.count || [];
 
                 const setHStat = (key, val) => {
-                    const el = insHistDrawer?.querySelector(`[data-hstat="${key}"]`);
-                    if (el) el.textContent = typeof val === "number" ? fmtVal(val) : (val ?? "--");
+                    const el = idsHistDrawer?.querySelector(`[data-hstat="${key}"]`);
+                    if (el) el.textContent = typeof val === "number" ? fmtNum(val, 3) : (val ?? "--");
                 };
 
-                const last    = avg.length > 0 ? avg[avg.length - 1] : null;
-                const allAvg  = avg.length > 0 ? avg.reduce((a, b) => a + (b ?? 0), 0) / avg.length : null;
-                const allMin  = mn.length  > 0 ? Math.min(...mn.filter((v) => v !== null)) : null;
-                const allMax  = mx.length  > 0 ? Math.max(...mx.filter((v) => v !== null)) : null;
-                const samples = cnt.reduce((a, b) => a + b, 0);
+                const last  = avg.length  > 0 ? avg[avg.length - 1] : null;
+                const mean  = avg.length  > 0 ? avg.reduce((a, b) => a + (b ?? 0), 0) / avg.length : null;
+                const allMn = mn.length   > 0 ? Math.min(...mn.filter((v) => v !== null)) : null;
+                const allMx = mx.length   > 0 ? Math.max(...mx.filter((v) => v !== null)) : null;
+                const sampleCount = cnt.reduce((a, b) => a + b, 0);
 
                 setHStat("current", last);
-                setHStat("avg",     allAvg);
-                setHStat("min",     allMin);
-                setHStat("max",     allMax);
-                setHStat("samples", samples);
+                setHStat("avg",     mean);
+                setHStat("min",     allMn);
+                setHStat("max",     allMx);
+                setHStat("samples", sampleCount);
 
                 if (ts.length === 0) {
-                    if (insHistChart) insHistChart.innerHTML = `<p class="ins-empty-state" style="width:100%">No history data in this window. Data will appear as sensors report.</p>`;
+                    if (idsHistChart) idsHistChart.innerHTML = `<p class="ids-empty-msg" style="width:100%;text-align:center">No history in this window. Data appears as sensors report.</p>`;
                     return;
                 }
 
@@ -1885,12 +1971,12 @@ document.addEventListener("DOMContentLoaded", () => {
         };
 
         const drawHistoryChart = (ts, avgVals, minVals, maxVals) => {
-            if (!insHistChart) return;
-            const W   = insHistChart.clientWidth || 600;
+            if (!idsHistChart) return;
+            const W   = idsHistChart.clientWidth || 600;
             const H   = 130;
-            const pad = { top: 14, right: 16, bottom: 30, left: 42 };
-            const uW  = W - pad.left - pad.right;
-            const uH  = H - pad.top  - pad.bottom;
+            const pad = { t: 14, r: 16, b: 30, l: 44 };
+            const uW  = W - pad.l - pad.r;
+            const uH  = H - pad.t - pad.b;
             const n   = ts.length;
 
             const allV = [...avgVals, ...minVals, ...maxVals].filter((v) => v !== null);
@@ -1898,110 +1984,109 @@ document.addEventListener("DOMContentLoaded", () => {
             const maxV = allV.length > 0 ? Math.max(...allV) : 1;
             const rng  = maxV - minV || 1;
 
-            const toX = (i) => pad.left + (i / Math.max(1, n - 1)) * uW;
-            const toY = (v) => pad.top  + uH - ((v - minV) / rng) * uH;
+            const toX = (i) => pad.l + (i / Math.max(1, n - 1)) * uW;
+            const toY = (v) => pad.t + uH - ((v - minV) / rng) * uH;
+            const safe = (arr, i) => (arr[i] !== null && arr[i] !== undefined) ? arr[i] : (minV + maxV) / 2;
 
-            const safePt = (vals, i) => vals[i] !== null && vals[i] !== undefined ? vals[i] : minV;
+            const bandTop = maxVals.map((_, i) => `${i === 0 ? "M" : "L"} ${toX(i).toFixed(1)},${toY(safe(maxVals, i)).toFixed(1)}`).join(" ");
+            const bandBot = minVals.slice().reverse().map((_, i) => `L ${toX(n - 1 - i).toFixed(1)},${toY(safe(minVals, n - 1 - i)).toFixed(1)}`).join(" ");
+            const avgPath = avgVals.map((_, i) => `${i === 0 ? "M" : "L"} ${toX(i).toFixed(1)},${toY(safe(avgVals, i)).toFixed(1)}`).join(" ");
 
-            const avgPath = avgVals.map((v, i) => `${i === 0 ? "M" : "L"} ${toX(i).toFixed(1)},${toY(safePt(avgVals, i)).toFixed(1)}`).join(" ");
-
-            const bandTop = maxVals.map((v, i) => `${i === 0 ? "M" : "L"} ${toX(i).toFixed(1)},${toY(safePt(maxVals, i)).toFixed(1)}`).join(" ");
-            const bandBot = minVals.slice().reverse().map((v, i) => `L ${toX(n - 1 - i).toFixed(1)},${toY(safePt(minVals, n - 1 - i)).toFixed(1)}`).join(" ");
-            const bandPath = `${bandTop} ${bandBot} Z`;
-
-            // Time axis labels
             const labelStep = Math.max(1, Math.floor(n / 5));
-            const timeLabels = ts
-                .filter((_, i) => i % labelStep === 0 || i === n - 1)
-                .map((t, li, arr) => {
-                    const origI = li === arr.length - 1 ? n - 1 : li * labelStep;
-                    return `<text x="${toX(origI).toFixed(1)}" y="${H - 6}" text-anchor="middle" class="ins-chart-axis-label">${fmtTs(t)}</text>`;
-                }).join("");
-
-            // Y axis labels
-            const yLabels = [0, 0.5, 1].map((frac) => {
-                const v = minV + frac * rng;
-                const y = toY(v);
-                return `<text x="${(pad.left - 6).toFixed(1)}" y="${y.toFixed(1)}" text-anchor="end" dominant-baseline="middle" class="ins-chart-axis-label">${v.toFixed(2)}</text>`;
+            const tLabels = ts.filter((_, i) => i % labelStep === 0 || i === n - 1).map((t, li, arr) => {
+                const origI = li === arr.length - 1 ? n - 1 : li * labelStep;
+                return `<text x="${toX(origI).toFixed(1)}" y="${H - 5}" text-anchor="middle" class="ids-chart-axis">${fmtTs(t)}</text>`;
             }).join("");
 
-            insHistChart.innerHTML = `
+            const yLabels = [0, 0.5, 1].map((f) => {
+                const v = minV + f * rng;
+                return `<text x="${(pad.l - 5).toFixed(1)}" y="${toY(v).toFixed(1)}" text-anchor="end" dominant-baseline="middle" class="ids-chart-axis">${v.toFixed(2)}</text>`;
+            }).join("");
+
+            idsHistChart.innerHTML = `
                 <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">
-                    <path d="${bandPath}" fill="rgba(57,208,200,0.1)" stroke="none"/>
-                    <path d="${avgPath}"  fill="none" stroke="rgba(57,208,200,0.85)" stroke-width="1.8"
-                          stroke-linejoin="round" stroke-linecap="round"/>
-                    ${timeLabels}
+                    <path d="${bandTop} ${bandBot} Z" fill="rgba(57,208,200,0.1)" stroke="none"/>
+                    <path d="${avgPath}" fill="none" stroke="rgba(57,208,200,0.85)" stroke-width="1.8"
+                          stroke-linecap="round" stroke-linejoin="round"/>
+                    ${tLabels}
                     ${yLabels}
                 </svg>`;
         };
 
         // History controls
-        insHistDrawer?.querySelector("[data-ins-history-close]")?.addEventListener("click", () => {
-            insHistDrawer.classList.add("is-hidden");
+        idsHistDrawer?.querySelector("[data-ids-history-close]")?.addEventListener("click", () => {
+            idsHistDrawer.classList.add("ids-hidden");
         });
 
-        insightsShell.querySelector("[data-ins-window-sel]")?.querySelectorAll(".ins-window-btn").forEach((btn) => {
+        idsWindowSel?.querySelectorAll(".ids-window-btn").forEach((btn) => {
             btn.addEventListener("click", () => {
-                insightsShell.querySelectorAll(".ins-window-btn").forEach((b) => b.classList.remove("is-current"));
-                btn.classList.add("is-current");
-                insHistoryWindow = parseInt(btn.getAttribute("data-window"), 10);
+                idsWindowSel.querySelectorAll(".ids-window-btn").forEach((b) => b.classList.remove("ids-current"));
+                btn.classList.add("ids-current");
+                idsHistWindow = parseInt(btn.getAttribute("data-window"), 10);
                 loadHistory();
             });
         });
 
-        // ── Events ───────────────────────────────────────────────────────
-        const eventItemHTML = (ev) => {
-            const cls     = ev.severity === "error" ? "is-error" : ev.severity === "warning" ? "is-warning" : "is-info";
-            const devName = ev.device_name ?? ev.device_id ?? "--";
-            const ts      = ev.timestamp_ms ? `${fmtDate(ev.timestamp_ms)} ${fmtTs(ev.timestamp_ms)}` : "--";
-            return `
-                <div class="ins-event-item ${cls}" data-severity="${ev.severity}">
-                    <div class="ins-event-head">
-                        <span class="ins-event-severity-dot"></span>
-                        <span class="ins-event-time">${ts}</span>
-                        <span class="ins-event-device">${devName}</span>
-                        <span class="ins-event-type">${ev.event_type ?? "--"}</span>
-                        <span class="ins-event-source">${ev.source ?? ""}</span>
-                    </div>
-                    <p class="ins-event-msg">${ev.message ?? ""}</p>
-                </div>`;
+        // ── Event log ────────────────────────────────────────────────────
+        const renderEvents = () => {
+            if (!idsEventList) return;
+            const shown = idsEventFilter === "all"
+                ? idsAllEvents
+                : idsAllEvents.filter((e) => e.severity === idsEventFilter);
+
+            if (shown.length === 0) {
+                idsEventList.innerHTML = `<p class="ids-empty-msg">${
+                    idsAllEvents.length === 0
+                        ? "No events recorded — sensors reporting clean."
+                        : `No ${idsEventFilter} events found.`
+                }</p>`;
+                return;
+            }
+
+            idsEventList.innerHTML = shown.map((ev) => {
+                const cls     = `ids-sev-${ev.severity || "info"}`;
+                const devName = ev.device_name || ev.device_id || "--";
+                const ts      = ev.timestamp_ms ? `${fmtDate(ev.timestamp_ms)} ${fmtTs(ev.timestamp_ms)}` : "--";
+                return `
+                    <div class="ids-event-item ${cls}" data-severity="${ev.severity}">
+                        <div class="ids-event-head">
+                            <span class="ids-sev-dot"></span>
+                            <span class="ids-ev-time">${ts}</span>
+                            <span class="ids-ev-device">${devName}</span>
+                            <span class="ids-ev-type">${ev.event_type || "--"}</span>
+                            <span class="ids-ev-source">${ev.source || ""}</span>
+                        </div>
+                        <p class="ids-ev-msg">${ev.message || ""}</p>
+                    </div>`;
+            }).join("");
         };
 
         const loadEvents = async () => {
             try {
-                const res  = await fetch("/api/insights/events?limit=100");
-                const data = await res.json();
-                if (!data.ok || !insEventList) return;
-
-                const events = data.events ?? [];
-                const shown  = insEventFilter === "all" ? events : events.filter((e) => e.severity === insEventFilter);
-
-                if (shown.length === 0) {
-                    insEventList.innerHTML = `<p class="ins-empty-state" data-ins-event-empty>${
-                        events.length === 0 ? "No events recorded. Sensors reporting clean." : `No ${insEventFilter} events found.`
-                    }</p>`;
-                    return;
-                }
-
-                insEventList.innerHTML = shown.map(eventItemHTML).join("");
+                const r = await fetch("/api/insights/events?limit=100");
+                const d = await r.json();
+                if (!d.ok) return;
+                idsAllEvents = d.events || [];
+                renderEvents();
             } catch (_) { /* silent */ }
         };
 
-        insEventFilter_?.querySelectorAll(".ins-filter-btn").forEach((btn) => {
+        // Filter buttons
+        idsFilterBar?.querySelectorAll("[data-ids-filter]").forEach((btn) => {
             btn.addEventListener("click", () => {
-                insEventFilter_?.querySelectorAll(".ins-filter-btn").forEach((b) => b.classList.remove("is-current"));
-                btn.classList.add("is-current");
-                insEventFilter = btn.getAttribute("data-filter");
-                loadEvents();
+                idsFilterBar.querySelectorAll("[data-ids-filter]").forEach((b) => b.classList.remove("ids-current"));
+                btn.classList.add("ids-current");
+                idsEventFilter = btn.getAttribute("data-ids-filter");
+                renderEvents();
             });
         });
 
-        // ── Bootstrap & auto-refresh ─────────────────────────────────────
-        loadSummary();
-        loadDevices();
+        // ── Bootstrap ────────────────────────────────────────────────────
+        loadConfigured().then(() => loadLive());
+        updateKPIs();
         loadEvents();
 
-        setInterval(() => { loadSummary(); loadDevices(); }, 3000);
+        setInterval(() => { loadLive(); updateKPIs(); }, 3000);
         setInterval(loadEvents, 15000);
     }
 

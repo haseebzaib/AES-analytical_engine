@@ -65,7 +65,7 @@ class AnalyticsRuntime:
             BackgroundWorker(name="health-rollup",   interval_seconds=10.0),
             BackgroundWorker(
                 name="sensor-analytics",
-                interval_seconds=30.0,
+                interval_seconds=5.0,
                 tick_fn=self._sensor_analytics_tick,
             ),
         ]
@@ -74,6 +74,7 @@ class AnalyticsRuntime:
     def _sensor_analytics_tick(self) -> None:
         if self._sensor_store is None or self._continuity_state is None:
             return
+        logger.debug("sensor-analytics tick: reading live devices from Redis")
         devices = self._sensor_store.live_devices()
         self._continuity_state.update(devices)
 

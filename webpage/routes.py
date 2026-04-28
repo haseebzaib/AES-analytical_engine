@@ -687,6 +687,23 @@ async def save_modbus_tcp_config(request: Request) -> JSONResponse:
     return JSONResponse(response, status_code=status_code)
 
 
+_RS232_PORT_MAP = {
+    "port_0": {"endpoint": "/dev/ttyAMA2", "channel": "Ch0"},
+    "port_1": {"endpoint": "/dev/ttyAMA3", "channel": "Ch1"},
+}
+_RS485_PORT_MAP = {
+    "port_2": {"endpoint": "/dev/ttyAMA4", "channel": "Ch2"},
+    "port_3": {"endpoint": "/dev/ttyAMA0", "channel": "Ch3"},
+}
+_DUSTRAK_METRICS = [
+    {"name": "pm1",   "unit": "mg/m³"},
+    {"name": "pm25",  "unit": "mg/m³"},
+    {"name": "pm4",   "unit": "mg/m³"},
+    {"name": "pm10",  "unit": "mg/m³"},
+    {"name": "total", "unit": "mg/m³"},
+]
+
+
 @router.get("/insights", response_class=HTMLResponse)
 async def insights_page(request: Request) -> HTMLResponse:
     if not _is_authenticated(request):
@@ -703,12 +720,105 @@ async def insights_page(request: Request) -> HTMLResponse:
     )
 
 
+@router.get("/api/insights/configured")
+async def insights_configured(request: Request) -> JSONResponse:
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+
+    rs232  = request.app.state.rs232_config_store.get_config()
+    rs485  = request.app.state.rs485_config_store.get_config()
+    modbus = request.app.state.modbus_tcp_config_store.get_config()
+
+    devices = []
+
+    # RS232
+    for port_id, meta in _RS232_PORT_MAP.items():
+        port = (rs232.get("rs232") or {}).get(port_id, {})
+        if not port.get("enabled"):
+            continue
+        sensor_type = port.get("sensor", "dustrak")
+        devices.append({
+            "source":           "rs232",
+            "device_id":        port_id,
+            "name":             f"{sensor_type.capitalize()} {meta['channel']}",
+            "device_type":      sensor_type,
+            "transport":        {"type": "serial", "endpoint": meta["endpoint"], "channel": meta["channel"]},
+            "expected_metrics": list(_DUSTRAK_METRICS),
+        })
+
+    # RS485 / Modbus RTU
+    for port_id, meta in _RS485_PORT_MAP.items():
+        port = (rs485.get("rs485") or {}).get(port_id, {})
+        if not port.get("enabled"):
+            continue
+        regs    = (port.get("modbus_rtu") or {}).get("registers", [])
+        metrics = [{"name": r["name"], "unit": r.get("unit", "")} for r in regs if r.get("name")]
+        if not metrics:
+            continue
+        devices.append({
+            "source":           "rs485",
+            "device_id":        port_id,
+            "name":             port.get("name") or port_id,
+            "device_type":      "modbus_rtu",
+            "transport":        {"type": "modbus_rtu", "endpoint": meta["endpoint"], "channel": meta["channel"]},
+            "expected_metrics": metrics,
+        })
+
+    # Modbus TCP
+    for conn in (modbus.get("connections") or []):
+        if not conn.get("enabled"):
+            continue
+        regs    = conn.get("registers", [])
+        metrics = [{"name": r["name"].strip(), "unit": r.get("unit", "").strip()} for r in regs if r.get("name", "").strip()]
+        if not metrics:
+            continue
+        devices.append({
+            "source":           "modbus_tcp",
+            "device_id":        conn["id"],
+            "name":             conn.get("name") or conn["id"],
+            "device_type":      "modbus_tcp",
+            "transport":        {
+                "type":      "modbus_tcp",
+                "endpoint":  conn.get("ip", ""),
+                "port":      conn.get("port", 502),
+                "interface": conn.get("interface", "eth0"),
+            },
+            "expected_metrics": metrics,
+        })
+
+    # Merge in any device PES is reporting via Redis that isn't already covered
+    configured_keys = {(d["source"], d["device_id"]) for d in devices}
+    for live in _sensor_store(request).live_devices():
+        key = (live.get("source"), live.get("device_id"))
+        if key in configured_keys:
+            continue
+        metrics = live.get("metrics") or {}
+        devices.append({
+            "source":           live.get("source", ""),
+            "device_id":        live.get("device_id", ""),
+            "name":             live.get("name") or live.get("device_id", ""),
+            "device_type":      live.get("device_type", ""),
+            "transport":        live.get("transport") or {},
+            "expected_metrics": [
+                {"name": k, "unit": (m.get("unit") or "").strip()}
+                for k, m in metrics.items()
+            ],
+        })
+
+    return JSONResponse({"ok": True, "devices": devices})
+
+
 @router.get("/api/insights/live")
 async def insights_live(request: Request) -> JSONResponse:
     if not _is_authenticated(request):
         return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
 
-    devices = _sensor_store(request).live_devices()
+    store   = _sensor_store(request)
+    devices = store.live_devices()
+    for device in devices:
+        device["_samples"] = store.device_samples_per_metric(
+            device["source"], device["device_id"], limit=60
+        )
     return JSONResponse({"ok": True, "devices": devices})
 
 
