@@ -9,8 +9,8 @@
     {# ── Tab navigation ─────────────────────────────────────────────── #}
     <nav class="ov-tabs" data-ov-tabs>
         <button class="ov-tab is-current" data-ov-tab="overview">Overview</button>
-        <button class="ov-tab" data-ov-tab="sensors" disabled title="Coming in next phase">Sensors</button>
-        <button class="ov-tab" data-ov-tab="events"  disabled title="Coming in next phase">Events</button>
+        <button class="ov-tab" data-ov-tab="sensors">Sensors</button>
+        <button class="ov-tab" data-ov-tab="events">Events</button>
     </nav>
 
     {# ── No-sensors disabled state ───────────────────────────────────── #}
@@ -64,20 +64,112 @@
 
     </div>
 
-    {# ── Sensors panel (placeholder) ────────────────────────────────── #}
+    {# ── Sensors panel ────────────────────────────────────────────── #}
     <div class="ov-panel ov-hidden" data-ov-panel="sensors">
-        <div class="ov-coming-soon">
-            <p class="ov-coming-soon-label">Sensors</p>
-            <p class="ov-coming-soon-desc">Per-device deep dive with full metric charts — coming next.</p>
+
+        {# Device selector tabs — populated by JS #}
+        <div class="sv-device-tabs" data-sv-device-tabs></div>
+
+        {# No-device state (shown when nothing is configured) #}
+        <div class="sv-no-device ov-hidden" data-sv-no-device>
+            No sensors configured. <a href="/interfaces" style="color:var(--accent-cool);margin-left:.4rem">Go to Interfaces →</a>
+        </div>
+
+        {# Two-column body: metric list (left) + chart area (right) #}
+        <div class="sv-body" data-sv-body>
+
+            {# Left: device header + metric rows — populated by JS #}
+            <aside class="sv-metric-col">
+                <div class="sv-device-header" data-sv-device-header></div>
+                <div class="sv-metric-list"   data-sv-metric-list></div>
+            </aside>
+
+            {# Right: window picker + chart + legend + stats #}
+            <div class="sv-chart-col">
+                <div class="sv-window-bar" data-sv-window-bar>
+                    <button class="sv-win-btn is-current" data-sv-win="1h">1 h</button>
+                    <button class="sv-win-btn"            data-sv-win="6h">6 h</button>
+                    <button class="sv-win-btn"            data-sv-win="24h">24 h</button>
+                    <button class="sv-win-btn"            data-sv-win="7d">7 d</button>
+                </div>
+                <div class="sv-chart-wrap">
+                    <svg class="sv-chart-svg" data-sv-chart preserveAspectRatio="none"></svg>
+                    <div class="sv-chart-empty" data-sv-chart-empty>
+                        Toggle metrics ON to see the chart.
+                    </div>
+                </div>
+                <div class="sv-chart-legend" data-sv-legend></div>
+                <div class="sv-stats-strip"  data-sv-stats></div>
+            </div>
+
         </div>
     </div>
 
-    {# ── Events panel (placeholder) ─────────────────────────────────── #}
+    {# ── Events panel ─────────────────────────────────────────────── #}
     <div class="ov-panel ov-hidden" data-ov-panel="events">
-        <div class="ov-coming-soon">
-            <p class="ov-coming-soon-label">Events</p>
-            <p class="ov-coming-soon-desc">Diagnostic timeline and event log — coming next.</p>
+
+        {# Alert rules card #}
+        <div class="ev-rules-card" data-ev-rules-card>
+            <header class="ev-rules-head">
+                <span class="ev-section-title">Alert Rules</span>
+                <span class="ev-rules-badge" data-ev-rules-badge>0</span>
+                <button class="ev-add-btn" data-ev-add-btn>+ Add Rule</button>
+            </header>
+            {# Add-rule form (hidden by default) #}
+            <div class="ev-add-form ev-hidden" data-ev-add-form>
+                <select class="ev-form-sel" data-ev-form-device>
+                    <option value="">Device…</option>
+                </select>
+                <select class="ev-form-sel" data-ev-form-metric>
+                    <option value="">Metric…</option>
+                </select>
+                <select class="ev-form-sel" data-ev-form-cond>
+                    <option value="gt">&gt;</option>
+                    <option value="lt">&lt;</option>
+                    <option value="gte">&ge;</option>
+                    <option value="lte">&le;</option>
+                    <option value="eq">=</option>
+                </select>
+                <input  class="ev-form-input" type="number" step="any" placeholder="Threshold" data-ev-form-threshold>
+                <select class="ev-form-sel" data-ev-form-severity>
+                    <option value="warning">Warning</option>
+                    <option value="critical">Critical</option>
+                </select>
+                <button class="ev-form-save-btn" data-ev-form-save>Save</button>
+                <button class="ev-form-cancel-btn" data-ev-form-cancel>Cancel</button>
+            </div>
+            <div class="ev-rules-list" data-ev-rules-list></div>
         </div>
+
+        {# Filter bar #}
+        <div class="ev-filter-bar">
+            <select class="ev-filter-sel" data-ev-filter-sev>
+                <option value="">All severities</option>
+                <option value="warning">Warning +</option>
+                <option value="error">Error only</option>
+            </select>
+            <select class="ev-filter-sel" data-ev-filter-device>
+                <option value="">All devices</option>
+            </select>
+            <div class="ev-window-bar">
+                <button class="ev-win-btn" data-ev-win="1h">1 h</button>
+                <button class="ev-win-btn is-current" data-ev-win="24h">24 h</button>
+                <button class="ev-win-btn" data-ev-win="7d">7 d</button>
+            </div>
+        </div>
+
+        {# Event timeline #}
+        <div class="ev-timeline" data-ev-timeline></div>
+
+        {# Empty state #}
+        <div class="ev-empty ov-hidden" data-ev-empty>
+            <svg width="40" height="40" viewBox="0 0 40 40" fill="none" style="opacity:.3">
+                <circle cx="20" cy="20" r="18" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M20 12v9M20 27v2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <p>No events in this time window.</p>
+        </div>
+
     </div>
 
 </section>

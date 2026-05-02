@@ -1,0 +1,143 @@
+{% extends "console_layout.html" %}
+
+{% block page_eyebrow %}Diagnostics{% endblock %}
+{% block page_title %}System Logs{% endblock %}
+
+{% block page_actions %}
+<div class="lg-toolbar">
+    <select class="lg-select" id="lg-level-filter">
+        <option value="">All levels</option>
+        <option value="INFO">INFO +</option>
+        <option value="WARNING">WARNING +</option>
+        <option value="ERROR">ERROR only</option>
+    </select>
+    <input class="lg-search" id="lg-search" type="search" placeholder="Search…" autocomplete="off">
+    <button class="ghost-action lg-pause-btn" id="lg-pause-btn" title="Pause auto-refresh">⏸ Pause</button>
+    <button class="ghost-action" id="lg-copy-btn" title="Copy visible lines to clipboard">Copy</button>
+</div>
+{% endblock %}
+
+{% block console_content %}
+<section class="lg-shell" data-lg-shell>
+
+    <div class="lg-meta">
+        <span class="lg-file-path">{{ log_file }}</span>
+        <span class="lg-count" id="lg-count"></span>
+        <span class="lg-status" id="lg-status">Loading…</span>
+    </div>
+
+    <div class="lg-viewport" id="lg-viewport">
+        <div class="lg-lines"  id="lg-lines"></div>
+    </div>
+
+</section>
+
+<script>
+(function () {
+    const linesEl  = document.getElementById("lg-lines");
+    const countEl  = document.getElementById("lg-count");
+    const statusEl = document.getElementById("lg-status");
+    const levelSel = document.getElementById("lg-level-filter");
+    const searchEl = document.getElementById("lg-search");
+    const pauseBtn = document.getElementById("lg-pause-btn");
+    const copyBtn  = document.getElementById("lg-copy-btn");
+    const viewport = document.getElementById("lg-viewport");
+
+    let paused       = false;
+    let lastTotal    = 0;
+    let autoScroll   = true;
+
+    // Colour mapping
+    const TONE_CLASS = { error: "lg-error", warn: "lg-warn", info: "lg-info", debug: "lg-debug" };
+
+    const escHtml = (s) => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+    const buildUrl = () => {
+        const p = new URLSearchParams({ lines: 500 });
+        const lv = levelSel?.value;
+        const q  = searchEl?.value.trim();
+        if (lv) p.set("level", lv);
+        if (q)  p.set("q", q);
+        return `/api/logs?${p}`;
+    };
+
+    const highlightSearch = (msg) => {
+        const q = searchEl?.value.trim();
+        if (!q) return escHtml(msg);
+        const safe = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return escHtml(msg).replace(new RegExp(`(${safe})`, "gi"), `<mark class="lg-mark">$1</mark>`);
+    };
+
+    const render = (lines) => {
+        if (!linesEl) return;
+        const html = lines.map((l) => {
+            const cls = TONE_CLASS[l.tone] || "lg-debug";
+            return `<div class="lg-line ${cls}"><span class="lg-ts">${escHtml(l.ts)}</span><span class="lg-lv">${escHtml(l.level)}</span><span class="lg-msg">${highlightSearch(l.message)}</span></div>`;
+        }).join("");
+        linesEl.innerHTML = html;
+        lastTotal = lines.length;
+        if (countEl) countEl.textContent = `${lines.length} line${lines.length !== 1 ? "s" : ""}`;
+    };
+
+    const fetchLogs = async () => {
+        if (paused) return;
+        try {
+            const r = await fetch(buildUrl());
+            const d = await r.json();
+            if (!d.ok) { if (statusEl) statusEl.textContent = d.message || "Error"; return; }
+            if (!d.exists) { if (statusEl) statusEl.textContent = "Log file not found yet."; render([]); return; }
+            render(d.lines || []);
+            if (statusEl) statusEl.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+            // Auto-scroll to bottom if user hasn't scrolled up
+            if (autoScroll && viewport) {
+                viewport.scrollTop = viewport.scrollHeight;
+            }
+        } catch (e) {
+            if (statusEl) statusEl.textContent = "Fetch failed";
+        }
+    };
+
+    // Detect manual scroll-up to stop auto-scroll
+    if (viewport) {
+        viewport.addEventListener("scroll", () => {
+            const atBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 40;
+            autoScroll = atBottom;
+        });
+    }
+
+    // Pause toggle
+    if (pauseBtn) {
+        pauseBtn.addEventListener("click", () => {
+            paused = !paused;
+            pauseBtn.textContent = paused ? "▶ Resume" : "⏸ Pause";
+            pauseBtn.classList.toggle("is-paused", paused);
+            if (!paused) fetchLogs();
+        });
+    }
+
+    // Copy to clipboard
+    if (copyBtn) {
+        copyBtn.addEventListener("click", () => {
+            const text = Array.from(linesEl?.querySelectorAll(".lg-line") || [])
+                .map((el) => el.textContent.trim())
+                .join("\n");
+            navigator.clipboard.writeText(text).catch(() => {});
+        });
+    }
+
+    // Re-fetch on filter change (debounced for search)
+    let searchTimer = null;
+    if (levelSel) levelSel.addEventListener("change", fetchLogs);
+    if (searchEl) {
+        searchEl.addEventListener("input", () => {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(fetchLogs, 300);
+        });
+    }
+
+    // Initial fetch + poll every 3 s
+    fetchLogs();
+    setInterval(fetchLogs, 3000);
+})();
+</script>
+{% endblock %}

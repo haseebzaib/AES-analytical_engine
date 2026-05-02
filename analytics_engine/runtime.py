@@ -12,6 +12,7 @@ from utils.led import toggle_led
 if TYPE_CHECKING:
     from analytics_engine.sensor_store import SensorStore
     from analytics_engine.analytics.continuity import ContinuityState
+    from analytics_engine.analytics.rules import RulesEngine
 
 logger = logging.getLogger(__name__)
 
@@ -54,10 +55,12 @@ class AnalyticsRuntime:
         self,
         sensor_store: "SensorStore | None" = None,
         continuity_state: "ContinuityState | None" = None,
+        rules_engine: "RulesEngine | None" = None,
     ) -> None:
         self._stop_event = Event()
         self._sensor_store = sensor_store
         self._continuity_state = continuity_state
+        self._rules_engine = rules_engine
 
         self._workers = [
             BackgroundWorker(name="analytics-loop",  interval_seconds=1.0,  tick_fn=toggle_led),
@@ -77,6 +80,8 @@ class AnalyticsRuntime:
         logger.debug("sensor-analytics tick: reading live devices from Redis")
         devices = self._sensor_store.live_devices()
         self._continuity_state.update(devices)
+        if self._rules_engine is not None:
+            self._rules_engine.tick(devices)
 
     def register_worker(
         self,

@@ -1,8 +1,10 @@
+import collections
 import hashlib
 import json
 import logging
 from pathlib import Path
 import subprocess
+import time as _time
 
 from fastapi import APIRouter, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -137,6 +139,7 @@ def _primary_sections(active_label: str) -> list[dict[str, object]]:
         ("Connectivity", "Conn", "/connectivity"),
         ("Security", "Sec", "#"),
         ("System", "Sys", "/system"),
+        ("Logs", "Log", "/logs"),
     ]
     return [
         {
@@ -148,6 +151,17 @@ def _primary_sections(active_label: str) -> list[dict[str, object]]:
         }
         for label, compact, href in items
     ]
+
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _session_user(request: Request) -> str:
+    return request.session.get("username", "unknown")
 
 
 def _is_authenticated(request: Request) -> bool:
@@ -326,12 +340,15 @@ async def login_action(request: Request) -> JSONResponse:
     username = str(payload.get("username", "")).strip()
     password = str(payload.get("password", ""))
 
+    ip = _client_ip(request)
     if _settings_store(request).verify_credentials(username, password):
         request.session["authenticated"] = True
         request.session["username"] = username
         request.session["session_nonce"] = getattr(request.app.state, "session_nonce", None)
+        logger.info("AUTH  login_success  user=%s  ip=%s", username, ip)
         return JSONResponse({"ok": True, "redirect": "/dashboard"})
 
+    logger.warning("AUTH  login_failed  user=%s  ip=%s", username, ip)
     return JSONResponse(
         {"ok": False, "message": "Invalid gateway credentials."},
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -340,6 +357,7 @@ async def login_action(request: Request) -> JSONResponse:
 
 @router.post("/logout")
 async def logout_action(request: Request) -> RedirectResponse:
+    logger.info("AUTH  logout  user=%s  ip=%s", _session_user(request), _client_ip(request))
     request.session.clear()
     return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -475,14 +493,17 @@ async def update_access(request: Request) -> JSONResponse:
     if new_password != confirm_password:
         return JSONResponse({"ok": False, "message": "New passwords do not match."}, status_code=status.HTTP_400_BAD_REQUEST)
 
+    old_user = _session_user(request)
     success, message = _settings_store(request).update_credentials(
         current_password=current_password,
         new_username=new_username,
         new_password=new_password,
     )
     if not success:
+        logger.warning("CONFIG  credentials_change_failed  user=%s  reason=%s", old_user, message)
         return JSONResponse({"ok": False, "message": message}, status_code=status.HTTP_400_BAD_REQUEST)
 
+    logger.info("CONFIG  credentials_changed  user=%s→%s", old_user, new_username)
     request.session["username"] = new_username
     return JSONResponse({"ok": True, "message": message})
 
@@ -504,6 +525,12 @@ async def save_network_settings(request: Request) -> JSONResponse:
     success, response = _network_settings_store(request).save_settings(payload)
     status_code = status.HTTP_200_OK if success else status.HTTP_400_BAD_REQUEST
     response["ok"] = success
+    uplink_cfg = payload.get("uplink") or {}
+    priority   = uplink_cfg.get("uplink_priority", [])
+    if success:
+        logger.info("CONFIG  network_saved  user=%s  priority=%s", _session_user(request), priority)
+    else:
+        logger.warning("CONFIG  network_save_failed  user=%s  reason=%s", _session_user(request), response.get("message", "unknown"))
     return JSONResponse(response, status_code=status_code)
 
 
@@ -512,6 +539,7 @@ async def apply_network_settings(request: Request) -> JSONResponse:
     if not _is_authenticated(request):
         return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
 
+    user = _session_user(request)
     success, response = _run_network_apply_service()
     response["ok"] = success
     response["result_path"] = str(_network_settings_store(request).layout.apply_result_file)
@@ -529,6 +557,10 @@ async def apply_network_settings(request: Request) -> JSONResponse:
         )
         response["ok"] = bool(apply_result.get("ok", True))
         success = response["ok"]
+    if success:
+        logger.info("CONFIG  network_applied  user=%s  uplink=%s", user, response.get("active_uplink", "?"))
+    else:
+        logger.error("CONFIG  network_apply_failed  user=%s  errors=%s", user, response.get("errors", []))
     status_code = status.HTTP_200_OK if success else status.HTTP_500_INTERNAL_SERVER_ERROR
     return JSONResponse(response, status_code=status_code)
 
@@ -646,6 +678,14 @@ async def save_rs232_config(request: Request) -> JSONResponse:
     success, response = request.app.state.rs232_config_store.save_config(payload)
     if success:
         request.app.state.redis_notifier.notify_changed("rs232_config")
+        ports = payload.get("rs232") or {}
+        summary = "  ".join(
+            f"{pid}={'ON' if p.get('enabled') else 'OFF'}({p.get('sensor','?')})"
+            for pid, p in ports.items()
+        ) or "no_ports"
+        logger.info("CONFIG  rs232_saved  user=%s  %s", _session_user(request), summary)
+    else:
+        logger.warning("CONFIG  rs232_save_failed  user=%s  reason=%s", _session_user(request), response.get("message", "unknown"))
     response["ok"] = success
     status_code = status.HTTP_200_OK if success else status.HTTP_400_BAD_REQUEST
     return JSONResponse(response, status_code=status_code)
@@ -670,6 +710,14 @@ async def save_rs485_config(request: Request) -> JSONResponse:
     success, response = request.app.state.rs485_config_store.save_config(payload)
     if success:
         request.app.state.redis_notifier.notify_changed("rs485_config")
+        ports = payload.get("rs485") or {}
+        summary = "  ".join(
+            f"{pid}={'ON' if p.get('enabled') else 'OFF'}({len((p.get('modbus_rtu') or {}).get('registers', []))} regs)"
+            for pid, p in ports.items()
+        ) or "no_ports"
+        logger.info("CONFIG  rs485_saved  user=%s  %s", _session_user(request), summary)
+    else:
+        logger.warning("CONFIG  rs485_save_failed  user=%s  reason=%s", _session_user(request), response.get("message", "unknown"))
     response["ok"] = success
     status_code = status.HTTP_200_OK if success else status.HTTP_400_BAD_REQUEST
     return JSONResponse(response, status_code=status_code)
@@ -694,6 +742,15 @@ async def save_modbus_tcp_config(request: Request) -> JSONResponse:
     success, response = request.app.state.modbus_tcp_config_store.save_config(payload)
     if success:
         request.app.state.redis_notifier.notify_changed("modbus_tcp_config")
+        conns   = payload.get("connections") or []
+        enabled = sum(1 for c in conns if c.get("enabled"))
+        names   = [c.get("name") or c.get("id", "?") for c in conns if c.get("enabled")]
+        logger.info(
+            "CONFIG  modbus_tcp_saved  user=%s  total=%d  enabled=%d  active=[%s]",
+            _session_user(request), len(conns), enabled, ", ".join(names),
+        )
+    else:
+        logger.warning("CONFIG  modbus_tcp_save_failed  user=%s  reason=%s", _session_user(request), response.get("message", "unknown"))
     response["ok"] = success
     status_code = status.HTTP_200_OK if success else status.HTTP_400_BAD_REQUEST
     return JSONResponse(response, status_code=status_code)
@@ -834,6 +891,18 @@ async def insights_live(request: Request) -> JSONResponse:
     return JSONResponse({"ok": True, "devices": devices})
 
 
+_WINDOW_MAP: dict[str, tuple[int, int]] = {
+    "1h":  (1,   60),    # window_hours, buckets
+    "6h":  (6,   180),
+    "24h": (24,  240),
+    "7d":  (168, 280),
+}
+
+
+def _analytical_store(request: Request):
+    return getattr(request.app.state, "analytical_store", None)
+
+
 @router.get("/api/insights/history")
 async def insights_history(request: Request) -> JSONResponse:
     if not _is_authenticated(request):
@@ -841,37 +910,199 @@ async def insights_history(request: Request) -> JSONResponse:
 
     source    = request.query_params.get("source", "").strip()
     device_id = request.query_params.get("device_id", "").strip()
-    metric    = request.query_params.get("metric", "").strip()
-    try:
-        window = max(1, min(744, int(request.query_params.get("window", "24"))))
-    except ValueError:
-        window = 24
+    window    = request.query_params.get("window", "1h").strip()
 
-    if not (source and device_id and metric):
+    # Accept either ?metrics=pm25,pm10 (new) or ?metric=pm25 (legacy single)
+    metrics_raw = request.query_params.get("metrics") or request.query_params.get("metric") or ""
+    metric_names = [m.strip() for m in metrics_raw.split(",") if m.strip()]
+
+    if not (source and device_id and metric_names):
         return JSONResponse(
-            {"ok": False, "message": "source, device_id, and metric are required."},
+            {"ok": False, "message": "source, device_id, and metrics are required."},
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
-    data = _sensor_store(request).metric_history(source, device_id, metric, window_hours=window)
-    data["ok"] = True
-    return JSONResponse(data)
+    window_hours, buckets = _WINDOW_MAP.get(window, _WINDOW_MAP["1h"])
+    store  = _sensor_store(request)
+    result = {}
+
+    for metric in metric_names[:8]:   # cap at 8 metrics per request
+        result[metric] = store.metric_history(
+            source, device_id, metric,
+            window_hours=window_hours,
+            buckets=buckets,
+        )
+
+    return JSONResponse({"ok": True, "window": window, "window_hours": window_hours, "metrics": result})
+
+
+_EVENTS_WINDOW_MAP: dict[str, int] = {
+    "1h": 1, "6h": 6, "24h": 24, "7d": 168,
+}
 
 
 @router.get("/api/insights/events")
 async def insights_events(request: Request) -> JSONResponse:
+    """
+    Merged event timeline: pes.db:sensor_events  +  analytical.db:alert_events.
+    Query params: window (1h/6h/24h/7d), source, device_id, severity, limit.
+    """
     if not _is_authenticated(request):
         return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
 
     try:
-        limit = max(1, min(500, int(request.query_params.get("limit", "100"))))
+        limit = max(1, min(500, int(request.query_params.get("limit", "200"))))
     except ValueError:
-        limit = 100
+        limit = 200
+
+    window_key = request.query_params.get("window", "24h")
+    window_h   = _EVENTS_WINDOW_MAP.get(window_key, 24)
+    since_ms   = int((_time.time() - window_h * 3600) * 1000)
+
     source    = request.query_params.get("source")    or None
     device_id = request.query_params.get("device_id") or None
+    severity  = (request.query_params.get("severity") or "").lower() or None
 
-    events = _sensor_store(request).recent_events(limit=limit, source=source, device_id=device_id)
-    return JSONResponse({"ok": True, "events": events})
+    # ── PES sensor events ────────────────────────────────────────────────────
+    pes_events = _sensor_store(request).recent_events(
+        limit=limit, source=source, device_id=device_id, since_ms=since_ms,
+    )
+    for e in pes_events:
+        e["origin"] = "pes"
+
+    # ── AES alert events ─────────────────────────────────────────────────────
+    astore = _analytical_store(request)
+    alert_events: list[dict] = []
+    if astore:
+        raw = astore.get_alert_events(
+            source=source, device_id=device_id, since_ms=since_ms, limit=limit,
+        )
+        for e in raw:
+            e["origin"]      = "alert"
+            e["event_type"]  = f"alert:{e['event_type']}"   # fired / resolved
+            e["device_name"] = e.get("device_id", "")       # best effort
+        alert_events = raw
+
+    # ── Merge + sort ─────────────────────────────────────────────────────────
+    merged = pes_events + alert_events
+    merged.sort(key=lambda e: e.get("timestamp_ms", 0), reverse=True)
+
+    # Severity filter (applied after merge)
+    if severity:
+        _sev_order = {"info": 0, "warning": 1, "error": 2, "critical": 2}
+        min_sev    = _sev_order.get(severity, 0)
+        merged     = [e for e in merged if _sev_order.get((e.get("severity") or "info").lower(), 0) >= min_sev]
+
+    merged = merged[:limit]
+
+    # ── Deduplicate consecutive identical events ───────────────────────────────
+    # Events are newest-first. Collapse runs of same (device_id + event_type)
+    # within a 10-minute window to avoid spam rows (e.g. stale_data every 5 s).
+    deduped: list[dict] = []
+    for ev in merged:
+        prev = deduped[-1] if deduped else None
+        same = (
+            prev is not None
+            and prev.get("device_id")  == ev.get("device_id")
+            and prev.get("source")     == ev.get("source")
+            and prev.get("event_type") == ev.get("event_type")
+            and (prev.get("timestamp_ms", 0) - ev.get("timestamp_ms", 0)) < 600_000  # 10 min
+        )
+        if same:
+            prev["_count"] = prev.get("_count", 1) + 1
+            prev["_first_ts"] = ev.get("timestamp_ms")   # oldest timestamp in the run
+        else:
+            deduped.append(dict(ev))
+
+    return JSONResponse({"ok": True, "events": deduped, "window": window_key})
+
+
+# ── Alert rules CRUD ──────────────────────────────────────────────────────────
+
+@router.get("/api/insights/alert-rules")
+async def get_alert_rules(request: Request) -> JSONResponse:
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+    store = _analytical_store(request)
+    if store is None:
+        return JSONResponse({"ok": True, "rules": []})
+    rules = store.get_alert_rules()
+    return JSONResponse({"ok": True, "rules": rules})
+
+
+@router.post("/api/insights/alert-rules")
+async def create_alert_rule(request: Request) -> JSONResponse:
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+    store = _analytical_store(request)
+    if store is None:
+        return JSONResponse({"ok": False, "message": "Analytical store unavailable."}, status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    payload = await request.json()
+    required = ("source", "device_id", "metric_name", "condition", "threshold")
+    missing  = [k for k in required if not payload.get(k) and payload.get(k) != 0]
+    if missing:
+        return JSONResponse({"ok": False, "message": f"Missing: {', '.join(missing)}"}, status_code=status.HTTP_400_BAD_REQUEST)
+    if payload["condition"] not in ("gt", "lt", "gte", "lte", "eq"):
+        return JSONResponse({"ok": False, "message": "condition must be gt/lt/gte/lte/eq"}, status_code=status.HTTP_400_BAD_REQUEST)
+    try:
+        payload["threshold"] = float(payload["threshold"])
+    except (ValueError, TypeError):
+        return JSONResponse({"ok": False, "message": "threshold must be a number"}, status_code=status.HTTP_400_BAD_REQUEST)
+
+    rule_id = store.create_alert_rule(payload)
+    if rule_id < 0:
+        return JSONResponse({"ok": False, "message": "Failed to save rule."}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # Tell the rules engine to reload immediately
+    re = getattr(request.app.state, "rules_engine", None)
+    if re:
+        re.reload()
+
+    logger.info(
+        "CONFIG  alert_rule_created  user=%s  device=%s/%s  metric=%s  cond=%s  threshold=%s  severity=%s",
+        _session_user(request), payload["source"], payload["device_id"],
+        payload["metric_name"], payload["condition"], payload["threshold"],
+        payload.get("severity", "warning"),
+    )
+    return JSONResponse({"ok": True, "rule_id": rule_id})
+
+
+@router.delete("/api/insights/alert-rules/{rule_id}")
+async def delete_alert_rule(request: Request, rule_id: int) -> JSONResponse:
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+    store = _analytical_store(request)
+    if store is None:
+        return JSONResponse({"ok": False, "message": "Analytical store unavailable."}, status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
+    ok = store.delete_alert_rule(rule_id)
+    if ok:
+        re = getattr(request.app.state, "rules_engine", None)
+        if re:
+            re.reload()
+        logger.info("CONFIG  alert_rule_deleted  user=%s  rule_id=%d", _session_user(request), rule_id)
+    return JSONResponse({"ok": ok})
+
+
+@router.put("/api/insights/alert-rules/{rule_id}")
+async def toggle_alert_rule(request: Request, rule_id: int) -> JSONResponse:
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+    store = _analytical_store(request)
+    if store is None:
+        return JSONResponse({"ok": False, "message": "Analytical store unavailable."}, status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
+    payload = await request.json()
+    enabled = bool(payload.get("enabled", True))
+    ok      = store.set_rule_enabled(rule_id, enabled)
+    if ok:
+        re = getattr(request.app.state, "rules_engine", None)
+        if re:
+            re.reload()
+        logger.info(
+            "CONFIG  alert_rule_toggled  user=%s  rule_id=%d  enabled=%s",
+            _session_user(request), rule_id, enabled,
+        )
+    return JSONResponse({"ok": ok})
 
 
 @router.get("/api/insights/summary")
@@ -900,3 +1131,87 @@ async def scan_wifi_networks(request: Request) -> JSONResponse:
     response["ok"] = success and bool(response.get("ok", True))
     status_code = status.HTTP_200_OK if response["ok"] else status.HTTP_500_INTERNAL_SERVER_ERROR
     return JSONResponse(response, status_code=status_code)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Log viewer
+# ══════════════════════════════════════════════════════════════════════════════
+
+_LOG_FILE = Path("/opt/gateway/logs/aes.log")
+_LOG_LEVEL_COLOURS = {"ERROR": "error", "WARNING": "warn", "INFO": "info", "DEBUG": "debug"}
+
+
+def _parse_log_lines(raw_lines: list[str]) -> list[dict]:
+    """Parse AES log lines into structured dicts the template can render."""
+    parsed = []
+    for line in raw_lines:
+        line = line.rstrip()
+        if not line:
+            continue
+        # Format: "YYYY-MM-DD HH:MM:SS  LEVEL     [name]  message"
+        parts = line.split(None, 3)   # timestamp, time, level, rest
+        if len(parts) == 4:
+            ts    = f"{parts[0]} {parts[1]}"
+            level = parts[2].rstrip()
+            rest  = parts[3]
+            tone  = _LOG_LEVEL_COLOURS.get(level, "debug")
+        else:
+            ts, level, rest, tone = "", "INFO", line, "info"
+        parsed.append({"ts": ts, "level": level, "tone": tone, "message": rest})
+    return parsed
+
+
+@router.get("/logs", response_class=HTMLResponse)
+async def logs_page(request: Request) -> HTMLResponse:
+    if not _is_authenticated(request):
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    return templates.TemplateResponse(
+        request,
+        "logs.html",
+        {
+            "product_name":     "MetaCrust Edge Gateway",
+            "page_title":       "System Logs",
+            "primary_sections": _primary_sections("Logs"),
+            "log_file":         str(_LOG_FILE),
+        },
+    )
+
+
+@router.get("/api/logs")
+async def get_logs(request: Request) -> JSONResponse:
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+
+    try:
+        lines_param = max(50, min(2000, int(request.query_params.get("lines", "200"))))
+    except ValueError:
+        lines_param = 200
+
+    level_filter = request.query_params.get("level", "").upper()   # ERROR / WARNING / INFO / "" (all)
+    search       = request.query_params.get("q", "").lower()
+
+    if not _LOG_FILE.exists():
+        return JSONResponse({"ok": True, "lines": [], "file": str(_LOG_FILE), "exists": False})
+
+    try:
+        # Read file tail efficiently
+        with _LOG_FILE.open("r", encoding="utf-8", errors="replace") as f:
+            raw = collections.deque(f, maxlen=lines_param * 4)   # over-read, then filter
+        raw_list = list(raw)
+    except OSError as exc:
+        return JSONResponse({"ok": False, "message": f"Cannot read log: {exc}"}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    parsed = _parse_log_lines(raw_list)
+
+    # Apply filters
+    if level_filter:
+        order = ["DEBUG", "INFO", "WARNING", "ERROR"]
+        min_idx = order.index(level_filter) if level_filter in order else 0
+        parsed = [l for l in parsed if order.index(l["level"]) >= min_idx if l["level"] in order]
+    if search:
+        parsed = [l for l in parsed if search in l["message"].lower() or search in l["ts"].lower()]
+
+    # Return last N lines after filtering
+    parsed = parsed[-lines_param:]
+
+    return JSONResponse({"ok": True, "lines": parsed, "file": str(_LOG_FILE), "exists": True, "total": len(parsed)})

@@ -368,3 +368,179 @@ class AnalyticalStore:
             return 0
         finally:
             conn.close()
+
+    # ── Alert rules (Tier 1) ──────────────────────────────────────────────────
+
+    def get_alert_rules(
+        self,
+        source: str | None = None,
+        device_id: str | None = None,
+        enabled_only: bool = False,
+    ) -> list[dict]:
+        """Return all configured alert rules, optionally filtered."""
+        conn = self._open()
+        if conn is None:
+            return []
+        conditions: list[str] = []
+        params: list = []
+        if source:
+            conditions.append("source = ?"); params.append(source)
+        if device_id:
+            conditions.append("device_id = ?"); params.append(device_id)
+        if enabled_only:
+            conditions.append("enabled = 1")
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        try:
+            rows = conn.execute(
+                f"SELECT * FROM alert_rules {where} ORDER BY id ASC", params
+            ).fetchall()
+            return [dict(r) for r in rows]
+        except Exception as exc:
+            logger.warning("analytical.db: get_alert_rules failed: %s", exc)
+            return []
+        finally:
+            conn.close()
+
+    def create_alert_rule(self, rule: dict) -> int:
+        """
+        Insert a new alert rule. Expected keys:
+          source, device_id, metric_name, condition, threshold, severity
+        Returns the new rule id, or -1 on failure.
+        """
+        with self._lock:
+            conn = self._open()
+            if conn is None:
+                return -1
+            try:
+                cur = conn.execute(
+                    """
+                    INSERT INTO alert_rules
+                        (source, device_id, metric_name, condition, threshold, severity, enabled, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+                    """,
+                    (
+                        rule["source"], rule["device_id"], rule["metric_name"],
+                        rule["condition"], float(rule["threshold"]),
+                        rule.get("severity", "warning"),
+                        int(time.time() * 1000),
+                    ),
+                )
+                conn.commit()
+                return cur.lastrowid or -1
+            except Exception as exc:
+                logger.error("analytical.db: create_alert_rule failed: %s", exc)
+                return -1
+            finally:
+                conn.close()
+
+    def delete_alert_rule(self, rule_id: int) -> bool:
+        """Delete a rule by id. Returns True on success."""
+        with self._lock:
+            conn = self._open()
+            if conn is None:
+                return False
+            try:
+                conn.execute("DELETE FROM alert_rules WHERE id = ?", (rule_id,))
+                conn.commit()
+                return True
+            except Exception as exc:
+                logger.warning("analytical.db: delete_alert_rule failed: %s", exc)
+                return False
+            finally:
+                conn.close()
+
+    def set_rule_enabled(self, rule_id: int, enabled: bool) -> bool:
+        """Enable or disable a rule. Returns True on success."""
+        with self._lock:
+            conn = self._open()
+            if conn is None:
+                return False
+            try:
+                conn.execute(
+                    "UPDATE alert_rules SET enabled = ? WHERE id = ?",
+                    (1 if enabled else 0, rule_id),
+                )
+                conn.commit()
+                return True
+            except Exception as exc:
+                logger.warning("analytical.db: set_rule_enabled failed: %s", exc)
+                return False
+            finally:
+                conn.close()
+
+    # ── Alert events (Tier 1) ─────────────────────────────────────────────────
+
+    def add_alert_event(self, event: dict) -> None:
+        """
+        Write one alert event. Expected keys:
+          rule_id (optional), source, device_id, metric_name (optional),
+          event_type, severity, message, value_at_event (optional), timestamp_ms
+        """
+        with self._lock:
+            conn = self._open()
+            if conn is None:
+                return
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO alert_events
+                        (rule_id, source, device_id, metric_name,
+                         event_type, severity, message, value_at_event, timestamp_ms)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        event.get("rule_id"),
+                        event["source"],
+                        event["device_id"],
+                        event.get("metric_name"),
+                        event["event_type"],
+                        event.get("severity", "warning"),
+                        event.get("message", ""),
+                        event.get("value_at_event"),
+                        event["timestamp_ms"],
+                    ),
+                )
+                conn.commit()
+            except Exception as exc:
+                logger.error("analytical.db: add_alert_event failed: %s", exc)
+            finally:
+                conn.close()
+
+    def get_alert_events(
+        self,
+        source: str | None = None,
+        device_id: str | None = None,
+        since_ms: int | None = None,
+        limit: int = 200,
+    ) -> list[dict]:
+        """Return alert events, newest first, optionally filtered."""
+        conn = self._open()
+        if conn is None:
+            return []
+        conditions: list[str] = []
+        params: list = []
+        if source:
+            conditions.append("source = ?"); params.append(source)
+        if device_id:
+            conditions.append("device_id = ?"); params.append(device_id)
+        if since_ms:
+            conditions.append("timestamp_ms > ?"); params.append(since_ms)
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        params.append(limit)
+        try:
+            rows = conn.execute(
+                f"""
+                SELECT id, rule_id, source, device_id, metric_name,
+                       event_type, severity, message, value_at_event, timestamp_ms
+                FROM alert_events {where}
+                ORDER BY timestamp_ms DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
+            return [dict(r) for r in rows]
+        except Exception as exc:
+            logger.warning("analytical.db: get_alert_events failed: %s", exc)
+            return []
+        finally:
+            conn.close()
