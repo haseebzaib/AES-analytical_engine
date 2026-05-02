@@ -2676,6 +2676,195 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
             }
 
+            // ══════════════════════════════════════════════════════════════════════
+            //  Analytics panel — Rolling Stats (Tier 2) + Trends (Tier 3)
+            // ══════════════════════════════════════════════════════════════════════
+            const svAnalyticsPanel = svPanel.querySelector(".sv-analytics-panel");
+            const svStatsTable     = svPanel.querySelector("[data-sv-stats-table]");
+            const svStatsEmpty     = svPanel.querySelector("[data-sv-stats-empty]");
+            const svTrendsList     = svPanel.querySelector("[data-sv-trends-list]");
+            const svTrendsEmpty    = svPanel.querySelector("[data-sv-trends-empty]");
+
+            // ── Analytics panel tab switching ──────────────────────────────────
+            if (svAnalyticsPanel) {
+                svAnalyticsPanel.querySelectorAll("[data-sv-atab]").forEach((btn) => {
+                    btn.addEventListener("click", () => {
+                        const tab = btn.getAttribute("data-sv-atab");
+                        svAnalyticsPanel.querySelectorAll("[data-sv-atab]").forEach((b) => b.classList.remove("is-current"));
+                        svAnalyticsPanel.querySelectorAll("[data-sv-abody]").forEach((p) => p.classList.add("ov-hidden"));
+                        btn.classList.add("is-current");
+                        svAnalyticsPanel.querySelector(`[data-sv-abody="${tab}"]`)?.classList.remove("ov-hidden");
+                    });
+                });
+            }
+
+            // ── Rolling stats ──────────────────────────────────────────────────
+            let svStatsWindow   = "5min";
+            let svStatsData     = {};     // { window → { metric → stats } }
+            let svStatsLastFetch = 0;
+
+            const svFmtStat = (v) => v !== null && v !== undefined ? fmtVal(v) : "--";
+
+            const svRenderStatsTable = () => {
+                if (!svStatsTable) return;
+                const windowData = svStatsData[svStatsWindow] || {};
+                const metrics    = Object.keys(windowData);
+                if (metrics.length === 0) {
+                    svStatsTable.innerHTML = "";
+                    svStatsEmpty?.classList.remove("ov-hidden");
+                    return;
+                }
+                svStatsEmpty?.classList.add("ov-hidden");
+                svStatsTable.innerHTML = `
+                    <table class="sv-stats-table">
+                        <thead>
+                            <tr>
+                                <th>Metric</th>
+                                <th>Avg</th>
+                                <th>Min</th>
+                                <th>Max</th>
+                                <th>±Std Dev</th>
+                                <th>Samples</th>
+                                <th>Health</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${metrics.map((m) => {
+                                const s  = windowData[m];
+                                const hp = s.health_pct;
+                                const hc = hp === null ? "" : hp >= 95 ? "is-good" : hp >= 80 ? "is-warn" : "is-crit";
+                                const hv = hp !== null ? `${hp}%` : "--";
+                                return `<tr>
+                                    <td>${displayLabel(m)}</td>
+                                    <td>${svFmtStat(s.avg)}</td>
+                                    <td>${svFmtStat(s.min)}</td>
+                                    <td>${svFmtStat(s.max)}</td>
+                                    <td>${s.stddev !== null ? `±${svFmtStat(s.stddev)}` : "--"}</td>
+                                    <td>${(s.sample_count || 0).toLocaleString()}</td>
+                                    <td class="sv-stats-health-cell ${hc}">${hv}</td>
+                                </tr>`;
+                            }).join("")}
+                        </tbody>
+                    </table>`;
+            };
+
+            const svFetchStats = async () => {
+                if (!svSelectedKey) return;
+                const [src, ...rest] = svSelectedKey.split(":");
+                const did = rest.join(":");
+                try {
+                    const r = await fetch(`/api/insights/stats?source=${encodeURIComponent(src)}&device_id=${encodeURIComponent(did)}`);
+                    if (!r.ok) return;
+                    const d = await r.json();
+                    if (d.ok) { svStatsData = d.stats || {}; svStatsLastFetch = Date.now(); }
+                } catch (e) { console.warn("[Sensors] stats fetch failed:", e); }
+                svRenderStatsTable();
+            };
+
+            // Stats window bar
+            if (svPanel) {
+                svPanel.querySelectorAll("[data-sv-swin]").forEach((btn) => {
+                    btn.addEventListener("click", () => {
+                        svStatsWindow = btn.getAttribute("data-sv-swin");
+                        svPanel.querySelectorAll("[data-sv-swin]").forEach((b) => b.classList.remove("is-current"));
+                        btn.classList.add("is-current");
+                        svRenderStatsTable();
+                    });
+                });
+            }
+
+            // ── Trends ─────────────────────────────────────────────────────────
+            const SV_SENS_PCT = { low: 10, medium: 3, high: 1 };
+            let svSensitivity     = localStorage.getItem("metacrust.sv.sensitivity") || "medium";
+            let svTrendsData      = [];
+            let svTrendsLastFetch = 0;
+
+            // Set saved sensitivity on load
+            if (svPanel) {
+                svPanel.querySelectorAll("[data-sv-sens]").forEach((btn) => {
+                    if (btn.getAttribute("data-sv-sens") === svSensitivity) btn.classList.add("is-current");
+                    else btn.classList.remove("is-current");
+                    btn.addEventListener("click", () => {
+                        svSensitivity = btn.getAttribute("data-sv-sens");
+                        localStorage.setItem("metacrust.sv.sensitivity", svSensitivity);
+                        svPanel.querySelectorAll("[data-sv-sens]").forEach((b) => b.classList.remove("is-current"));
+                        btn.classList.add("is-current");
+                        svRenderTrends();
+                    });
+                });
+            }
+
+            const svClassifySlope = (slope, currentValue) => {
+                if (!currentValue || currentValue === 0) return slope > 0.001 ? "rising" : slope < -0.001 ? "falling" : "stable";
+                const pctPerMin = Math.abs(slope / currentValue) * 100;
+                const threshold = SV_SENS_PCT[svSensitivity] ?? 3;
+                if (pctPerMin < threshold) return "stable";
+                return slope > 0 ? "rising" : "falling";
+            };
+
+            const svRenderTrends = () => {
+                if (!svTrendsList) return;
+                if (svTrendsData.length === 0) {
+                    svTrendsList.innerHTML = "";
+                    svTrendsEmpty?.classList.remove("ov-hidden");
+                    return;
+                }
+                svTrendsEmpty?.classList.add("ov-hidden");
+
+                // Get live values for client-side sensitivity re-classification
+                const liveDevice = ovLiveDevices.find((d) => `${d.source}:${d.device_id}` === svSelectedKey);
+                const liveVals   = {};
+                for (const [k, m] of Object.entries(liveDevice?.metrics || {})) {
+                    if (m.value !== null && m.value !== undefined) liveVals[k] = m.value;
+                }
+
+                const DIRS  = { rising: "↑", falling: "↓", stable: "→" };
+                const TONES = { rising: "is-rising", falling: "is-falling", stable: "is-stable" };
+
+                svTrendsList.innerHTML = svTrendsData.map((t) => {
+                    const slope    = t.slope ?? 0;
+                    const dir      = svClassifySlope(slope, liveVals[t.metric_name] ?? 0);
+                    const arrow    = DIRS[dir]  || "→";
+                    const tone     = TONES[dir] || "is-stable";
+                    const slopeAbs = Math.abs(slope);
+                    const slopeStr = slopeAbs < 0.0001
+                        ? "< 0.0001/min"
+                        : `${slope >= 0 ? "+" : ""}${fmtVal(slope)}/min`;
+
+                    // Time-to-threshold (from server-enriched data, re-check client sensitivity)
+                    let tttHtml = `<span class="sv-trend-ttt is-ok">—</span>`;
+                    const ttt   = t.ttt_minutes;
+                    const rule  = t.ttt_rule;
+                    if (ttt !== null && ttt !== undefined && dir !== "stable") {
+                        const sev   = (rule?.severity || "warning").toLowerCase();
+                        const tCls  = sev === "critical" ? "is-crit" : "is-warn";
+                        const mins  = ttt < 1 ? "<1" : Math.round(ttt);
+                        tttHtml     = `<span class="sv-trend-ttt ${tCls}" title="${sev.toUpperCase()} threshold ${rule?.threshold}">⚡ ~${mins} min</span>`;
+                    }
+
+                    return `
+                        <div class="sv-trend-row">
+                            <span class="sv-trend-metric">${displayLabel(t.metric_name)}</span>
+                            <span class="sv-trend-direction ${tone}">${arrow}</span>
+                            <span class="sv-trend-slope">${slopeStr}</span>
+                            ${tttHtml}
+                        </div>`;
+                }).join("");
+            };
+
+            const svFetchTrends = async () => {
+                if (!svSelectedKey) return;
+                const [src, ...rest] = svSelectedKey.split(":");
+                const did = rest.join(":");
+                try {
+                    const r = await fetch(`/api/insights/trends?source=${encodeURIComponent(src)}&device_id=${encodeURIComponent(did)}`);
+                    if (!r.ok) return;
+                    const d = await r.json();
+                    if (d.ok) { svTrendsData = d.trends || []; svTrendsLastFetch = Date.now(); }
+                } catch (e) { console.warn("[Sensors] trends fetch failed:", e); }
+                svRenderTrends();
+            };
+
             // ── Entry point (called from main refresh loop) ────────────────────
             const svRefresh = (force = false) => {
                 const tabBtn   = insightsShell.querySelector('[data-ov-tab="sensors"]');
@@ -2690,9 +2879,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 svUpdateLiveValues();
 
-                // Fetch chart at most every 60 s (unless forced e.g. tab just became visible)
+                // Chart: at most every 60 s
                 if (force || !svLastFetchMs || (Date.now() - svLastFetchMs) > 60_000) {
                     svFetchAndRenderChart();
+                }
+
+                // Rolling stats: at most every 30 s
+                if (force || !svStatsLastFetch || (Date.now() - svStatsLastFetch) > 30_000) {
+                    svFetchStats();
+                }
+
+                // Trends: every 10 s (slopes change quickly)
+                if (force || !svTrendsLastFetch || (Date.now() - svTrendsLastFetch) > 10_000) {
+                    svFetchTrends();
+                } else {
+                    // Re-render with current sensitivity even without new data
+                    svRenderTrends();
                 }
             };
 

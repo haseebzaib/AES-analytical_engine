@@ -1122,6 +1122,96 @@ async def insights_summary(request: Request) -> JSONResponse:
     return JSONResponse(stats)
 
 
+# ── Tier 2: Rolling stats ─────────────────────────────────────────────────────
+
+@router.get("/api/insights/stats")
+async def insights_stats(request: Request) -> JSONResponse:
+    """
+    Return pre-computed rolling window stats for one device.
+    Query params: source, device_id
+    Response: { ok, stats: { "5min": {metric: {avg,min,max,stddev,sample_count,good_count,health_pct}}, ... } }
+    """
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+
+    source    = request.query_params.get("source", "").strip()
+    device_id = request.query_params.get("device_id", "").strip()
+
+    if not (source and device_id):
+        return JSONResponse({"ok": False, "message": "source and device_id required."}, status_code=status.HTTP_400_BAD_REQUEST)
+
+    astore = _analytical_store(request)
+    if astore is None:
+        return JSONResponse({"ok": True, "stats": {}})
+
+    rows = astore.get_metric_stats(source, device_id)
+
+    # Pivot: { window → { metric → stats_dict } }
+    result: dict[str, dict] = {}
+    for r in rows:
+        win    = r["window"]
+        metric = r["metric_name"]
+        n      = r.get("sample_count") or 0
+        good   = r.get("good_count")   or 0
+        health = round(good / n * 100, 1) if n > 0 else None
+        result.setdefault(win, {})[metric] = {
+            "avg":          r.get("avg"),
+            "min":          r.get("min"),
+            "max":          r.get("max"),
+            "stddev":       r.get("stddev"),
+            "sample_count": n,
+            "good_count":   good,
+            "health_pct":   health,
+            "computed_at":  r.get("computed_at"),
+        }
+
+    return JSONResponse({"ok": True, "stats": result})
+
+
+# ── Tier 3: Trend detection ───────────────────────────────────────────────────
+
+@router.get("/api/insights/trends")
+async def insights_trends(request: Request) -> JSONResponse:
+    """
+    Return trend snapshots enriched with time-to-threshold estimates.
+    Query params: source, device_id
+    """
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+
+    source    = request.query_params.get("source", "").strip()
+    device_id = request.query_params.get("device_id", "").strip()
+
+    if not (source and device_id):
+        return JSONResponse({"ok": False, "message": "source and device_id required."}, status_code=status.HTTP_400_BAD_REQUEST)
+
+    astore = _analytical_store(request)
+    if astore is None:
+        return JSONResponse({"ok": True, "trends": []})
+
+    trends = astore.get_trend_snapshots(source, device_id)
+
+    # Enrich with time-to-threshold using live value + alert rules
+    live_device = next(
+        (d for d in _sensor_store(request).live_devices()
+         if d.get("source") == source and d.get("device_id") == device_id),
+        None,
+    )
+    live_values: dict[str, float] = {}
+    if live_device:
+        for mname, m in (live_device.get("metrics") or {}).items():
+            v = m.get("value")
+            if v is not None and isinstance(v, (int, float)):
+                live_values[mname] = float(v)
+
+    alert_rules = astore.get_alert_rules(source=source, device_id=device_id, enabled_only=True)
+
+    from analytics_engine.analytics.trends import enrich_with_ttt
+    trends = enrich_with_ttt(trends, live_values, alert_rules)
+
+    return JSONResponse({"ok": True, "trends": trends})
+
+
 @router.post("/api/network/wifi/scan")
 async def scan_wifi_networks(request: Request) -> JSONResponse:
     if not _is_authenticated(request):

@@ -82,6 +82,8 @@ from analytics_engine.analytical_store import AnalyticalStore
 from analytics_engine.archival_job import ArchivalJob
 from analytics_engine.analytics.continuity import ContinuityState
 from analytics_engine.analytics.rules import RulesEngine
+from analytics_engine.analytics.stats import StatsEngine
+from analytics_engine.analytics.trends import TrendsEngine
 from utils.redis_client import RedisClient as RedisNotifier
 from analytics_engine.runtime import AnalyticsRuntime
 from analytics_engine.settings_store import SettingsStore
@@ -100,10 +102,14 @@ sensor_store            = SensorStore(redis_notifier, db_path=pes_db_path)
 analytical_store        = AnalyticalStore(analytical_db_path)
 continuity_state        = ContinuityState()
 rules_engine            = RulesEngine(analytical_store)
+stats_engine            = StatsEngine(sensor_store, analytical_store)
+trends_engine           = TrendsEngine(sensor_store, analytical_store)
 runtime                 = AnalyticsRuntime(
     sensor_store     = sensor_store,
     continuity_state = continuity_state,
     rules_engine     = rules_engine,
+    stats_engine     = stats_engine,
+    trends_engine    = trends_engine,
 )
 
 # Register the archival worker (every 5 minutes) before runtime.start()
@@ -147,6 +153,8 @@ async def lifespan(app: FastAPI):
     app.state.analytical_store        = analytical_store
     app.state.continuity_state        = continuity_state
     app.state.rules_engine            = rules_engine
+    app.state.stats_engine            = stats_engine
+    app.state.trends_engine           = trends_engine
     try:
         yield
     finally:

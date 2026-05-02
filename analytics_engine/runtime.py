@@ -13,6 +13,8 @@ if TYPE_CHECKING:
     from analytics_engine.sensor_store import SensorStore
     from analytics_engine.analytics.continuity import ContinuityState
     from analytics_engine.analytics.rules import RulesEngine
+    from analytics_engine.analytics.stats import StatsEngine
+    from analytics_engine.analytics.trends import TrendsEngine
 
 logger = logging.getLogger(__name__)
 
@@ -53,14 +55,18 @@ class AnalyticsRuntime:
 
     def __init__(
         self,
-        sensor_store: "SensorStore | None" = None,
+        sensor_store:     "SensorStore | None"     = None,
         continuity_state: "ContinuityState | None" = None,
-        rules_engine: "RulesEngine | None" = None,
+        rules_engine:     "RulesEngine | None"     = None,
+        stats_engine:     "StatsEngine | None"     = None,
+        trends_engine:    "TrendsEngine | None"    = None,
     ) -> None:
-        self._stop_event = Event()
-        self._sensor_store = sensor_store
+        self._stop_event       = Event()
+        self._sensor_store     = sensor_store
         self._continuity_state = continuity_state
-        self._rules_engine = rules_engine
+        self._rules_engine     = rules_engine
+        self._stats_engine     = stats_engine
+        self._trends_engine    = trends_engine
 
         self._workers = [
             BackgroundWorker(name="analytics-loop",  interval_seconds=1.0,  tick_fn=toggle_led),
@@ -82,6 +88,10 @@ class AnalyticsRuntime:
         self._continuity_state.update(devices)
         if self._rules_engine is not None:
             self._rules_engine.tick(devices)
+        if self._stats_engine is not None:
+            self._stats_engine.tick(devices)
+        if self._trends_engine is not None:
+            self._trends_engine.tick(devices)
 
     def register_worker(
         self,

@@ -104,7 +104,43 @@
                     </div>
                 </div>
                 <div class="sv-chart-legend" data-sv-legend></div>
-                <div class="sv-stats-strip"  data-sv-stats></div>
+
+                {# Analytics panel: Rolling Stats + Trend Analysis tabs #}
+                <div class="sv-analytics-panel">
+                    <nav class="sv-analytics-tabs">
+                        <button class="sv-analytics-tab is-current" data-sv-atab="stats">📊 Rolling Stats</button>
+                        <button class="sv-analytics-tab"            data-sv-atab="trends">📈 Trends</button>
+                    </nav>
+
+                    {# Rolling stats tab #}
+                    <div class="sv-analytics-body" data-sv-abody="stats">
+                        <div class="sv-stats-window-bar">
+                            <button class="sv-stats-win-btn is-current" data-sv-swin="5min">5 min</button>
+                            <button class="sv-stats-win-btn"            data-sv-swin="1hr">1 hr</button>
+                            <button class="sv-stats-win-btn"            data-sv-swin="24hr">24 hr</button>
+                        </div>
+                        <div class="sv-stats-table-wrap" data-sv-stats-table></div>
+                        <p class="sv-analytics-empty ov-hidden" data-sv-stats-empty>
+                            Stats are computed after the first few ticks — check back shortly.
+                        </p>
+                    </div>
+
+                    {# Trends tab #}
+                    <div class="sv-analytics-body ov-hidden" data-sv-abody="trends">
+                        <div class="sv-trends-config">
+                            <span class="sv-trends-config-label">Sensitivity</span>
+                            <div class="sv-sensitivity-bar">
+                                <button class="sv-sens-btn" data-sv-sens="low">Low</button>
+                                <button class="sv-sens-btn is-current" data-sv-sens="medium">Medium</button>
+                                <button class="sv-sens-btn" data-sv-sens="high">High</button>
+                            </div>
+                        </div>
+                        <div class="sv-trends-list" data-sv-trends-list></div>
+                        <p class="sv-analytics-empty ov-hidden" data-sv-trends-empty>
+                            Trends are computed from the last ~5 min of data — collecting samples…
+                        </p>
+                    </div>
+                </div>
             </div>
 
         </div>

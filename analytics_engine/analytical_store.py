@@ -544,3 +544,123 @@ class AnalyticalStore:
             return []
         finally:
             conn.close()
+
+    # ── Rolling window stats (Tier 2) ────────────────────────────────────────
+
+    def save_metric_stats(self, stats: dict) -> None:
+        """
+        Upsert pre-computed rolling stats for one metric + window.
+        Expected keys: source, device_id, metric_name, window, avg, min, max,
+                       stddev, sample_count, good_count.
+        """
+        with self._lock:
+            conn = self._open()
+            if conn is None:
+                return
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO metric_stats
+                        (source, device_id, metric_name, window,
+                         avg, min, max, stddev, sample_count, good_count, computed_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(source, device_id, metric_name, window) DO UPDATE SET
+                        avg          = excluded.avg,
+                        min          = excluded.min,
+                        max          = excluded.max,
+                        stddev       = excluded.stddev,
+                        sample_count = excluded.sample_count,
+                        good_count   = excluded.good_count,
+                        computed_at  = excluded.computed_at
+                    """,
+                    (
+                        stats["source"], stats["device_id"], stats["metric_name"],
+                        stats["window"],
+                        stats.get("avg"), stats.get("min"), stats.get("max"),
+                        stats.get("stddev"),
+                        stats.get("sample_count", 0), stats.get("good_count", 0),
+                        int(time.time() * 1000),
+                    ),
+                )
+                conn.commit()
+            except Exception as exc:
+                logger.error("analytical.db: save_metric_stats failed: %s", exc)
+            finally:
+                conn.close()
+
+    def get_metric_stats(
+        self,
+        source: str,
+        device_id: str,
+        window: str | None = None,
+    ) -> list[dict]:
+        """Return materialized stats for a device, optionally filtered by window."""
+        conn = self._open()
+        if conn is None:
+            return []
+        where  = "WHERE source = ? AND device_id = ?"
+        params: list = [source, device_id]
+        if window:
+            where += " AND window = ?"
+            params.append(window)
+        try:
+            rows = conn.execute(
+                f"SELECT * FROM metric_stats {where} ORDER BY metric_name, window",
+                params,
+            ).fetchall()
+            return [dict(r) for r in rows]
+        except Exception as exc:
+            logger.warning("analytical.db: get_metric_stats failed: %s", exc)
+            return []
+        finally:
+            conn.close()
+
+    # ── Trend snapshots (Tier 3) ──────────────────────────────────────────────
+
+    def save_trend_snapshot(self, snap: dict) -> None:
+        """
+        Upsert the latest trend snapshot for one metric.
+        Expected keys: source, device_id, metric_name, direction, slope, computed_at.
+        """
+        with self._lock:
+            conn = self._open()
+            if conn is None:
+                return
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO trend_snapshots
+                        (source, device_id, metric_name, direction, slope, computed_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(source, device_id, metric_name) DO UPDATE SET
+                        direction   = excluded.direction,
+                        slope       = excluded.slope,
+                        computed_at = excluded.computed_at
+                    """,
+                    (
+                        snap["source"], snap["device_id"], snap["metric_name"],
+                        snap["direction"], snap.get("slope"), snap["computed_at"],
+                    ),
+                )
+                conn.commit()
+            except Exception as exc:
+                logger.error("analytical.db: save_trend_snapshot failed: %s", exc)
+            finally:
+                conn.close()
+
+    def get_trend_snapshots(self, source: str, device_id: str) -> list[dict]:
+        """Return the latest trend snapshot for every metric of a device."""
+        conn = self._open()
+        if conn is None:
+            return []
+        try:
+            rows = conn.execute(
+                "SELECT * FROM trend_snapshots WHERE source = ? AND device_id = ? ORDER BY metric_name",
+                (source, device_id),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        except Exception as exc:
+            logger.warning("analytical.db: get_trend_snapshots failed: %s", exc)
+            return []
+        finally:
+            conn.close()

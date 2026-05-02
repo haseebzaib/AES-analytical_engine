@@ -4228,3 +4228,185 @@ h2 {
 }
 .sv-export-btn:hover    { background: rgba(57,208,200,0.18); }
 .sv-export-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ================================================================
+   Sensors tab — Rolling Stats + Trends panel  (sv-analytics-*)
+   ================================================================ */
+
+.sv-analytics-panel {
+    border-radius: 1.35rem;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: var(--surface);
+    backdrop-filter: blur(14px);
+    overflow: hidden;
+}
+
+/* Tab navigation */
+.sv-analytics-tabs {
+    display: flex;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    background: rgba(255,255,255,0.02);
+}
+.sv-analytics-tab {
+    padding: 0.6rem 1.2rem;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.84rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 160ms ease, border-color 160ms ease;
+    margin-bottom: -1px;
+}
+.sv-analytics-tab:hover      { color: var(--text); }
+.sv-analytics-tab.is-current { color: var(--accent-cool); border-bottom-color: var(--accent-cool); }
+
+/* Tab body */
+.sv-analytics-body { padding: 1rem 1.25rem; }
+
+/* Empty state */
+.sv-analytics-empty {
+    color: var(--muted);
+    font-size: 0.82rem;
+    padding: 0.5rem 0;
+    margin: 0;
+}
+
+/* ── Rolling stats sub-window bar ──────────────────────────────── */
+.sv-stats-window-bar  { display: flex; gap: 0.35rem; margin-bottom: 0.85rem; }
+.sv-stats-win-btn {
+    padding: 0.28rem 0.75rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 160ms;
+}
+.sv-stats-win-btn.is-current {
+    background: rgba(57,208,200,0.12);
+    border-color: rgba(57,208,200,0.3);
+    color: var(--accent-cool);
+}
+
+/* Stats table */
+.sv-stats-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+}
+.sv-stats-table th {
+    text-align: right;
+    padding: 0.22rem 0.7rem;
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    white-space: nowrap;
+}
+.sv-stats-table th:first-child { text-align: left; }
+.sv-stats-table td {
+    padding: 0.4rem 0.7rem;
+    text-align: right;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-family: var(--font-display);
+    color: var(--text);
+    white-space: nowrap;
+}
+.sv-stats-table tr:last-child td { border-bottom: none; }
+.sv-stats-table td:first-child { text-align: left; color: var(--muted); font-family: inherit; }
+.sv-stats-health-cell { font-weight: 700; }
+.sv-stats-health-cell.is-good { color: var(--success); }
+.sv-stats-health-cell.is-warn { color: var(--accent); }
+.sv-stats-health-cell.is-crit { color: #ff8e8e; }
+
+/* ── Trends sub-panel ──────────────────────────────────────────── */
+.sv-trends-config {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.85rem;
+}
+.sv-trends-config-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+}
+.sv-sensitivity-bar { display: flex; gap: 0.3rem; }
+.sv-sens-btn {
+    padding: 0.22rem 0.65rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.76rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 160ms;
+}
+.sv-sens-btn.is-current {
+    background: rgba(57,208,200,0.12);
+    border-color: rgba(57,208,200,0.3);
+    color: var(--accent-cool);
+}
+
+/* Trends list */
+.sv-trends-list { display: grid; gap: 0.45rem; }
+.sv-trend-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 0.1rem;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.sv-trend-row:last-child { border-bottom: none; }
+
+.sv-trend-metric {
+    font-size: 0.83rem;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.sv-trend-direction {
+    font-size: 1rem;
+    line-height: 1;
+    width: 1.4rem;
+    text-align: center;
+}
+.sv-trend-direction.is-rising  { color: #e87a3a; }
+.sv-trend-direction.is-falling { color: var(--accent-cool); }
+.sv-trend-direction.is-stable  { color: rgba(157,179,187,0.4); }
+
+.sv-trend-slope {
+    font-family: monospace;
+    font-size: 0.78rem;
+    color: var(--muted);
+    white-space: nowrap;
+    min-width: 7rem;
+    text-align: right;
+}
+
+.sv-trend-ttt {
+    font-size: 0.74rem;
+    font-weight: 600;
+    white-space: nowrap;
+    padding: 0.12rem 0.5rem;
+    border-radius: 999px;
+    min-width: 6rem;
+    text-align: center;
+}
+.sv-trend-ttt.is-warn { background: rgba(240,166,75,0.1); color: var(--accent); }
+.sv-trend-ttt.is-crit { background: rgba(220,80,80,0.1);  color: #ff8e8e; }
+.sv-trend-ttt.is-ok   { color: rgba(157,179,187,0.35); }
