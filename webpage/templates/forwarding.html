@@ -10,53 +10,100 @@
 {% block console_content %}
 <section class="fw-shell" data-forwarding-shell>
 
-    {# ── Add / Edit form (hidden by default) ──────────────────────────────── #}
+    {# ── Add / Edit form ──────────────────────────────────────────────────────── #}
     <div class="fw-form-card fw-hidden" data-fw-form>
         <header class="fw-form-head">
             <span class="fw-form-title" data-fw-form-title>New Forwarding Profile</span>
         </header>
         <div class="fw-form-body">
 
-            {# Row 1: name + protocol #}
+            {# Row 0: name + protocol + enabled #}
             <div class="fw-form-row">
                 <div class="fw-field fw-field-lg">
                     <label class="fw-label">Profile Name</label>
-                    <input class="fw-input" type="text" placeholder="e.g. MetaCrust Cloud" data-fw-f-name maxlength="64">
+                    <input class="fw-input" type="text" placeholder="e.g. Production Server" data-fw-f-name maxlength="64">
                 </div>
                 <div class="fw-field">
                     <label class="fw-label">Protocol</label>
                     <select class="fw-select" data-fw-f-protocol>
-                        <option value="mqtt">MQTT</option>
-                        <option value="https">HTTPS</option>
+                        <option value="mqtt">MQTT / MQTTS</option>
+                        <option value="https">HTTPS / mTLS</option>
                     </select>
                 </div>
                 <div class="fw-field fw-field-sm">
                     <label class="fw-label">Enabled</label>
-                    <button class="fw-toggle-btn is-on" data-fw-f-enabled>ON</button>
+                    <button class="fw-toggle-btn" data-fw-f-enabled>OFF</button>
                 </div>
             </div>
 
-            {# ── MQTT fields ────────────────────────────────────────────── #}
+            {# ═══════════════════════════════════════════════════════════════════ #}
+            {# MQTT block                                                          #}
+            {# ═══════════════════════════════════════════════════════════════════ #}
             <div class="fw-proto-block" data-fw-proto="mqtt">
-                <p class="fw-section-label">Broker</p>
+
+                {# Broker connection #}
+                <p class="fw-section-label">Broker Connection</p>
                 <div class="fw-form-row">
-                    <div class="fw-field fw-field-lg">
+                    <div class="fw-field fw-field-xl">
                         <label class="fw-label">Host</label>
-                        <input class="fw-input" type="text" placeholder="mqtt.example.com" data-fw-f-mqtt-host>
+                        <input class="fw-input" type="text" placeholder="mqtt.example.com" data-fw-f-mqtt-host maxlength="253">
                     </div>
                     <div class="fw-field fw-field-sm">
                         <label class="fw-label">Port</label>
                         <input class="fw-input" type="number" value="1883" min="1" max="65535" data-fw-f-mqtt-port>
                     </div>
                     <div class="fw-field fw-field-sm">
-                        <label class="fw-label">TLS</label>
+                        <label class="fw-label">TLS (MQTTS)</label>
                         <button class="fw-toggle-btn" data-fw-f-mqtt-tls>OFF</button>
                     </div>
                 </div>
+
+                {# TLS / mTLS certificates — shown only when TLS is ON #}
+                <div class="fw-tls-block fw-hidden" data-fw-mqtt-tls-block>
+                    <p class="fw-section-label fw-section-label-sub">
+                        Certificates
+                        <span class="fw-hint">Leave client cert + key empty unless your broker requires mutual TLS</span>
+                    </p>
+                    <div class="fw-cert-grid">
+                        <div class="fw-cert-field">
+                            <label class="fw-label">CA Certificate <span class="fw-hint">PEM — verifies broker identity</span></label>
+                            <div class="fw-cert-widget" data-fw-cert="mqtt-ca">
+                                <button type="button" class="fw-cert-btn" data-fw-cert-btn>Upload .pem / .crt</button>
+                                <span class="fw-cert-status" data-fw-cert-status>No file</span>
+                                <button type="button" class="fw-cert-clear fw-hidden" data-fw-cert-clear title="Remove">×</button>
+                                <input type="file" accept=".pem,.crt,.cer,.ca" hidden data-fw-cert-file>
+                                <textarea hidden data-fw-cert-val></textarea>
+                            </div>
+                        </div>
+                        <div class="fw-cert-field">
+                            <label class="fw-label">Client Certificate <span class="fw-hint">PEM — optional, for mTLS</span></label>
+                            <div class="fw-cert-widget" data-fw-cert="mqtt-cert">
+                                <button type="button" class="fw-cert-btn" data-fw-cert-btn>Upload .pem / .crt</button>
+                                <span class="fw-cert-status" data-fw-cert-status>No file</span>
+                                <button type="button" class="fw-cert-clear fw-hidden" data-fw-cert-clear title="Remove">×</button>
+                                <input type="file" accept=".pem,.crt,.cer" hidden data-fw-cert-file>
+                                <textarea hidden data-fw-cert-val></textarea>
+                            </div>
+                        </div>
+                        <div class="fw-cert-field">
+                            <label class="fw-label">Client Key <span class="fw-hint">PEM — optional, for mTLS</span></label>
+                            <div class="fw-cert-widget" data-fw-cert="mqtt-key">
+                                <button type="button" class="fw-cert-btn" data-fw-cert-btn>Upload .pem / .key</button>
+                                <span class="fw-cert-status" data-fw-cert-status>No file</span>
+                                <button type="button" class="fw-cert-clear fw-hidden" data-fw-cert-clear title="Remove">×</button>
+                                <input type="file" accept=".pem,.key" hidden data-fw-cert-file>
+                                <textarea hidden data-fw-cert-val></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {# Broker auth #}
+                <p class="fw-section-label">Broker Auth <span class="fw-hint">(leave blank if broker is open)</span></p>
                 <div class="fw-form-row">
                     <div class="fw-field">
-                        <label class="fw-label">Client ID <span class="fw-hint">(leave blank to auto-generate)</span></label>
-                        <input class="fw-input" type="text" placeholder="metacrust-gw-001" data-fw-f-mqtt-client-id maxlength="128">
+                        <label class="fw-label">Client ID <span class="fw-hint">blank = auto-generate</span></label>
+                        <input class="fw-input" type="text" placeholder="metacrust-gw-01" data-fw-f-mqtt-client-id maxlength="128">
                     </div>
                     <div class="fw-field">
                         <label class="fw-label">Username</label>
@@ -67,12 +114,10 @@
                         <input class="fw-input" type="password" autocomplete="new-password" data-fw-f-mqtt-pass maxlength="256">
                     </div>
                 </div>
-                <p class="fw-section-label">Publishing</p>
+
+                {# Delivery #}
+                <p class="fw-section-label">Delivery</p>
                 <div class="fw-form-row">
-                    <div class="fw-field fw-field-lg">
-                        <label class="fw-label">Topic Template <span class="fw-hint">variables: {device_id} {metric} {source}</span></label>
-                        <input class="fw-input" type="text" placeholder="metacrust/{device_id}/{metric}" data-fw-f-mqtt-topic maxlength="512">
-                    </div>
                     <div class="fw-field fw-field-sm">
                         <label class="fw-label">QoS</label>
                         <select class="fw-select" data-fw-f-mqtt-qos>
@@ -85,18 +130,96 @@
                         <label class="fw-label">Retain</label>
                         <button class="fw-toggle-btn" data-fw-f-mqtt-retain>OFF</button>
                     </div>
-                </div>
-            </div>
-
-            {# ── HTTPS fields ───────────────────────────────────────────── #}
-            <div class="fw-proto-block fw-hidden" data-fw-proto="https">
-                <p class="fw-section-label">Endpoint</p>
-                <div class="fw-form-row">
-                    <div class="fw-field fw-field-xl">
-                        <label class="fw-label">URL</label>
-                        <input class="fw-input" type="url" placeholder="https://api.example.com/ingest" data-fw-f-https-url maxlength="512">
+                    <div class="fw-field">
+                        <label class="fw-label">Publish Interval</label>
+                        <select class="fw-select" data-fw-f-mqtt-interval>
+                            <option value="1">Every 1 s</option>
+                            <option value="5" selected>Every 5 s</option>
+                            <option value="10">Every 10 s</option>
+                            <option value="30">Every 30 s</option>
+                            <option value="60">Every 60 s</option>
+                            <option value="300">Every 5 min</option>
+                        </select>
                     </div>
                 </div>
+
+                {# Topics reference panel #}
+                <div class="fw-topics-panel">
+                    <button type="button" class="fw-topics-toggle" data-fw-topics-toggle>
+                        <span class="fw-topics-icon">📡</span>
+                        Published Topics &amp; Message Format
+                        <span class="fw-topics-arrow" data-fw-topics-arrow>▼</span>
+                    </button>
+                    <div class="fw-topics-body fw-hidden" data-fw-topics-body>
+                        <p class="fw-topics-note">Your broker subscribers should listen to these topics (gateway <strong>publishes</strong> only — no subscriptions):</p>
+                        <table class="fw-topics-table">
+                            <thead><tr><th>Topic</th><th>Description</th><th>Direction</th></tr></thead>
+                            <tbody>
+                                <tr>
+                                    <td><code>metacrust/{source}/{device_id}/{metric}</code></td>
+                                    <td>One message per metric per interval</td>
+                                    <td><span class="fw-dir-badge pub">PUB</span></td>
+                                </tr>
+                                <tr>
+                                    <td><code>metacrust/{source}/{device_id}/status</code></td>
+                                    <td>Device status changes (online / offline / error)</td>
+                                    <td><span class="fw-dir-badge pub">PUB</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <p class="fw-topics-note" style="margin-top:0.85rem">Message format (JSON):</p>
+                        <pre class="fw-topics-pre">{
+  "device_id":  "sensor_01",
+  "source":     "rs485",
+  "metric":     "temperature",
+  "value":      24.5,
+  "unit":       "°C",
+  "quality":    "good",
+  "ts":         1714567890123
+}</pre>
+                        <p class="fw-topics-note" style="margin-top:0.6rem;opacity:.6">
+                            <code>{source}</code> = rs232 / rs485 / modbus_tcp &nbsp;·&nbsp;
+                            <code>{device_id}</code> = device identifier &nbsp;·&nbsp;
+                            <code>{metric}</code> = metric name (e.g. temperature, humidity)
+                        </p>
+                    </div>
+                </div>
+
+            </div>{# end mqtt block #}
+
+            {# ═══════════════════════════════════════════════════════════════════ #}
+            {# HTTPS block                                                         #}
+            {# ═══════════════════════════════════════════════════════════════════ #}
+            <div class="fw-proto-block fw-hidden" data-fw-proto="https">
+
+                {# Server #}
+                <p class="fw-section-label">Server</p>
+                <div class="fw-form-row">
+                    <div class="fw-field fw-field-xl">
+                        <label class="fw-label">Host</label>
+                        <input class="fw-input" type="text" placeholder="api.example.com" data-fw-f-https-host maxlength="253">
+                    </div>
+                    <div class="fw-field fw-field-sm">
+                        <label class="fw-label">Port</label>
+                        <input class="fw-input" type="number" value="443" min="1" max="65535" data-fw-f-https-port>
+                    </div>
+                </div>
+
+                {# Data endpoint mappings #}
+                <p class="fw-section-label">Data Endpoints <span class="fw-hint">configure which paths receive which data</span></p>
+                <div class="fw-endpoint-row">
+                    <span class="fw-endpoint-label">Sensor readings</span>
+                    <input class="fw-input fw-field-md" type="text" placeholder="/ingest" data-fw-f-https-sensor-path maxlength="512">
+                    <span class="fw-endpoint-preview" data-fw-https-sensor-preview>—</span>
+                </div>
+                <div class="fw-endpoint-row" style="margin-top:0.4rem">
+                    <span class="fw-endpoint-label">Events <span class="fw-hint">optional</span></span>
+                    <input class="fw-input fw-field-md" type="text" placeholder="/events" data-fw-f-https-events-path maxlength="512">
+                    <span class="fw-endpoint-preview" data-fw-https-events-preview>—</span>
+                </div>
+
+                {# Auth #}
+                <p class="fw-section-label" style="margin-top:1.1rem">Authentication</p>
                 <div class="fw-form-row">
                     <div class="fw-field">
                         <label class="fw-label">Auth Type</label>
@@ -104,15 +227,65 @@
                             <option value="none">None</option>
                             <option value="bearer">Bearer Token</option>
                             <option value="api_key">API Key Header</option>
-                            <option value="basic">Basic Auth</option>
+                            <option value="basic">Basic Auth (user:pass)</option>
                         </select>
                     </div>
-                    <div class="fw-field fw-field-lg" data-fw-auth-val-wrap>
+                    <div class="fw-field fw-field-lg fw-hidden" data-fw-auth-val-wrap>
                         <label class="fw-label" data-fw-auth-val-label>Token / Key</label>
                         <input class="fw-input" type="password" autocomplete="new-password" placeholder="Enter value" data-fw-f-https-auth-val maxlength="512">
                     </div>
                 </div>
-                <p class="fw-section-label">Delivery</p>
+
+                {# Security / mTLS #}
+                <p class="fw-section-label">Security</p>
+                <div class="fw-form-row fw-mtls-header-row">
+                    <div class="fw-field fw-field-sm">
+                        <label class="fw-label">Custom CA / mTLS</label>
+                        <button class="fw-toggle-btn" data-fw-f-https-mtls>OFF</button>
+                    </div>
+                    <p class="fw-mtls-hint">
+                        Leave OFF if your server uses a public CA (Let's Encrypt, AWS ACM, etc.).<br>
+                        Turn ON to supply a custom CA or enable mutual TLS with a client certificate.
+                    </p>
+                </div>
+
+                <div class="fw-tls-block fw-hidden" data-fw-https-mtls-block>
+                    <div class="fw-cert-grid">
+                        <div class="fw-cert-field">
+                            <label class="fw-label">CA Certificate <span class="fw-hint">PEM — optional if server uses self-signed or private CA</span></label>
+                            <div class="fw-cert-widget" data-fw-cert="https-ca">
+                                <button type="button" class="fw-cert-btn" data-fw-cert-btn>Upload .pem / .crt</button>
+                                <span class="fw-cert-status" data-fw-cert-status>No file</span>
+                                <button type="button" class="fw-cert-clear fw-hidden" data-fw-cert-clear title="Remove">×</button>
+                                <input type="file" accept=".pem,.crt,.cer,.ca" hidden data-fw-cert-file>
+                                <textarea hidden data-fw-cert-val></textarea>
+                            </div>
+                        </div>
+                        <div class="fw-cert-field">
+                            <label class="fw-label">Client Certificate <span class="fw-hint">PEM — only for mutual TLS</span></label>
+                            <div class="fw-cert-widget" data-fw-cert="https-cert">
+                                <button type="button" class="fw-cert-btn" data-fw-cert-btn>Upload .pem / .crt</button>
+                                <span class="fw-cert-status" data-fw-cert-status>No file</span>
+                                <button type="button" class="fw-cert-clear fw-hidden" data-fw-cert-clear title="Remove">×</button>
+                                <input type="file" accept=".pem,.crt,.cer" hidden data-fw-cert-file>
+                                <textarea hidden data-fw-cert-val></textarea>
+                            </div>
+                        </div>
+                        <div class="fw-cert-field">
+                            <label class="fw-label">Client Key <span class="fw-hint">PEM — only for mutual TLS</span></label>
+                            <div class="fw-cert-widget" data-fw-cert="https-key">
+                                <button type="button" class="fw-cert-btn" data-fw-cert-btn>Upload .pem / .key</button>
+                                <span class="fw-cert-status" data-fw-cert-status>No file</span>
+                                <button type="button" class="fw-cert-clear fw-hidden" data-fw-cert-clear title="Remove">×</button>
+                                <input type="file" accept=".pem,.key" hidden data-fw-cert-file>
+                                <textarea hidden data-fw-cert-val></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {# Delivery #}
+                <p class="fw-section-label" style="margin-top:1.1rem">Delivery</p>
                 <div class="fw-form-row">
                     <div class="fw-field">
                         <label class="fw-label">POST Interval</label>
@@ -129,23 +302,16 @@
                         <input class="fw-input" type="number" value="10" min="1" max="120" data-fw-f-https-timeout>
                     </div>
                 </div>
-            </div>
 
-            {# ── Common: scope + format ─────────────────────────────────── #}
-            <p class="fw-section-label">Scope & Format</p>
+            </div>{# end https block #}
+
+            {# ── Common: scope ─────────────────────────────────────────────── #}
+            <p class="fw-section-label">Scope</p>
             <div class="fw-form-row">
                 <div class="fw-field fw-field-lg">
                     <label class="fw-label">Devices to forward</label>
                     <select class="fw-select" data-fw-f-scope>
                         <option value="all">All configured devices</option>
-                    </select>
-                </div>
-                <div class="fw-field">
-                    <label class="fw-label">Message Format</label>
-                    <select class="fw-select" data-fw-f-format>
-                        <option value="json">JSON (per reading)</option>
-                        <option value="json_batch">JSON Batch</option>
-                        <option value="csv">CSV</option>
                     </select>
                 </div>
             </div>
@@ -170,7 +336,7 @@
         </svg>
         <h3 class="fw-empty-title">No forwarding profiles</h3>
         <p class="fw-empty-desc">
-            Add a profile to start sending sensor data to an MQTT broker or HTTP endpoint.
+            Add a profile to start sending sensor data via MQTT or HTTPS.
         </p>
         <button class="fw-empty-action" data-fw-add>+ Add your first profile</button>
     </div>

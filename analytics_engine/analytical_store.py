@@ -149,6 +149,12 @@ class AnalyticalStore:
             );
         """)
         conn.commit()
+        # Schema migration: add n_samples column if it doesn't exist yet
+        try:
+            conn.execute("ALTER TABLE trend_snapshots ADD COLUMN n_samples INTEGER")
+            conn.commit()
+        except Exception:
+            pass  # column already exists
 
     def _ensure_tables(self) -> None:
         """Called once at startup to guarantee the schema is in place."""
@@ -630,16 +636,18 @@ class AnalyticalStore:
                 conn.execute(
                     """
                     INSERT INTO trend_snapshots
-                        (source, device_id, metric_name, direction, slope, computed_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                        (source, device_id, metric_name, direction, slope, computed_at, n_samples)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(source, device_id, metric_name) DO UPDATE SET
                         direction   = excluded.direction,
                         slope       = excluded.slope,
-                        computed_at = excluded.computed_at
+                        computed_at = excluded.computed_at,
+                        n_samples   = excluded.n_samples
                     """,
                     (
                         snap["source"], snap["device_id"], snap["metric_name"],
                         snap["direction"], snap.get("slope"), snap["computed_at"],
+                        snap.get("n_samples"),
                     ),
                 )
                 conn.commit()

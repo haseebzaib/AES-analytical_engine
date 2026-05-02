@@ -138,6 +138,7 @@ class TrendsEngine:
                 "direction":    direction,
                 "slope":        round(slope_per_min, 6),
                 "computed_at":  now_ms,
+                "n_samples":    len(values),
             })
 
             logger.debug(

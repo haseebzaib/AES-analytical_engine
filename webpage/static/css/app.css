@@ -4288,6 +4288,14 @@ h2 {
     cursor: pointer;
     transition: all 160ms;
 }
+.sv-stats-freshness {
+    font-size: 0.75rem;
+    color: rgba(157,179,187,0.45);
+    margin: 0 0 0.6rem;
+    padding: 0;
+}
+.sv-stats-freshness strong { color: rgba(157,179,187,0.7); font-weight: 600; }
+
 .sv-stats-win-btn.is-current {
     background: rgba(57,208,200,0.12);
     border-color: rgba(57,208,200,0.3);
@@ -4361,51 +4369,85 @@ h2 {
 }
 
 /* Trends list */
-.sv-trends-list { display: grid; gap: 0.45rem; }
+.sv-trends-list { display: grid; gap: 0.3rem; }
 .sv-trend-row {
-    display: grid;
-    grid-template-columns: 1fr auto auto auto;
-    align-items: center;
-    gap: 0.6rem;
-    padding: 0.5rem 0.1rem;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.55rem 0.65rem;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.025);
+    border-left: 3px solid transparent;
+    transition: background 0.15s;
 }
-.sv-trend-row:last-child { border-bottom: none; }
+.sv-trend-row:hover { background: rgba(255,255,255,0.04); }
+.sv-trend-row.is-rising  { border-left-color: rgba(232,122,58,0.5); }
+.sv-trend-row.is-falling { border-left-color: rgba(57,208,200,0.4); }
+.sv-trend-row.is-stable  { border-left-color: rgba(157,179,187,0.15); }
+
+.sv-trend-top {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+.sv-trend-bottom {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding-left: 1.85rem;
+    flex-wrap: wrap;
+}
 
 .sv-trend-metric {
-    font-size: 0.83rem;
-    color: var(--muted);
+    font-size: 0.84rem;
+    color: var(--text);
+    font-weight: 500;
+    flex: 1;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 .sv-trend-direction {
-    font-size: 1rem;
+    font-size: 1.05rem;
     line-height: 1;
     width: 1.4rem;
     text-align: center;
+    flex-shrink: 0;
 }
 .sv-trend-direction.is-rising  { color: #e87a3a; }
 .sv-trend-direction.is-falling { color: var(--accent-cool); }
-.sv-trend-direction.is-stable  { color: rgba(157,179,187,0.4); }
+.sv-trend-direction.is-stable  { color: rgba(157,179,187,0.3); }
+
+.sv-trend-live {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--accent-cool);
+    background: rgba(57,208,200,0.08);
+    padding: 0.1rem 0.45rem;
+    border-radius: 4px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
 
 .sv-trend-slope {
     font-family: monospace;
-    font-size: 0.78rem;
+    font-size: 0.77rem;
     color: var(--muted);
     white-space: nowrap;
-    min-width: 7rem;
-    text-align: right;
+}
+.sv-trend-meta {
+    font-size: 0.72rem;
+    color: rgba(157,179,187,0.4);
+    white-space: nowrap;
 }
 
 .sv-trend-ttt {
-    font-size: 0.74rem;
+    font-size: 0.73rem;
     font-weight: 600;
     white-space: nowrap;
-    padding: 0.12rem 0.5rem;
-    border-radius: 999px;
-    min-width: 6rem;
-    text-align: center;
+    padding: 0.1rem 0.45rem;
+    border-radius: 4px;
+    margin-left: auto;
 }
 .sv-trend-ttt.is-warn { background: rgba(240,166,75,0.1); color: var(--accent); }
 .sv-trend-ttt.is-crit { background: rgba(220,80,80,0.1);  color: #ff8e8e; }
@@ -4690,3 +4732,217 @@ h2 {
     transition: background 180ms;
 }
 .fw-empty-action:hover { background: rgba(57,208,200,0.2); }
+
+/* ── Section label variant ───────────────────────────────────── */
+.fw-section-label-sub {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+/* ── TLS / mTLS cert block ───────────────────────────────────── */
+.fw-tls-block {
+    background: rgba(255,255,255,0.018);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 0.75rem;
+    padding: 0.9rem 1rem;
+    display: grid;
+    gap: 0.7rem;
+}
+
+.fw-cert-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 0.65rem;
+}
+
+.fw-cert-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.fw-cert-widget {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.2rem;
+}
+
+.fw-cert-btn {
+    height: 2.1rem;
+    padding: 0 0.85rem;
+    border-radius: 0.65rem;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.04);
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color 160ms, background 160ms;
+    flex-shrink: 0;
+}
+.fw-cert-btn:hover { border-color: rgba(57,208,200,0.35); color: var(--accent-cool); background: rgba(57,208,200,0.05); }
+
+.fw-cert-status {
+    font-size: 0.76rem;
+    color: rgba(157,179,187,0.5);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.fw-cert-status.is-loaded { color: var(--success); }
+
+.fw-cert-clear {
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.85rem;
+    line-height: 1;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: color 160ms, border-color 160ms;
+}
+.fw-cert-clear:hover { color: #ff8e8e; border-color: rgba(220,80,80,0.3); }
+
+/* ── MQTT topics info panel ──────────────────────────────────── */
+.fw-topics-panel {
+    border: 1px solid rgba(57,208,200,0.12);
+    border-radius: 0.75rem;
+    overflow: hidden;
+}
+
+.fw-topics-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    width: 100%;
+    padding: 0.7rem 1rem;
+    border: none;
+    background: rgba(57,208,200,0.04);
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+    transition: background 160ms;
+}
+.fw-topics-toggle:hover { background: rgba(57,208,200,0.08); color: var(--text); }
+.fw-topics-icon { font-size: 0.9rem; }
+.fw-topics-arrow { margin-left: auto; font-size: 0.7rem; }
+
+.fw-topics-body {
+    padding: 0.9rem 1rem;
+    border-top: 1px solid rgba(57,208,200,0.1);
+    display: grid;
+    gap: 0.5rem;
+}
+
+.fw-topics-note {
+    margin: 0;
+    font-size: 0.78rem;
+    color: rgba(157,179,187,0.65);
+    line-height: 1.5;
+}
+.fw-topics-note strong { color: var(--text); }
+
+.fw-topics-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+}
+.fw-topics-table th {
+    text-align: left;
+    padding: 0.3rem 0.6rem;
+    color: var(--muted);
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.fw-topics-table td {
+    padding: 0.4rem 0.6rem;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    color: var(--muted);
+    vertical-align: middle;
+}
+.fw-topics-table td:first-child { color: var(--text); }
+.fw-topics-table tr:last-child td { border-bottom: none; }
+.fw-topics-table code {
+    font-family: monospace;
+    font-size: 0.79rem;
+    color: var(--accent-cool);
+    background: rgba(57,208,200,0.07);
+    padding: 0.1rem 0.35rem;
+    border-radius: 3px;
+}
+
+.fw-dir-badge {
+    font-size: 0.64rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+}
+.fw-dir-badge.pub { background: rgba(240,166,75,0.1); color: var(--accent); }
+.fw-dir-badge.sub { background: rgba(57,208,200,0.1); color: var(--accent-cool); }
+
+.fw-topics-pre {
+    font-family: monospace;
+    font-size: 0.78rem;
+    color: rgba(157,179,187,0.75);
+    background: rgba(0,0,0,0.25);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    margin: 0;
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 1.55;
+}
+
+/* ── HTTPS endpoint rows ─────────────────────────────────────── */
+.fw-endpoint-row {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+}
+.fw-endpoint-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted);
+    width: 8.5rem;
+    flex-shrink: 0;
+}
+.fw-field-md { flex: 0 0 12rem; }
+.fw-endpoint-preview {
+    font-family: monospace;
+    font-size: 0.76rem;
+    color: rgba(57,208,200,0.65);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+
+/* ── mTLS toggle hint ────────────────────────────────────────── */
+.fw-mtls-header-row { align-items: flex-start; }
+.fw-mtls-hint {
+    margin: 0;
+    font-size: 0.77rem;
+    color: rgba(157,179,187,0.5);
+    line-height: 1.55;
+    flex: 1;
+    padding-top: 0.1rem;
+}
