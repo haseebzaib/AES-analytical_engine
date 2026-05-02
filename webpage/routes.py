@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -11,8 +12,19 @@ from analytics_engine.settings_store import DEFAULT_USERNAME, ROOT_USERNAME
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
-templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
+router    = APIRouter()
+_here     = Path(__file__).resolve().parent
+templates = Jinja2Templates(directory=str(_here / "templates"))
+
+# ── Cache-busting hashes computed once at server start ────────────────────────
+def _file_hash(path: Path) -> str:
+    try:
+        return hashlib.md5(path.read_bytes()).hexdigest()[:10]
+    except Exception:
+        return "dev"
+
+templates.env.globals["js_hash"]  = _file_hash(_here / "static" / "js"  / "app.js")
+templates.env.globals["css_hash"] = _file_hash(_here / "static" / "css" / "app.css")
 DEFAULT_PASSWORD = "gateway"
 
 

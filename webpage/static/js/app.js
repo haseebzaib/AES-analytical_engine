@@ -1578,61 +1578,60 @@ document.addEventListener("DOMContentLoaded", () => {
     const loginForm = document.querySelector(".auth-form");
     const loginError = document.querySelector("[data-login-error]");
 
-    if (!loginForm) {
-        return;
-    }
+    if (loginForm) {
+        loginForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
 
-    loginForm.addEventListener("submit", async (event) => {
-        event.preventDefault();
+            const formData = new FormData(loginForm);
+            const payload = {
+                username: String(formData.get("username") || ""),
+                password: String(formData.get("password") || ""),
+            };
 
-        const formData = new FormData(loginForm);
-        const payload = {
-            username: String(formData.get("username") || ""),
-            password: String(formData.get("password") || ""),
-        };
-
-        if (loginError) {
-            loginError.textContent = "";
-        }
-
-        const submitButton = loginForm.querySelector('button[type="submit"]');
-        if (submitButton instanceof HTMLButtonElement) {
-            submitButton.disabled = true;
-            submitButton.textContent = "Signing in...";
-        }
-
-        try {
-            const response = await fetch("/api/login", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(payload),
-            });
-
-            const data = await response.json();
-
-            if (!response.ok || !data.ok) {
-                throw new Error(data.message || "Login failed.");
-            }
-
-            window.location.href = data.redirect || "/dashboard";
-        } catch (error) {
             if (loginError) {
-                loginError.textContent = error instanceof Error ? error.message : "Login failed.";
+                loginError.textContent = "";
             }
-        } finally {
+
+            const submitButton = loginForm.querySelector('button[type="submit"]');
             if (submitButton instanceof HTMLButtonElement) {
-                submitButton.disabled = false;
-                submitButton.textContent = "Enter Control Plane";
+                submitButton.disabled = true;
+                submitButton.textContent = "Signing in...";
             }
-        }
-    });
+
+            try {
+                const response = await fetch("/api/login", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(payload),
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.ok) {
+                    throw new Error(data.message || "Login failed.");
+                }
+
+                window.location.href = data.redirect || "/dashboard";
+            } catch (error) {
+                if (loginError) {
+                    loginError.textContent = error instanceof Error ? error.message : "Login failed.";
+                }
+            } finally {
+                if (submitButton instanceof HTMLButtonElement) {
+                    submitButton.disabled = false;
+                    submitButton.textContent = "Enter Control Plane";
+                }
+            }
+        });
+    }
 
     // ══════════════════════════════════════════════════════════════════════
     //  Insights — Overview Command Dashboard
     // ══════════════════════════════════════════════════════════════════════
     const insightsShell = document.querySelector("[data-insights-shell]");
+    console.log("[Insights] shell found:", !!insightsShell);
     if (insightsShell) {
 
         // ── State ────────────────────────────────────────────────────────
@@ -1640,11 +1639,8 @@ document.addEventListener("DOMContentLoaded", () => {
         let ovLiveDevices     = [];  // latest from /api/insights/live
 
         // ── DOM refs ─────────────────────────────────────────────────────
-        const ovDeviceGrid    = insightsShell.querySelector("[data-ov-device-grid]");
-        const ovNoSensors     = insightsShell.querySelector("[data-ov-no-sensors]");
-        const ovAnomaliesPanel = insightsShell.querySelector("[data-ov-anomalies-panel]");
-        const ovAnomaliesList  = insightsShell.querySelector("[data-ov-anomalies-list]");
-        const ovAnomaliesCount = insightsShell.querySelector("[data-ov-anomalies-count]");
+        const ovDeviceGrid = insightsShell.querySelector("[data-ov-device-grid]");
+        const ovNoSensors  = insightsShell.querySelector("[data-ov-no-sensors]");
 
         // ── Helpers ───────────────────────────────────────────────────────
         const fmtAge = (s) => {
@@ -1708,8 +1704,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const drawSparkline = (svgEl, values, quality) => {
             if (!svgEl) return;
             const W = svgEl.clientWidth || 100;
-            const H = 22;
-            const pad = 2;
+            const H = 32;
+            const pad = 3;
             const uH  = H - pad * 2;
             const color = quality === "good"  ? "rgba(57,208,200,0.72)" :
                           quality === "stale" ? "rgba(240,166,75,0.6)"  :
@@ -1755,8 +1751,8 @@ document.addEventListener("DOMContentLoaded", () => {
                             <span class="ov-metric-unit">${unit}</span>
                             <span class="ov-trend" data-ov-trend></span>
                         </div>
-                        <svg class="ov-sparkline" data-ov-spark height="22" preserveAspectRatio="none">
-                            <line x1="0" y1="11" x2="100" y2="11" stroke="rgba(255,255,255,0.08)" stroke-dasharray="2,3"/>
+                        <svg class="ov-sparkline" data-ov-spark height="32" preserveAspectRatio="none">
+                            <line x1="0" y1="16" x2="100" y2="16" stroke="rgba(255,255,255,0.08)" stroke-dasharray="2,3"/>
                         </svg>
                         <span class="ov-quality-dot" data-ov-quality></span>
                     </div>`;
@@ -1777,6 +1773,10 @@ document.addEventListener("DOMContentLoaded", () => {
                             <span class="ov-status-text">Awaiting</span>
                         </span>
                     </header>
+                    <div class="ov-card-issues" data-ov-issues hidden>
+                        <span class="ov-card-issues-dot"></span>
+                        <span class="ov-card-issues-text" data-ov-issues-text></span>
+                    </div>
                     <div class="ov-metric-list">
                         ${metricRows || `<p style="padding:1rem;color:var(--muted);font-size:.84rem">No registers configured.</p>`}
                     </div>
@@ -1801,13 +1801,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 liveMap[`${d.source}:${d.device_id}`] = d;
             }
 
-            const anomalies = [];
-
             ovDeviceGrid.querySelectorAll("[data-ov-card]").forEach((card) => {
-                const key    = card.getAttribute("data-ov-card");
-                const live   = liveMap[key];
-                const status = card.querySelector("[data-ov-status]");
-                const stText = status?.querySelector(".ov-status-text");
+                const key       = card.getAttribute("data-ov-card");
+                const live      = liveMap[key];
+                const status    = card.querySelector("[data-ov-status]");
+                const stText    = status?.querySelector(".ov-status-text");
+                const issuesEl  = card.querySelector("[data-ov-issues]");
+                const issuesTx  = card.querySelector("[data-ov-issues-text]");
 
                 if (!live) {
                     // Device configured but not live in Redis
@@ -1815,6 +1815,9 @@ document.addEventListener("DOMContentLoaded", () => {
                         status.className = "ov-status-badge ov-status-offline";
                         if (stText) stText.textContent = "Offline";
                     }
+                    card.classList.remove("is-live", "is-warning", "is-error");
+                    card.classList.add("is-offline");
+                    if (issuesEl) issuesEl.hidden = true;
                     return;
                 }
 
@@ -1829,6 +1832,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     status.className = `ov-status-badge ${sc}`;
                     if (stText) stText.textContent = sl;
                 }
+                card.classList.remove("is-offline");
+                card.classList.toggle("is-live",    devStatus === "ok");
                 card.classList.toggle("is-warning", devStatus === "warning");
                 card.classList.toggle("is-error",   devStatus === "error");
 
@@ -1843,6 +1848,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 const samples  = live._samples || {};
                 let goodCount  = 0;
                 let totalCount = 0;
+                let staleCount = 0;
+                let errorCount = 0;
 
                 card.querySelectorAll("[data-ov-metric]").forEach((row) => {
                     const mkey    = row.getAttribute("data-ov-metric");
@@ -1852,11 +1859,20 @@ document.addEventListener("DOMContentLoaded", () => {
                     const qualEl  = row.querySelector("[data-ov-quality]");
                     const trendEl = row.querySelector("[data-ov-trend]");
 
-                    if (!m) return;
+                    if (!m) {
+                        row.classList.remove("is-stale", "is-error");
+                        return;
+                    }
 
                     totalCount++;
                     const q = m.quality || "good";
-                    if (q === "good") goodCount++;
+                    if (q === "good")  goodCount++;
+                    if (q === "stale") staleCount++;
+                    if (q === "error") errorCount++;
+
+                    // Row tint
+                    row.classList.toggle("is-stale", q === "stale");
+                    row.classList.toggle("is-error", q === "error");
 
                     // Value
                     if (valEl) {
@@ -1880,26 +1896,29 @@ document.addEventListener("DOMContentLoaded", () => {
                     if (qualEl) {
                         qualEl.className = `ov-quality-dot${q === "good" ? " is-good" : q === "stale" ? " is-stale" : " is-error"}`;
                     }
-
-                    // Collect anomaly
-                    if (q !== "good") {
-                        anomalies.push({
-                            device:   live.name || live.device_id,
-                            type:     q === "stale" ? "stale_data" : "metric_error",
-                            message:  `${displayLabel(mkey)}: ${q}`,
-                            severity: q === "stale" ? "warning" : "error",
-                        });
-                    }
                 });
 
-                // Device-level error
-                if (live.error) {
-                    anomalies.push({
-                        device:   live.name || live.device_id,
-                        type:     live.error.type || "device_error",
-                        message:  live.error.message || "",
-                        severity: live.error.severity || "error",
-                    });
+                // ── Per-card issue banner ────────────────────────────────
+                if (issuesEl && issuesTx) {
+                    let txt = "";
+                    let isErr = false;
+                    if (live.error) {
+                        txt = live.error.message || `${live.error.type || "device error"}`;
+                        isErr = true;
+                    } else if (errorCount > 0) {
+                        txt = `${errorCount} reading${errorCount > 1 ? "s" : ""} errored`;
+                        isErr = true;
+                    } else if (staleCount > 0) {
+                        txt = `${staleCount} reading${staleCount > 1 ? "s" : ""} stale`;
+                        isErr = false;
+                    }
+                    if (txt) {
+                        issuesTx.textContent = txt;
+                        issuesEl.classList.toggle("is-error", isErr);
+                        issuesEl.hidden = false;
+                    } else {
+                        issuesEl.hidden = true;
+                    }
                 }
 
                 // ── Health bar ────────────────────────────────────────────
@@ -1912,25 +1931,6 @@ document.addEventListener("DOMContentLoaded", () => {
                     hBarEl.className   = `ov-health-bar-fill${pct < 70 ? " is-crit" : pct < 90 ? " is-warn" : ""}`;
                 }
             });
-
-            // ── Anomalies panel ───────────────────────────────────────────
-            if (ovAnomaliesPanel) {
-                if (anomalies.length > 0) {
-                    ovAnomaliesPanel.classList.remove("ov-hidden");
-                    if (ovAnomaliesCount) ovAnomaliesCount.textContent = String(anomalies.length);
-                    if (ovAnomaliesList) {
-                        ovAnomaliesList.innerHTML = anomalies.map((a) => `
-                            <div class="ov-anomaly-item">
-                                <span class="ov-anomaly-sev is-${a.severity}"></span>
-                                <span class="ov-anomaly-device">${a.device}</span>
-                                <span class="ov-anomaly-type">${a.type}</span>
-                                <span class="ov-anomaly-msg">${a.message}</span>
-                            </div>`).join("");
-                    }
-                } else {
-                    ovAnomaliesPanel.classList.add("ov-hidden");
-                }
-            }
         };
 
         // ── KPI Strip ─────────────────────────────────────────────────────
@@ -2014,27 +2014,51 @@ document.addEventListener("DOMContentLoaded", () => {
         let ovConfiguredKeys = "";
 
         const refresh = async () => {
+            // ── Fetch configured devices ──────────────────────────────────
+            let configured = [];
             try {
                 const r = await fetch("/api/insights/configured");
                 if (r.ok) {
                     const d = await r.json();
-                    if (d.ok) {
-                        const devices = d.devices || [];
-                        const keys    = devices.map((x) => `${x.source}:${x.device_id}`).join(",");
-                        ovConfiguredCount = devices.length;
-                        if (devices.length === 0) {
-                            ovNoSensors?.classList.remove("ov-hidden");
-                            if (ovDeviceGrid) ovDeviceGrid.innerHTML = "";
-                        } else {
-                            ovNoSensors?.classList.add("ov-hidden");
-                            if (keys !== ovConfiguredKeys && ovDeviceGrid) {
-                                ovDeviceGrid.innerHTML = devices.map(buildCard).join("");
-                                ovConfiguredKeys = keys;
-                            }
+                    if (d.ok) configured = d.devices || [];
+                }
+            } catch (e) {
+                console.error("[Insights] configured fetch failed:", e);
+            }
+
+            ovConfiguredCount = configured.length;
+
+            if (configured.length === 0) {
+                ovNoSensors?.classList.remove("ov-hidden");
+                if (ovDeviceGrid) ovDeviceGrid.innerHTML = "";
+            } else {
+                ovNoSensors?.classList.add("ov-hidden");
+
+                const newKeys = configured.map((x) => `${x.source}:${x.device_id}`).join(",");
+                if (newKeys !== ovConfiguredKeys && ovDeviceGrid) {
+                    // Build each card individually so one bad device can't block the rest
+                    const htmlParts = [];
+                    for (const device of configured) {
+                        try {
+                            htmlParts.push(buildCard(device));
+                        } catch (e) {
+                            console.error("[Insights] buildCard failed for", device.name, e);
+                            htmlParts.push(`
+                                <article class="ov-card is-error">
+                                    <header class="ov-card-head">
+                                        <div><p class="ov-card-name">${device.name || device.device_id}</p></div>
+                                        <span class="ov-status-badge ov-status-error"><span class="ov-status-pulse"></span><span>Error</span></span>
+                                    </header>
+                                    <div style="padding:1rem;color:var(--muted);font-size:.84rem">Card render error: ${e.message}</div>
+                                </article>`);
                         }
                     }
+                    ovDeviceGrid.innerHTML = htmlParts.join("");
+                    ovConfiguredKeys = newKeys;
                 }
-            } catch (_) { /* silent */ }
+            }
+
+            // ── Overlay live Redis data ───────────────────────────────────
             await loadLive();
         };
 
