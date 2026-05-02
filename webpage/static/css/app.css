@@ -4410,3 +4410,283 @@ h2 {
 .sv-trend-ttt.is-warn { background: rgba(240,166,75,0.1); color: var(--accent); }
 .sv-trend-ttt.is-crit { background: rgba(220,80,80,0.1);  color: #ff8e8e; }
 .sv-trend-ttt.is-ok   { color: rgba(157,179,187,0.35); }
+
+/* ================================================================
+   Data Forwarding page  (fw-*)
+   ================================================================ */
+
+.fw-shell {
+    padding: 1.6rem;
+    display: grid;
+    gap: 1.2rem;
+    align-content: start;
+}
+
+/* ── Add / Edit form card ────────────────────────────────────── */
+.fw-form-card {
+    border-radius: 1.35rem;
+    border: 1px solid rgba(57,208,200,0.2);
+    background: var(--surface);
+    backdrop-filter: blur(14px);
+    overflow: hidden;
+}
+.fw-hidden { display: none !important; }
+
+.fw-form-head {
+    display: flex;
+    align-items: center;
+    padding: 0.9rem 1.4rem;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    background: rgba(57,208,200,0.04);
+}
+.fw-form-title {
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.fw-form-body {
+    padding: 1.2rem 1.4rem;
+    display: grid;
+    gap: 0.9rem;
+}
+
+.fw-section-label {
+    margin: 0.4rem 0 0;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.fw-form-row {
+    display: flex;
+    gap: 0.85rem;
+    flex-wrap: wrap;
+    align-items: flex-end;
+}
+
+.fw-field { display: flex; flex-direction: column; gap: 0.3rem; flex: 1; min-width: 10rem; }
+.fw-field-sm { flex: 0 0 8rem; min-width: 0; }
+.fw-field-lg { flex: 2; }
+.fw-field-xl { flex: 3; }
+
+.fw-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--muted);
+    white-space: nowrap;
+}
+.fw-hint { font-weight: 400; opacity: 0.7; margin-left: 0.3rem; }
+
+.fw-input, .fw-select {
+    height: 2.2rem;
+    padding: 0 0.85rem;
+    border-radius: 0.65rem;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.05);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.84rem;
+    outline: none;
+    transition: border-color 180ms, background 180ms;
+}
+.fw-input:focus, .fw-select:focus {
+    border-color: rgba(57,208,200,0.4);
+    background: rgba(57,208,200,0.05);
+}
+.fw-input::placeholder { color: rgba(157,179,187,0.4); }
+
+.fw-toggle-btn {
+    height: 2.2rem;
+    padding: 0 1rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.04);
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 180ms;
+    white-space: nowrap;
+}
+.fw-toggle-btn.is-on {
+    background: rgba(98,211,158,0.12);
+    border-color: rgba(98,211,158,0.3);
+    color: var(--success);
+}
+
+/* Protocol-specific blocks */
+.fw-proto-block { display: grid; gap: 0.7rem; }
+
+.fw-form-foot {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.85rem 1.4rem;
+    border-top: 1px solid rgba(255,255,255,0.07);
+    background: rgba(255,255,255,0.02);
+}
+.fw-save-msg {
+    flex: 1;
+    font-size: 0.82rem;
+    color: var(--success);
+}
+.fw-save-msg.is-error { color: #ff8e8e; }
+.fw-btn-save {
+    padding: 0.45rem 1.4rem;
+    border-radius: 999px;
+    border: 1px solid rgba(57,208,200,0.35);
+    background: rgba(57,208,200,0.12);
+    color: var(--accent-cool);
+    font: inherit;
+    font-size: 0.84rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 180ms;
+}
+.fw-btn-save:hover { background: rgba(57,208,200,0.22); }
+.fw-btn-cancel {
+    padding: 0.45rem 1.1rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.84rem;
+    cursor: pointer;
+}
+
+/* ── Profile list ────────────────────────────────────────────── */
+.fw-profile-list { display: grid; gap: 0.85rem; }
+
+.fw-profile-card {
+    border-radius: 1.35rem;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-left: 3px solid rgba(255,255,255,0.06);
+    background: var(--surface);
+    backdrop-filter: blur(14px);
+    overflow: hidden;
+    transition: border-color 250ms;
+}
+.fw-profile-card.is-enabled { border-left-color: rgba(98,211,158,0.55); }
+.fw-profile-card.is-disabled { border-left-color: rgba(157,179,187,0.2); opacity: 0.7; }
+
+.fw-profile-head {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.9rem 1.25rem;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.fw-profile-name {
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text);
+    flex: 1;
+    min-width: 0;
+}
+.fw-proto-badge {
+    padding: 0.12rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.66rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    white-space: nowrap;
+}
+.fw-proto-badge.is-mqtt  { background: rgba(57,208,200,0.1);  color: var(--accent-cool); }
+.fw-proto-badge.is-https { background: rgba(240,166,75,0.1);  color: var(--accent); }
+
+.fw-profile-status {
+    font-size: 0.72rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.fw-profile-status.is-on  { color: var(--success); }
+.fw-profile-status.is-off { color: var(--muted); }
+
+.fw-profile-actions { display: flex; gap: 0.4rem; margin-left: auto; }
+.fw-action-btn {
+    padding: 0.25rem 0.7rem;
+    border-radius: 0.55rem;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.76rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 160ms;
+}
+.fw-action-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.25); }
+.fw-action-btn.is-del:hover { color: #ff8e8e; border-color: rgba(220,80,80,0.3); }
+
+.fw-profile-body {
+    padding: 0.7rem 1.25rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+}
+.fw-profile-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 0.08rem;
+}
+.fw-detail-label {
+    font-size: 0.62rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+.fw-detail-val {
+    font-family: monospace;
+    font-size: 0.8rem;
+    color: var(--text);
+}
+
+/* ── Empty state ─────────────────────────────────────────────── */
+.fw-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    min-height: 20rem;
+    border-radius: 1.35rem;
+    border: 1px dashed rgba(255,255,255,0.1);
+    color: var(--muted);
+    text-align: center;
+    padding: 2rem;
+}
+.fw-empty-title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--text);
+}
+.fw-empty-desc {
+    margin: 0;
+    font-size: 0.88rem;
+    max-width: 28rem;
+    line-height: 1.6;
+}
+.fw-empty-action {
+    margin-top: 0.5rem;
+    padding: 0.6rem 1.5rem;
+    border-radius: 999px;
+    border: 1px solid rgba(57,208,200,0.3);
+    background: rgba(57,208,200,0.1);
+    color: var(--accent-cool);
+    font: inherit;
+    font-size: 0.86rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 180ms;
+}
+.fw-empty-action:hover { background: rgba(57,208,200,0.2); }

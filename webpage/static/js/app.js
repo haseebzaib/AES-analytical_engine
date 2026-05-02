@@ -3255,4 +3255,293 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Data Forwarding page
+    // ══════════════════════════════════════════════════════════════════════════
+    const fwShell = document.querySelector("[data-forwarding-shell]");
+    if (fwShell) {
+
+        // ── DOM refs ────────────────────────────────────────────────────────
+        const fwFormCard    = fwShell.querySelector("[data-fw-form]");
+        const fwFormTitle   = fwShell.querySelector("[data-fw-form-title]");
+        const fwProfileList = fwShell.querySelector("[data-fw-profile-list]");
+        const fwEmpty       = fwShell.querySelector("[data-fw-empty]");
+        const fwSaveMsg     = fwShell.querySelector("[data-fw-save-msg]");
+
+        // Form fields
+        const fwFName       = fwShell.querySelector("[data-fw-f-name]");
+        const fwFProtocol   = fwShell.querySelector("[data-fw-f-protocol]");
+        const fwFEnabled    = fwShell.querySelector("[data-fw-f-enabled]");
+        const fwFScope      = fwShell.querySelector("[data-fw-f-scope]");
+        const fwFFormat     = fwShell.querySelector("[data-fw-f-format]");
+        // MQTT
+        const fwFMqttHost   = fwShell.querySelector("[data-fw-f-mqtt-host]");
+        const fwFMqttPort   = fwShell.querySelector("[data-fw-f-mqtt-port]");
+        const fwFMqttTls    = fwShell.querySelector("[data-fw-f-mqtt-tls]");
+        const fwFMqttCid    = fwShell.querySelector("[data-fw-f-mqtt-client-id]");
+        const fwFMqttUser   = fwShell.querySelector("[data-fw-f-mqtt-user]");
+        const fwFMqttPass   = fwShell.querySelector("[data-fw-f-mqtt-pass]");
+        const fwFMqttTopic  = fwShell.querySelector("[data-fw-f-mqtt-topic]");
+        const fwFMqttQos    = fwShell.querySelector("[data-fw-f-mqtt-qos]");
+        const fwFMqttRetain = fwShell.querySelector("[data-fw-f-mqtt-retain]");
+        // HTTPS
+        const fwFHttpsUrl   = fwShell.querySelector("[data-fw-f-https-url]");
+        const fwFHttpsAuth  = fwShell.querySelector("[data-fw-f-https-auth-type]");
+        const fwFHttpsAVal  = fwShell.querySelector("[data-fw-f-https-auth-val]");
+        const fwFHttpsInt   = fwShell.querySelector("[data-fw-f-https-interval]");
+        const fwFHttpsTout  = fwShell.querySelector("[data-fw-f-https-timeout]");
+        const fwAuthValWrap = fwShell.querySelector("[data-fw-auth-val-wrap]");
+        const fwAuthValLbl  = fwShell.querySelector("[data-fw-auth-val-label]");
+
+        // ── State ────────────────────────────────────────────────────────────
+        let fwProfiles   = [];
+        let fwEditId     = null;    // null = new profile, string = editing existing
+        let fwEnabledVal = false;
+        let fwTlsVal     = false;
+        let fwRetainVal  = false;
+
+        // ── Toggle button helper ─────────────────────────────────────────────
+        const fwToggle = (btn, getVal, setVal) => {
+            if (!btn) return;
+            btn.addEventListener("click", () => {
+                setVal(!getVal());
+                btn.classList.toggle("is-on", getVal());
+                btn.textContent = getVal() ? "ON" : "OFF";
+            });
+        };
+        fwToggle(fwFEnabled,    () => fwEnabledVal,    (v) => { fwEnabledVal = v; });
+        fwToggle(fwFMqttTls,    () => fwTlsVal,        (v) => {
+            fwTlsVal = v;
+            if (fwFMqttPort && !fwFMqttPort._userEdited) {
+                fwFMqttPort.value = v ? 8883 : 1883;
+            }
+        });
+        fwToggle(fwFMqttRetain, () => fwRetainVal,     (v) => { fwRetainVal = v; });
+        if (fwFMqttPort) {
+            fwFMqttPort.addEventListener("input", () => { fwFMqttPort._userEdited = true; });
+        }
+
+        // ── Protocol switch ──────────────────────────────────────────────────
+        const fwShowProto = (proto) => {
+            fwShell.querySelectorAll("[data-fw-proto]").forEach((el) => {
+                el.classList.toggle("fw-hidden", el.getAttribute("data-fw-proto") !== proto);
+            });
+        };
+        fwFProtocol?.addEventListener("change", () => fwShowProto(fwFProtocol.value));
+
+        // HTTPS auth type → show/hide auth value field
+        const fwUpdateAuthLabel = () => {
+            const t = fwFHttpsAuth?.value;
+            if (fwAuthValWrap) fwAuthValWrap.classList.toggle("fw-hidden", t === "none");
+            const labels = { bearer: "Bearer Token", api_key: "API Key", basic: "user:password" };
+            if (fwAuthValLbl) fwAuthValLbl.textContent = labels[t] || "Token / Key";
+        };
+        fwFHttpsAuth?.addEventListener("change", fwUpdateAuthLabel);
+
+        // ── Load config ──────────────────────────────────────────────────────
+        const fwLoad = async () => {
+            try {
+                const r = await fetch("/api/forwarding/config");
+                if (!r.ok) return;
+                const d = await r.json();
+                fwProfiles = d.profiles || [];
+            } catch (e) {
+                console.warn("[Forwarding] load failed:", e);
+            }
+            fwRender();
+        };
+
+        // ── Save config ──────────────────────────────────────────────────────
+        const fwSave = async () => {
+            if (fwSaveMsg) { fwSaveMsg.textContent = ""; fwSaveMsg.className = "fw-save-msg"; }
+
+            const proto = fwFProtocol?.value || "mqtt";
+            const profile = {
+                id:       fwEditId || "",
+                name:     fwFName?.value.trim() || "Unnamed Profile",
+                enabled:  fwEnabledVal,
+                protocol: proto,
+                scope:    fwFScope?.value  || "all",
+                format:   fwFFormat?.value || "json",
+            };
+
+            if (proto === "mqtt") {
+                profile.mqtt = {
+                    host:           fwFMqttHost?.value.trim()  || "",
+                    port:           Number(fwFMqttPort?.value)  || 1883,
+                    tls:            fwTlsVal,
+                    client_id:      fwFMqttCid?.value.trim()   || "",
+                    username:       fwFMqttUser?.value.trim()  || "",
+                    password:       fwFMqttPass?.value         || "",
+                    topic_template: fwFMqttTopic?.value.trim() || "metacrust/{device_id}/{metric}",
+                    qos:            Number(fwFMqttQos?.value)  || 1,
+                    retain:         fwRetainVal,
+                };
+            } else {
+                profile.https = {
+                    url:              fwFHttpsUrl?.value.trim()  || "",
+                    auth_type:        fwFHttpsAuth?.value        || "none",
+                    auth_value:       fwFHttpsAVal?.value        || "",
+                    interval_seconds: Number(fwFHttpsInt?.value) || 30,
+                    timeout_seconds:  Number(fwFHttpsTout?.value)|| 10,
+                };
+            }
+
+            if (fwEditId) {
+                const idx = fwProfiles.findIndex((p) => p.id === fwEditId);
+                if (idx >= 0) fwProfiles[idx] = profile;
+                else fwProfiles.push(profile);
+            } else {
+                fwProfiles.push(profile);
+            }
+
+            try {
+                const r = await fetch("/api/forwarding/config", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ profiles: fwProfiles }),
+                });
+                const d = await r.json();
+                if (d.ok) {
+                    if (fwSaveMsg) fwSaveMsg.textContent = "Saved.";
+                    fwHideForm();
+                    await fwLoad();
+                } else {
+                    if (fwSaveMsg) { fwSaveMsg.textContent = d.message || "Save failed."; fwSaveMsg.className = "fw-save-msg is-error"; }
+                }
+            } catch (e) {
+                if (fwSaveMsg) { fwSaveMsg.textContent = "Network error."; fwSaveMsg.className = "fw-save-msg is-error"; }
+            }
+        };
+
+        // ── Form show / hide ─────────────────────────────────────────────────
+        const fwShowForm = (profile = null) => {
+            fwEditId = profile?.id || null;
+            if (fwFormTitle) fwFormTitle.textContent = profile ? `Edit: ${profile.name}` : "New Forwarding Profile";
+
+            const proto = profile?.protocol || "mqtt";
+            if (fwFProtocol) fwFProtocol.value = proto;
+            fwShowProto(proto);
+
+            // Enabled
+            fwEnabledVal = profile ? profile.enabled : false;
+            if (fwFEnabled) { fwFEnabled.classList.toggle("is-on", fwEnabledVal); fwFEnabled.textContent = fwEnabledVal ? "ON" : "OFF"; }
+
+            if (fwFName)   fwFName.value   = profile?.name   || "";
+            if (fwFScope)  fwFScope.value  = profile?.scope  || "all";
+            if (fwFFormat) fwFFormat.value = profile?.format || "json";
+
+            if (proto === "mqtt") {
+                const m = profile?.mqtt || {};
+                if (fwFMqttHost)   fwFMqttHost.value   = m.host   || "";
+                if (fwFMqttPort)   { fwFMqttPort.value = m.port || 1883; fwFMqttPort._userEdited = false; }
+                fwTlsVal = m.tls || false;
+                if (fwFMqttTls)    { fwFMqttTls.classList.toggle("is-on", fwTlsVal); fwFMqttTls.textContent = fwTlsVal ? "ON" : "OFF"; }
+                if (fwFMqttCid)    fwFMqttCid.value    = m.client_id      || "";
+                if (fwFMqttUser)   fwFMqttUser.value   = m.username       || "";
+                if (fwFMqttPass)   fwFMqttPass.value   = m.password       || "";
+                if (fwFMqttTopic)  fwFMqttTopic.value  = m.topic_template || "metacrust/{device_id}/{metric}";
+                if (fwFMqttQos)    fwFMqttQos.value    = String(m.qos ?? 1);
+                fwRetainVal = m.retain || false;
+                if (fwFMqttRetain) { fwFMqttRetain.classList.toggle("is-on", fwRetainVal); fwFMqttRetain.textContent = fwRetainVal ? "ON" : "OFF"; }
+            } else {
+                const h = profile?.https || {};
+                if (fwFHttpsUrl)  fwFHttpsUrl.value  = h.url         || "";
+                if (fwFHttpsAuth) fwFHttpsAuth.value = h.auth_type   || "none";
+                if (fwFHttpsAVal) fwFHttpsAVal.value = h.auth_value  || "";
+                if (fwFHttpsInt)  fwFHttpsInt.value  = String(h.interval_seconds || 30);
+                if (fwFHttpsTout) fwFHttpsTout.value = String(h.timeout_seconds  || 10);
+                fwUpdateAuthLabel();
+            }
+
+            fwFormCard?.classList.remove("fw-hidden");
+            fwFormCard?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        };
+
+        const fwHideForm = () => {
+            fwFormCard?.classList.add("fw-hidden");
+            fwEditId = null;
+        };
+
+        // ── Render profile list ──────────────────────────────────────────────
+        const fwRender = () => {
+            if (!fwProfileList) return;
+
+            if (fwProfiles.length === 0) {
+                fwProfileList.innerHTML = "";
+                fwEmpty?.classList.remove("ov-hidden");
+                return;
+            }
+            fwEmpty?.classList.add("ov-hidden");
+
+            fwProfileList.innerHTML = fwProfiles.map((p) => {
+                const proto   = p.protocol || "mqtt";
+                const enabled = p.enabled;
+                let details   = "";
+                if (proto === "mqtt") {
+                    const m = p.mqtt || {};
+                    details = `
+                        <div class="fw-profile-detail"><span class="fw-detail-label">Broker</span><span class="fw-detail-val">${m.host || "—"}:${m.port || 1883}${m.tls ? " · TLS" : ""}</span></div>
+                        <div class="fw-profile-detail"><span class="fw-detail-label">Topic</span><span class="fw-detail-val">${m.topic_template || "—"}</span></div>
+                        <div class="fw-profile-detail"><span class="fw-detail-label">QoS</span><span class="fw-detail-val">${m.qos ?? 1}</span></div>`;
+                } else {
+                    const h = p.https || {};
+                    details = `
+                        <div class="fw-profile-detail"><span class="fw-detail-label">URL</span><span class="fw-detail-val">${h.url || "—"}</span></div>
+                        <div class="fw-profile-detail"><span class="fw-detail-label">Auth</span><span class="fw-detail-val">${h.auth_type || "none"}</span></div>
+                        <div class="fw-profile-detail"><span class="fw-detail-label">Interval</span><span class="fw-detail-val">every ${h.interval_seconds || 30} s</span></div>`;
+                }
+                return `
+                    <div class="fw-profile-card ${enabled ? "is-enabled" : "is-disabled"}" data-fw-card="${p.id}">
+                        <div class="fw-profile-head">
+                            <span class="fw-profile-name">${p.name || "Unnamed"}</span>
+                            <span class="fw-proto-badge is-${proto}">${proto.toUpperCase()}</span>
+                            <span class="fw-profile-status ${enabled ? "is-on" : "is-off"}">${enabled ? "● Active" : "○ Disabled"}</span>
+                            <div class="fw-profile-actions">
+                                <button class="fw-action-btn" data-fw-edit="${p.id}">Edit</button>
+                                <button class="fw-action-btn is-del" data-fw-del="${p.id}">Delete</button>
+                            </div>
+                        </div>
+                        <div class="fw-profile-body">
+                            ${details}
+                            <div class="fw-profile-detail"><span class="fw-detail-label">Scope</span><span class="fw-detail-val">${p.scope === "all" ? "All devices" : p.scope}</span></div>
+                            <div class="fw-profile-detail"><span class="fw-detail-label">Format</span><span class="fw-detail-val">${p.format || "json"}</span></div>
+                        </div>
+                    </div>`;
+            }).join("");
+
+            // Wire edit / delete buttons
+            fwProfileList.querySelectorAll("[data-fw-edit]").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    const id = btn.getAttribute("data-fw-edit");
+                    fwShowForm(fwProfiles.find((p) => p.id === id) || null);
+                });
+            });
+            fwProfileList.querySelectorAll("[data-fw-del]").forEach((btn) => {
+                btn.addEventListener("click", async () => {
+                    const id = btn.getAttribute("data-fw-del");
+                    const prof = fwProfiles.find((p) => p.id === id);
+                    if (!confirm(`Delete profile "${prof?.name || id}"?`)) return;
+                    fwProfiles = fwProfiles.filter((p) => p.id !== id);
+                    await fetch("/api/forwarding/config", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ profiles: fwProfiles }),
+                    });
+                    fwRender();
+                });
+            });
+        };
+
+        // ── Wire static buttons ──────────────────────────────────────────────
+        fwShell.querySelectorAll("[data-fw-add]").forEach((btn) => {
+            btn.addEventListener("click", () => fwShowForm(null));
+        });
+        fwShell.querySelector("[data-fw-cancel]")?.addEventListener("click", fwHideForm);
+        fwShell.querySelector("[data-fw-save]")?.addEventListener("click", fwSave);
+
+        // Initial load
+        fwLoad();
+    }
+
 });

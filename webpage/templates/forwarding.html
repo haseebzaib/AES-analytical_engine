@@ -1,0 +1,179 @@
+{% extends "console_layout.html" %}
+
+{% block page_eyebrow %}Data Forwarding{% endblock %}
+{% block page_title %}Data Forwarding{% endblock %}
+
+{% block page_actions %}
+<button class="ghost-action" id="fw-add-btn" data-fw-add>+ Add Profile</button>
+{% endblock %}
+
+{% block console_content %}
+<section class="fw-shell" data-forwarding-shell>
+
+    {# ── Add / Edit form (hidden by default) ──────────────────────────────── #}
+    <div class="fw-form-card fw-hidden" data-fw-form>
+        <header class="fw-form-head">
+            <span class="fw-form-title" data-fw-form-title>New Forwarding Profile</span>
+        </header>
+        <div class="fw-form-body">
+
+            {# Row 1: name + protocol #}
+            <div class="fw-form-row">
+                <div class="fw-field fw-field-lg">
+                    <label class="fw-label">Profile Name</label>
+                    <input class="fw-input" type="text" placeholder="e.g. MetaCrust Cloud" data-fw-f-name maxlength="64">
+                </div>
+                <div class="fw-field">
+                    <label class="fw-label">Protocol</label>
+                    <select class="fw-select" data-fw-f-protocol>
+                        <option value="mqtt">MQTT</option>
+                        <option value="https">HTTPS</option>
+                    </select>
+                </div>
+                <div class="fw-field fw-field-sm">
+                    <label class="fw-label">Enabled</label>
+                    <button class="fw-toggle-btn is-on" data-fw-f-enabled>ON</button>
+                </div>
+            </div>
+
+            {# ── MQTT fields ────────────────────────────────────────────── #}
+            <div class="fw-proto-block" data-fw-proto="mqtt">
+                <p class="fw-section-label">Broker</p>
+                <div class="fw-form-row">
+                    <div class="fw-field fw-field-lg">
+                        <label class="fw-label">Host</label>
+                        <input class="fw-input" type="text" placeholder="mqtt.example.com" data-fw-f-mqtt-host>
+                    </div>
+                    <div class="fw-field fw-field-sm">
+                        <label class="fw-label">Port</label>
+                        <input class="fw-input" type="number" value="1883" min="1" max="65535" data-fw-f-mqtt-port>
+                    </div>
+                    <div class="fw-field fw-field-sm">
+                        <label class="fw-label">TLS</label>
+                        <button class="fw-toggle-btn" data-fw-f-mqtt-tls>OFF</button>
+                    </div>
+                </div>
+                <div class="fw-form-row">
+                    <div class="fw-field">
+                        <label class="fw-label">Client ID <span class="fw-hint">(leave blank to auto-generate)</span></label>
+                        <input class="fw-input" type="text" placeholder="metacrust-gw-001" data-fw-f-mqtt-client-id maxlength="128">
+                    </div>
+                    <div class="fw-field">
+                        <label class="fw-label">Username</label>
+                        <input class="fw-input" type="text" autocomplete="off" data-fw-f-mqtt-user maxlength="128">
+                    </div>
+                    <div class="fw-field">
+                        <label class="fw-label">Password</label>
+                        <input class="fw-input" type="password" autocomplete="new-password" data-fw-f-mqtt-pass maxlength="256">
+                    </div>
+                </div>
+                <p class="fw-section-label">Publishing</p>
+                <div class="fw-form-row">
+                    <div class="fw-field fw-field-lg">
+                        <label class="fw-label">Topic Template <span class="fw-hint">variables: {device_id} {metric} {source}</span></label>
+                        <input class="fw-input" type="text" placeholder="metacrust/{device_id}/{metric}" data-fw-f-mqtt-topic maxlength="512">
+                    </div>
+                    <div class="fw-field fw-field-sm">
+                        <label class="fw-label">QoS</label>
+                        <select class="fw-select" data-fw-f-mqtt-qos>
+                            <option value="0">0 — At most once</option>
+                            <option value="1" selected>1 — At least once</option>
+                            <option value="2">2 — Exactly once</option>
+                        </select>
+                    </div>
+                    <div class="fw-field fw-field-sm">
+                        <label class="fw-label">Retain</label>
+                        <button class="fw-toggle-btn" data-fw-f-mqtt-retain>OFF</button>
+                    </div>
+                </div>
+            </div>
+
+            {# ── HTTPS fields ───────────────────────────────────────────── #}
+            <div class="fw-proto-block fw-hidden" data-fw-proto="https">
+                <p class="fw-section-label">Endpoint</p>
+                <div class="fw-form-row">
+                    <div class="fw-field fw-field-xl">
+                        <label class="fw-label">URL</label>
+                        <input class="fw-input" type="url" placeholder="https://api.example.com/ingest" data-fw-f-https-url maxlength="512">
+                    </div>
+                </div>
+                <div class="fw-form-row">
+                    <div class="fw-field">
+                        <label class="fw-label">Auth Type</label>
+                        <select class="fw-select" data-fw-f-https-auth-type>
+                            <option value="none">None</option>
+                            <option value="bearer">Bearer Token</option>
+                            <option value="api_key">API Key Header</option>
+                            <option value="basic">Basic Auth</option>
+                        </select>
+                    </div>
+                    <div class="fw-field fw-field-lg" data-fw-auth-val-wrap>
+                        <label class="fw-label" data-fw-auth-val-label>Token / Key</label>
+                        <input class="fw-input" type="password" autocomplete="new-password" placeholder="Enter value" data-fw-f-https-auth-val maxlength="512">
+                    </div>
+                </div>
+                <p class="fw-section-label">Delivery</p>
+                <div class="fw-form-row">
+                    <div class="fw-field">
+                        <label class="fw-label">POST Interval</label>
+                        <select class="fw-select" data-fw-f-https-interval>
+                            <option value="5">Every 5 s</option>
+                            <option value="10">Every 10 s</option>
+                            <option value="30" selected>Every 30 s</option>
+                            <option value="60">Every 60 s</option>
+                            <option value="300">Every 5 min</option>
+                        </select>
+                    </div>
+                    <div class="fw-field fw-field-sm">
+                        <label class="fw-label">Timeout (s)</label>
+                        <input class="fw-input" type="number" value="10" min="1" max="120" data-fw-f-https-timeout>
+                    </div>
+                </div>
+            </div>
+
+            {# ── Common: scope + format ─────────────────────────────────── #}
+            <p class="fw-section-label">Scope & Format</p>
+            <div class="fw-form-row">
+                <div class="fw-field fw-field-lg">
+                    <label class="fw-label">Devices to forward</label>
+                    <select class="fw-select" data-fw-f-scope>
+                        <option value="all">All configured devices</option>
+                    </select>
+                </div>
+                <div class="fw-field">
+                    <label class="fw-label">Message Format</label>
+                    <select class="fw-select" data-fw-f-format>
+                        <option value="json">JSON (per reading)</option>
+                        <option value="json_batch">JSON Batch</option>
+                        <option value="csv">CSV</option>
+                    </select>
+                </div>
+            </div>
+
+        </div>
+        <footer class="fw-form-foot">
+            <span class="fw-save-msg" data-fw-save-msg></span>
+            <button class="fw-btn-cancel" data-fw-cancel>Cancel</button>
+            <button class="fw-btn-save"   data-fw-save>Save Profile</button>
+        </footer>
+    </div>
+
+    {# ── Profile list ─────────────────────────────────────────────────────── #}
+    <div class="fw-profile-list" data-fw-profile-list></div>
+
+    {# ── Empty state ──────────────────────────────────────────────────────── #}
+    <div class="fw-empty ov-hidden" data-fw-empty>
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" style="opacity:.3">
+            <path d="M8 16h32M8 24h20M8 32h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="38" cy="32" r="8" stroke="currentColor" stroke-width="2"/>
+            <path d="M38 29v3.5l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <h3 class="fw-empty-title">No forwarding profiles</h3>
+        <p class="fw-empty-desc">
+            Add a profile to start sending sensor data to an MQTT broker or HTTP endpoint.
+        </p>
+        <button class="fw-empty-action" data-fw-add>+ Add your first profile</button>
+    </div>
+
+</section>
+{% endblock %}

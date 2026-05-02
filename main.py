@@ -77,6 +77,7 @@ from analytics_engine.network_settings_store import NetworkSettingsStore
 from analytics_engine.interfaces.rs232_config_store import Rs232ConfigStore
 from analytics_engine.interfaces.rs485_config_store import Rs485ConfigStore
 from analytics_engine.interfaces.modbus_tcp_config_store import ModbusTcpConfigStore
+from analytics_engine.interfaces.forwarding_config_store import ForwardingConfigStore
 from analytics_engine.sensor_store import SensorStore
 from analytics_engine.analytical_store import AnalyticalStore
 from analytics_engine.archival_job import ArchivalJob
@@ -96,7 +97,8 @@ network_settings_store  = NetworkSettingsStore(gateway_root=gateway_root, storag
 system_metrics_store    = SystemMetricsStore(gateway_root=gateway_root)
 rs232_config_store      = Rs232ConfigStore(storage_root=storage_root)
 rs485_config_store      = Rs485ConfigStore(storage_root=storage_root)
-modbus_tcp_config_store = ModbusTcpConfigStore(storage_root=storage_root)
+modbus_tcp_config_store   = ModbusTcpConfigStore(storage_root=storage_root)
+forwarding_config_store   = ForwardingConfigStore(storage_root=storage_root)
 redis_notifier          = RedisNotifier()
 sensor_store            = SensorStore(redis_notifier, db_path=pes_db_path)
 analytical_store        = AnalyticalStore(analytical_db_path)
@@ -132,6 +134,7 @@ async def lifespan(app: FastAPI):
     rs232_config_store.ensure_initialized()
     rs485_config_store.ensure_initialized()
     modbus_tcp_config_store.ensure_initialized()
+    forwarding_config_store.ensure_initialized()
 
     redis_ok = redis_notifier.ping()
     logger.info("  redis        : %s", "OK" if redis_ok else "UNREACHABLE — sensor data will be empty")
@@ -147,7 +150,8 @@ async def lifespan(app: FastAPI):
     app.state.system_metrics_store    = system_metrics_store
     app.state.rs232_config_store      = rs232_config_store
     app.state.rs485_config_store      = rs485_config_store
-    app.state.modbus_tcp_config_store = modbus_tcp_config_store
+    app.state.modbus_tcp_config_store   = modbus_tcp_config_store
+    app.state.forwarding_config_store   = forwarding_config_store
     app.state.redis_notifier          = redis_notifier
     app.state.sensor_store            = sensor_store
     app.state.analytical_store        = analytical_store

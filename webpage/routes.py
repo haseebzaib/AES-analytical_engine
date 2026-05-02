@@ -136,7 +136,7 @@ def _primary_sections(active_label: str) -> list[dict[str, object]]:
         ("Insights", "Info", "/insights"),
         ("Interfaces", "I/O", "/interfaces"),
         ("Network Probe", "Probe", "#"),
-        ("Destinations", "Dest", "#"),
+        ("Data Forwarding", "Fwd", "/forwarding"),
         ("Connectivity", "Conn", "/connectivity"),
         ("Security", "Sec", "#"),
         ("System", "Sys", "/system"),
@@ -771,6 +771,59 @@ _DUSTRAK_METRICS = [
     {"name": "pm10",  "unit": "mg/m³"},
     {"name": "total", "unit": "mg/m³"},
 ]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Data Forwarding page
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _forwarding_store(request: Request):
+    return request.app.state.forwarding_config_store
+
+
+@router.get("/forwarding", response_class=HTMLResponse)
+async def forwarding_page(request: Request) -> HTMLResponse:
+    if not _is_authenticated(request):
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    return templates.TemplateResponse(
+        request,
+        "forwarding.html",
+        {
+            "product_name":     "MetaCrust Edge Gateway",
+            "page_title":       "Data Forwarding",
+            "primary_sections": _primary_sections("Data Forwarding"),
+        },
+    )
+
+
+@router.get("/api/forwarding/config")
+async def get_forwarding_config(request: Request) -> JSONResponse:
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+    config = _forwarding_store(request).get_config()
+    config["ok"] = True
+    return JSONResponse(config)
+
+
+@router.post("/api/forwarding/config")
+async def save_forwarding_config(request: Request) -> JSONResponse:
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+    payload = await request.json()
+    success, response = _forwarding_store(request).save_config(payload)
+    if success:
+        request.app.state.redis_notifier.notify_changed("forwarding_config")
+        profiles = payload.get("profiles") or []
+        enabled  = sum(1 for p in profiles if p.get("enabled"))
+        logger.info(
+            "CONFIG  forwarding_saved  user=%s  profiles=%d  enabled=%d",
+            _session_user(request), len(profiles), enabled,
+        )
+    else:
+        logger.warning("CONFIG  forwarding_save_failed  user=%s  reason=%s",
+                       _session_user(request), response.get("message"))
+    response["ok"] = success
+    return JSONResponse(response, status_code=status.HTTP_200_OK if success else status.HTTP_400_BAD_REQUEST)
 
 
 @router.get("/insights", response_class=HTMLResponse)
