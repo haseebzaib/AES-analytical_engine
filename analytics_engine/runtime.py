@@ -78,6 +78,26 @@ class AnalyticsRuntime:
         devices = self._sensor_store.live_devices()
         self._continuity_state.update(devices)
 
+    def register_worker(
+        self,
+        name: str,
+        interval_seconds: float,
+        tick_fn: "Callable[[], None]",
+    ) -> None:
+        """
+        Register an additional background worker.
+        Must be called BEFORE start(). Safe to call multiple times.
+        """
+        if self._started:
+            logger.warning(
+                "register_worker(%s): runtime already started — worker will not run",
+                name,
+            )
+            return
+        self._workers.append(
+            BackgroundWorker(name=name, interval_seconds=interval_seconds, tick_fn=tick_fn)
+        )
+
     def start(self) -> None:
         if self._started:
             return

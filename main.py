@@ -61,10 +61,11 @@ class _PollingEndpointFilter(logging.Filter):
 
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-gateway_root = Path(os.environ.get("METACRUST_GATEWAY_ROOT", "/opt/gateway"))
-storage_root = Path(os.environ.get("METACRUST_STORAGE_ROOT", str(gateway_root / "software_storage")))
-pes_db_path  = Path(os.environ.get("PES_DB_PATH", str(storage_root / "PES" / "pes.db")))
-log_dir      = Path(os.environ.get("AES_LOG_DIR",  str(gateway_root / "logs")))
+gateway_root        = Path(os.environ.get("METACRUST_GATEWAY_ROOT", "/opt/gateway"))
+storage_root        = Path(os.environ.get("METACRUST_STORAGE_ROOT", str(gateway_root / "software_storage")))
+pes_db_path         = Path(os.environ.get("PES_DB_PATH",         str(storage_root / "PES" / "pes.db")))
+analytical_db_path  = Path(os.environ.get("AES_ANALYTICAL_DB",   str(storage_root / "AES" / "analytical.db")))
+log_dir             = Path(os.environ.get("AES_LOG_DIR",          str(gateway_root  / "logs")))
 
 _setup_logging(log_dir)
 logging.getLogger("uvicorn.access").addFilter(_PollingEndpointFilter())
@@ -77,6 +78,8 @@ from analytics_engine.interfaces.rs232_config_store import Rs232ConfigStore
 from analytics_engine.interfaces.rs485_config_store import Rs485ConfigStore
 from analytics_engine.interfaces.modbus_tcp_config_store import ModbusTcpConfigStore
 from analytics_engine.sensor_store import SensorStore
+from analytics_engine.analytical_store import AnalyticalStore
+from analytics_engine.archival_job import ArchivalJob
 from analytics_engine.analytics.continuity import ContinuityState
 from utils.redis_client import RedisClient as RedisNotifier
 from analytics_engine.runtime import AnalyticsRuntime
@@ -93,17 +96,23 @@ rs485_config_store      = Rs485ConfigStore(storage_root=storage_root)
 modbus_tcp_config_store = ModbusTcpConfigStore(storage_root=storage_root)
 redis_notifier          = RedisNotifier()
 sensor_store            = SensorStore(redis_notifier, db_path=pes_db_path)
+analytical_store        = AnalyticalStore(analytical_db_path)
 continuity_state        = ContinuityState()
 runtime                 = AnalyticsRuntime(sensor_store=sensor_store, continuity_state=continuity_state)
+
+# Register the archival worker (every 5 minutes) before runtime.start()
+_archival_job = ArchivalJob(pes_db_path=pes_db_path, analytical_store=analytical_store)
+runtime.register_worker("archival", interval_seconds=300.0, tick_fn=_archival_job.tick)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("━━━ MetaCrust AES starting ━━━")
-    logger.info("  gateway_root : %s", gateway_root)
-    logger.info("  storage_root : %s", storage_root)
-    logger.info("  pes_db_path  : %s  (exists=%s)", pes_db_path, pes_db_path.exists())
-    logger.info("  log_dir      : %s", log_dir)
+    logger.info("  gateway_root     : %s", gateway_root)
+    logger.info("  storage_root     : %s", storage_root)
+    logger.info("  pes_db_path      : %s  (exists=%s)", pes_db_path, pes_db_path.exists())
+    logger.info("  analytical_db    : %s  (exists=%s)", analytical_db_path, analytical_db_path.exists())
+    logger.info("  log_dir          : %s", log_dir)
 
     app.state.session_nonce = secrets.token_urlsafe(16)
 
@@ -129,6 +138,7 @@ async def lifespan(app: FastAPI):
     app.state.modbus_tcp_config_store = modbus_tcp_config_store
     app.state.redis_notifier          = redis_notifier
     app.state.sensor_store            = sensor_store
+    app.state.analytical_store        = analytical_store
     app.state.continuity_state        = continuity_state
     try:
         yield
