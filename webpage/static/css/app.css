@@ -4203,3 +4203,28 @@ h2 {
     transition: left 80ms, width 80ms;
     min-width: 6px;
 }
+
+/* Sensors tab top bar (window picker + export button) */
+.sv-top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.sv-export-btn {
+    padding: 0.32rem 1rem;
+    border-radius: 999px;
+    border: 1px solid rgba(57,208,200,0.3);
+    background: rgba(57,208,200,0.08);
+    color: var(--accent-cool);
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 180ms ease;
+}
+.sv-export-btn:hover    { background: rgba(57,208,200,0.18); }
+.sv-export-btn:disabled { opacity: 0.4; cursor: not-allowed; }

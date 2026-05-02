@@ -1,5 +1,6 @@
-import collections
+import csv
 import hashlib
+import io
 import json
 import logging
 from pathlib import Path
@@ -139,7 +140,6 @@ def _primary_sections(active_label: str) -> list[dict[str, object]]:
         ("Connectivity", "Conn", "/connectivity"),
         ("Security", "Sec", "#"),
         ("System", "Sys", "/system"),
-        ("Logs", "Log", "/logs"),
     ]
     return [
         {
@@ -1134,84 +1134,123 @@ async def scan_wifi_networks(request: Request) -> JSONResponse:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  Log viewer
+#  CSV Export
 # ══════════════════════════════════════════════════════════════════════════════
 
-_LOG_FILE = Path("/opt/gateway/logs/aes.log")
-_LOG_LEVEL_COLOURS = {"ERROR": "error", "WARNING": "warn", "INFO": "info", "DEBUG": "debug"}
+_CSV_WINDOW_MAP: dict[str, int] = {"1h": 1, "6h": 6, "24h": 24, "7d": 168}
 
 
-def _parse_log_lines(raw_lines: list[str]) -> list[dict]:
-    """Parse AES log lines into structured dicts the template can render."""
-    parsed = []
-    for line in raw_lines:
-        line = line.rstrip()
-        if not line:
-            continue
-        # Format: "YYYY-MM-DD HH:MM:SS  LEVEL     [name]  message"
-        parts = line.split(None, 3)   # timestamp, time, level, rest
-        if len(parts) == 4:
-            ts    = f"{parts[0]} {parts[1]}"
-            level = parts[2].rstrip()
-            rest  = parts[3]
-            tone  = _LOG_LEVEL_COLOURS.get(level, "debug")
-        else:
-            ts, level, rest, tone = "", "INFO", line, "info"
-        parsed.append({"ts": ts, "level": level, "tone": tone, "message": rest})
-    return parsed
+@router.get("/api/insights/export/csv")
+async def export_csv(request: Request):
+    """
+    Download sensor data as a CSV file.
 
-
-@router.get("/logs", response_class=HTMLResponse)
-async def logs_page(request: Request) -> HTMLResponse:
+    Query params:
+      source     — e.g. rs232, modbus_tcp
+      device_id  — e.g. rs232_port_0, emulator_tcp
+      metrics    — comma-separated metric names, or "all"
+      window     — 1h | 6h | 24h | 7d  (default 24h)
+      name       — optional human-readable device name (used in filename)
+    """
     if not _is_authenticated(request):
-        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
-    return templates.TemplateResponse(
-        request,
-        "logs.html",
-        {
-            "product_name":     "MetaCrust Edge Gateway",
-            "page_title":       "System Logs",
-            "primary_sections": _primary_sections("Logs"),
-            "log_file":         str(_LOG_FILE),
-        },
+        return JSONResponse(
+            {"ok": False, "message": "Authentication required."},
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    source    = request.query_params.get("source", "").strip()
+    device_id = request.query_params.get("device_id", "").strip()
+    metrics_q = request.query_params.get("metrics", "all").strip()
+    window    = request.query_params.get("window", "24h").strip()
+    dev_name  = request.query_params.get("name", device_id).strip()
+
+    if not (source and device_id):
+        return JSONResponse(
+            {"ok": False, "message": "source and device_id are required."},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    window_h = _CSV_WINDOW_MAP.get(window, 24)
+
+    # Determine which metrics to export
+    if metrics_q == "all" or not metrics_q:
+        # Discover from live device or configured list
+        live = next(
+            (d for d in _sensor_store(request).live_devices()
+             if d.get("source") == source and d.get("device_id") == device_id),
+            None,
+        )
+        metric_names = list((live or {}).get("metrics", {}).keys()) if live else []
+    else:
+        metric_names = [m.strip() for m in metrics_q.split(",") if m.strip()]
+
+    if not metric_names:
+        return JSONResponse(
+            {"ok": False, "message": "No metrics found for this device."},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    store    = _sensor_store(request)
+    now_ms   = int(_time.time() * 1000)
+    since_ms = now_ms - window_h * 3_600_000
+
+    # Fetch raw sample rows from pes.db for each metric, then merge on timestamp
+    # We query all metrics in one pass by reading sensor_samples directly.
+    rows_by_ts: dict[int, dict] = {}
+
+    conn = store._db()
+    if conn is not None:
+        try:
+            placeholders = ",".join("?" * len(metric_names))
+            cur = conn.execute(
+                f"""
+                SELECT timestamp_ms, metric, value, quality
+                FROM sensor_samples
+                WHERE source      = ?
+                  AND device_id   = ?
+                  AND metric      IN ({placeholders})
+                  AND timestamp_ms > ?
+                ORDER BY timestamp_ms ASC
+                """,
+                [source, device_id, *metric_names, since_ms],
+            )
+            for r in cur.fetchall():
+                ts = r["timestamp_ms"]
+                if ts not in rows_by_ts:
+                    rows_by_ts[ts] = {}
+                rows_by_ts[ts][r["metric"]] = r["value"]
+        except Exception as exc:
+            logger.warning("CSV export: query failed: %s", exc)
+        finally:
+            conn.close()
+
+    # Build CSV in memory
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+
+    # Header
+    writer.writerow(["timestamp_ms", "datetime_utc"] + metric_names)
+
+    # Data rows
+    import datetime as _dt
+    for ts_ms in sorted(rows_by_ts):
+        dt_str = _dt.datetime.utcfromtimestamp(ts_ms / 1000).strftime("%Y-%m-%d %H:%M:%S")
+        row_data = rows_by_ts[ts_ms]
+        writer.writerow([ts_ms, dt_str] + [row_data.get(m, "") for m in metric_names])
+
+    csv_bytes = buf.getvalue().encode("utf-8")
+    safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in dev_name)
+    date_str  = _dt.datetime.utcnow().strftime("%Y-%m-%d")
+    filename  = f"{safe_name}_{window}_{date_str}.csv"
+
+    logger.info(
+        "CSV export  user=%s  device=%s/%s  window=%s  metrics=%d  rows=%d",
+        _session_user(request), source, device_id, window, len(metric_names), len(rows_by_ts),
     )
 
-
-@router.get("/api/logs")
-async def get_logs(request: Request) -> JSONResponse:
-    if not _is_authenticated(request):
-        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
-
-    try:
-        lines_param = max(50, min(2000, int(request.query_params.get("lines", "200"))))
-    except ValueError:
-        lines_param = 200
-
-    level_filter = request.query_params.get("level", "").upper()   # ERROR / WARNING / INFO / "" (all)
-    search       = request.query_params.get("q", "").lower()
-
-    if not _LOG_FILE.exists():
-        return JSONResponse({"ok": True, "lines": [], "file": str(_LOG_FILE), "exists": False})
-
-    try:
-        # Read file tail efficiently
-        with _LOG_FILE.open("r", encoding="utf-8", errors="replace") as f:
-            raw = collections.deque(f, maxlen=lines_param * 4)   # over-read, then filter
-        raw_list = list(raw)
-    except OSError as exc:
-        return JSONResponse({"ok": False, "message": f"Cannot read log: {exc}"}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    parsed = _parse_log_lines(raw_list)
-
-    # Apply filters
-    if level_filter:
-        order = ["DEBUG", "INFO", "WARNING", "ERROR"]
-        min_idx = order.index(level_filter) if level_filter in order else 0
-        parsed = [l for l in parsed if order.index(l["level"]) >= min_idx if l["level"] in order]
-    if search:
-        parsed = [l for l in parsed if search in l["message"].lower() or search in l["ts"].lower()]
-
-    # Return last N lines after filtering
-    parsed = parsed[-lines_param:]
-
-    return JSONResponse({"ok": True, "lines": parsed, "file": str(_LOG_FILE), "exists": True, "total": len(parsed)})
+    from fastapi.responses import Response
+    return Response(
+        content=csv_bytes,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

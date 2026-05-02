@@ -53,7 +53,6 @@ class _PollingEndpointFilter(logging.Filter):
         "/api/system/metrics",
         "/api/insights/live",
         "/api/insights/summary",
-        "/api/logs",
     ])
 
     def filter(self, record: logging.LogRecord) -> bool:

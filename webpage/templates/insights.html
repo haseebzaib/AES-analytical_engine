@@ -86,11 +86,16 @@
 
             {# Right: window picker + chart + legend + stats #}
             <div class="sv-chart-col">
-                <div class="sv-window-bar" data-sv-window-bar>
-                    <button class="sv-win-btn is-current" data-sv-win="1h">1 h</button>
-                    <button class="sv-win-btn"            data-sv-win="6h">6 h</button>
-                    <button class="sv-win-btn"            data-sv-win="24h">24 h</button>
-                    <button class="sv-win-btn"            data-sv-win="7d">7 d</button>
+                <div class="sv-top-bar">
+                    <div class="sv-window-bar" data-sv-window-bar>
+                        <button class="sv-win-btn is-current" data-sv-win="1h">1 h</button>
+                        <button class="sv-win-btn"            data-sv-win="6h">6 h</button>
+                        <button class="sv-win-btn"            data-sv-win="24h">24 h</button>
+                        <button class="sv-win-btn"            data-sv-win="7d">7 d</button>
+                    </div>
+                    <button class="sv-export-btn" data-sv-export-btn title="Download data as CSV">
+                        ↓ Export CSV
+                    </button>
                 </div>
                 <div class="sv-chart-wrap">
                     <svg class="sv-chart-svg" data-sv-chart preserveAspectRatio="none"></svg>

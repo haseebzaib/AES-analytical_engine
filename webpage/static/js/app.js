@@ -2041,6 +2041,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const svLegend       = svPanel.querySelector("[data-sv-legend]");
             const svStats        = svPanel.querySelector("[data-sv-stats]");
             const svWindowBar    = svPanel.querySelector("[data-sv-window-bar]");
+            const svExportBtn    = svPanel.querySelector("[data-sv-export-btn]");
             const svNoDevice     = svPanel.querySelector("[data-sv-no-device]");
             const svBody         = svPanel.querySelector("[data-sv-body]");
 
@@ -2640,6 +2641,38 @@ document.addEventListener("DOMContentLoaded", () => {
                         svLastFetchMs = 0;
                         svFetchAndRenderChart();
                     });
+                });
+            }
+
+            // ── Export CSV ─────────────────────────────────────────────────────
+            if (svExportBtn) {
+                svExportBtn.addEventListener("click", () => {
+                    if (!svSelectedKey) return;
+
+                    const [src, ...didParts] = svSelectedKey.split(":");
+                    const did    = didParts.join(":");
+                    const device = ovConfigured.find((d) => d.source === src && d.device_id === did);
+
+                    // Export the ON-toggled metrics (or all if none toggled)
+                    const toggledMetrics = (device?.expected_metrics || [])
+                        .filter((m) => svGetToggle(svSelectedKey, m.name))
+                        .map((m) => m.name);
+
+                    const params = new URLSearchParams({
+                        source:    src,
+                        device_id: did,
+                        metrics:   toggledMetrics.length ? toggledMetrics.join(",") : "all",
+                        window:    svWindow,
+                        name:      device?.name || did,
+                    });
+
+                    // Trigger file download — browser handles the rest
+                    const a = document.createElement("a");
+                    a.href = `/api/insights/export/csv?${params}`;
+                    a.download = "";
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
                 });
             }
 
