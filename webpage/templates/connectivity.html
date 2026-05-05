@@ -77,22 +77,65 @@
                 <div>
                     <p class="hero-band-eyebrow">Ethernet</p>
                     <h2>Ethernet interfaces</h2>
-                    <p class="settings-section-note">Both ethernet interfaces are always active via DHCP. Static IP and DHCP server configuration will be available in <strong>Network Probe</strong>.</p>
+                    <p class="settings-section-note">Both ethernet interfaces run DHCP by default. Static IP and DHCP server configuration will be available in <strong>Network Probe</strong>.</p>
                 </div>
+                <button type="button" class="ghost-action eth-refresh-btn" id="eth-refresh-btn" style="margin-left:auto;align-self:flex-start">↻ Refresh</button>
             </div>
             <div class="settings-section">
-                <div class="settings-grid settings-grid-three">
-                    <div class="field">
-                        <span>eth0</span>
-                        <strong>{{ 'Link up' if network_state.get('eth0', {}).get('link_up') else 'Link down' }}</strong>
-                        <p class="field-note">{{ network_state.get('eth0', {}).get('address') or 'Waiting for DHCP' }}</p>
+                <div class="eth-iface-grid" id="eth-iface-grid">
+
+                    {# eth0 skeleton — JS fills all values #}
+                    <div class="eth-iface-card" id="eth-card-eth0">
+                        <div class="eth-iface-head">
+                            <span class="eth-link-dot" id="eth0-dot"></span>
+                            <span class="eth-iface-name">eth0</span>
+                            <span class="eth-iface-state" id="eth0-state">
+                                {{ 'Link up' if network_state.get('eth0', {}).get('link_up') else 'Link down' }}
+                            </span>
+                            <span class="eth-active-pill" id="eth0-pill" style="display:none">Active uplink</span>
+                            <span class="eth-inet-pill" id="eth0-inet" style="display:none">Internet ✓</span>
+                        </div>
+                        <div class="eth-detail-table">
+                            <div class="eth-detail-row"><span class="eth-detail-label">MAC Address</span><code class="eth-detail-val" id="eth0-mac">—</code></div>
+                            <div class="eth-detail-row"><span class="eth-detail-label">IPv4 Address</span><code class="eth-detail-val" id="eth0-ipv4">{{ network_state.get('eth0', {}).get('address') or 'Waiting for DHCP' }}</code></div>
+                            <div class="eth-detail-row" id="eth0-ipv6-row"><span class="eth-detail-label">IPv6 Addresses</span><div class="eth-ipv6-list" id="eth0-ipv6">—</div></div>
+                            <div class="eth-detail-row"><span class="eth-detail-label">Default Gateway</span><code class="eth-detail-val" id="eth0-gateway">—</code></div>
+                            <div class="eth-detail-row"><span class="eth-detail-label">DNS Servers</span><code class="eth-detail-val" id="eth0-dns">—</code></div>
+                            <div class="eth-detail-row eth-detail-row-meta">
+                                <span class="eth-meta-chip"><span>Speed</span><code id="eth0-speed">—</code></span>
+                                <span class="eth-meta-chip"><span>Duplex</span><code id="eth0-duplex">—</code></span>
+                                <span class="eth-meta-chip"><span>MTU</span><code id="eth0-mtu">—</code></span>
+                            </div>
+                        </div>
                     </div>
-                    <div class="field">
-                        <span>eth1</span>
-                        <strong>{{ 'Link up' if network_state.get('eth1', {}).get('link_up') else 'Link down' }}</strong>
-                        <p class="field-note">{{ network_state.get('eth1', {}).get('address') or 'Waiting for DHCP' }}</p>
+
+                    {# eth1 skeleton #}
+                    <div class="eth-iface-card" id="eth-card-eth1">
+                        <div class="eth-iface-head">
+                            <span class="eth-link-dot" id="eth1-dot"></span>
+                            <span class="eth-iface-name">eth1</span>
+                            <span class="eth-iface-state" id="eth1-state">
+                                {{ 'Link up' if network_state.get('eth1', {}).get('link_up') else 'Link down' }}
+                            </span>
+                            <span class="eth-active-pill" id="eth1-pill" style="display:none">Active uplink</span>
+                            <span class="eth-inet-pill" id="eth1-inet" style="display:none">Internet ✓</span>
+                        </div>
+                        <div class="eth-detail-table">
+                            <div class="eth-detail-row"><span class="eth-detail-label">MAC Address</span><code class="eth-detail-val" id="eth1-mac">—</code></div>
+                            <div class="eth-detail-row"><span class="eth-detail-label">IPv4 Address</span><code class="eth-detail-val" id="eth1-ipv4">{{ network_state.get('eth1', {}).get('address') or 'Waiting for DHCP' }}</code></div>
+                            <div class="eth-detail-row" id="eth1-ipv6-row"><span class="eth-detail-label">IPv6 Addresses</span><div class="eth-ipv6-list" id="eth1-ipv6">—</div></div>
+                            <div class="eth-detail-row"><span class="eth-detail-label">Default Gateway</span><code class="eth-detail-val" id="eth1-gateway">—</code></div>
+                            <div class="eth-detail-row"><span class="eth-detail-label">DNS Servers</span><code class="eth-detail-val" id="eth1-dns">—</code></div>
+                            <div class="eth-detail-row eth-detail-row-meta">
+                                <span class="eth-meta-chip"><span>Speed</span><code id="eth1-speed">—</code></span>
+                                <span class="eth-meta-chip"><span>Duplex</span><code id="eth1-duplex">—</code></span>
+                                <span class="eth-meta-chip"><span>MTU</span><code id="eth1-mtu">—</code></span>
+                            </div>
+                        </div>
                     </div>
+
                 </div>
+                <p class="eth-refresh-note" id="eth-refresh-note"></p>
             </div>
         </section>
 

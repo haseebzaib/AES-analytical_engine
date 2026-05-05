@@ -216,17 +216,26 @@
                             </div>
                         </div>
 
+                        {# ── Gateway ID note ── #}
+                        <div class="fw-ref-section">
+                            <div class="fw-ref-callout fw-ref-callout-gw">
+                                <span class="fw-ref-callout-icon">🔑</span>
+                                <span><strong>Every message payload includes <code>gateway_id</code> as the first field.</strong> For MQTT this is redundant — the gateway ID is already in the topic prefix — but it is included so payload-only consumers do not need to parse the topic. For any other transport in the future the payload is self-contained.<br>Your server should <strong>index on <code>gateway_id</code> + <code>source</code> + <code>device_id</code></strong> together to uniquely identify a data stream. Two gateways can have devices with the same name; the gateway_id makes them distinct.</span>
+                            </div>
+                        </div>
+
                         {# ═══ SECTION 2 — sensor_data ═══ #}
                         <div class="fw-ref-section">
                             <p class="fw-ref-heading">Topic 1 &nbsp;<code class="fw-ref-topic-inline">…/sensor_data</code></p>
-                            <p class="fw-ref-sub"><strong>Published every interval</strong> (configured above). Contains all current metric readings from the device. The metric names inside <code>readings</code> match exactly what the device reports — they depend on the sensor model and how it was configured in the Interfaces page.</p>
+                            <p class="fw-ref-sub"><strong>Published every interval</strong> (configured above). Contains all current metric readings from the device. The metric names inside <code>readings</code> match exactly what the device reports.</p>
                             <pre class="fw-topics-pre">// DustTrak particle counter — RS232, device_id = "dustrak_01"
 // Metrics: PM1.0, PM2.5, PM10 in µg/m³
 {
-  "ts":        1714567890123,   // Unix timestamp in milliseconds (UTC)
-  "device_id": "dustrak_01",   // as configured in Interfaces → RS232
-  "source":    "rs232",
-  "status":    "ok",           // "ok" | "warning" | "error" | "offline"
+  "gateway_id": "metacrust_b827eb1a2c3d",  // ← identifies which gateway sent this
+  "ts":         1714567890123,             // Unix timestamp in milliseconds (UTC)
+  "device_id":  "dustrak_01",             // as configured in Interfaces → RS232
+  "source":     "rs232",
+  "status":     "ok",                     // "ok" | "warning" | "error" | "offline"
   "readings": {
     "pm1_0": { "value": 8.1,  "unit": "µg/m³", "quality": "good" },
     "pm2_5": { "value": 12.3, "unit": "µg/m³", "quality": "good" },
@@ -237,10 +246,11 @@
 // RS485 multi-sensor — device_id = "env_b2"
 // Metrics: temperature, humidity, CO2
 {
-  "ts":        1714567890123,
-  "device_id": "env_b2",
-  "source":    "rs485",
-  "status":    "ok",
+  "gateway_id": "metacrust_b827eb1a2c3d",
+  "ts":         1714567890123,
+  "device_id":  "env_b2",
+  "source":     "rs485",
+  "status":     "ok",
   "readings": {
     "temperature": { "value": 24.5, "unit": "°C",  "quality": "good" },
     "humidity":    { "value": 65.2, "unit": "%",   "quality": "good" },
@@ -250,18 +260,20 @@
 
 // Modbus TCP flow meter — device_id = "flow_meter_01"
 {
-  "ts":        1714567890123,
-  "device_id": "flow_meter_01",
-  "source":    "modbus_tcp",
-  "status":    "ok",
+  "gateway_id": "metacrust_b827eb1a2c3d",
+  "ts":         1714567890123,
+  "device_id":  "flow_meter_01",
+  "source":     "modbus_tcp",
+  "status":     "ok",
   "readings": {
-    "flow_rate":   { "value": 3.42, "unit": "m³/h", "quality": "good" },
-    "total_volume":{ "value": 1250, "unit": "m³",   "quality": "good" }
+    "flow_rate":    { "value": 3.42, "unit": "m³/h", "quality": "good" },
+    "total_volume": { "value": 1250, "unit": "m³",   "quality": "good" }
   }
 }</pre>
                             <div class="fw-ref-field-list">
                                 <p class="fw-ref-field-heading">Field reference</p>
-                                <div class="fw-ref-field-row"><code>ts</code><span>Timestamp of the reading in milliseconds since Unix epoch (UTC). Parse with <code>new Date(ts)</code> in JS or <code>datetime.fromtimestamp(ts/1000)</code> in Python.</span></div>
+                                <div class="fw-ref-field-row"><code>gateway_id</code><span>MAC-derived identifier for this gateway (<code>metacrust_</code> + 12 hex chars). Unique per physical device. Use this to distinguish data from multiple gateways posting to the same endpoint.</span></div>
+                                <div class="fw-ref-field-row"><code>ts</code><span>Timestamp in milliseconds since Unix epoch (UTC). Parse with <code>new Date(ts)</code> in JS or <code>datetime.fromtimestamp(ts/1000)</code> in Python.</span></div>
                                 <div class="fw-ref-field-row"><code>status</code><span>Overall device health: <strong>ok</strong> = all good, <strong>warning</strong> = degraded but reading, <strong>error</strong> = device fault, <strong>offline</strong> = no communication.</span></div>
                                 <div class="fw-ref-field-row"><code>readings.*.quality</code><span><strong>good</strong> = fresh valid reading, <strong>stale</strong> = device not responding but last value retained, <strong>error</strong> = read failed.</span></div>
                             </div>
@@ -273,16 +285,16 @@
                             <p class="fw-ref-sub"><strong>Published every interval</strong> alongside sensor_data. Contains computed analytics for the device. <strong>Sections are dynamic</strong> — only sections that have data are included in the message. A newly connected device will have no <code>stats</code> or <code>trends</code> for the first ~5 minutes while data accumulates.</p>
                             <div class="fw-ref-callout">
                                 <span class="fw-ref-callout-icon">ℹ</span>
-                                <span><code>stats</code> and <code>trends</code> appear after ~5 minutes of continuous readings. <code>active_alerts</code> appears only when you have configured alert rules in the Insights page. If a device has no rules and insufficient data, the analytics message will only contain the header fields.</span>
+                                <span><code>stats</code> and <code>trends</code> appear after ~5 minutes of continuous readings. <code>active_alerts</code> appears only when you have configured alert rules in the Insights page. If a device has no rules and insufficient data, the message will only contain the header fields.</span>
                             </div>
                             <pre class="fw-topics-pre">// Full example — all sections present (env_b2, rs485)
 {
-  "ts":        1714567890123,
-  "device_id": "env_b2",
-  "source":    "rs485",
+  "gateway_id": "metacrust_b827eb1a2c3d",
+  "ts":         1714567890123,
+  "device_id":  "env_b2",
+  "source":     "rs485",
 
   // Rolling window statistics — averages, min/max, std deviation
-  // Computed across 5-minute, 1-hour, and 24-hour sliding windows
   "stats": {
     "temperature": {
       "5min": { "avg": 24.1, "min": 23.8, "max": 24.5, "stddev": 0.22 },
@@ -301,8 +313,7 @@
     "temperature": {
       "direction":     "rising",   // "rising" | "falling" | "stable"
       "slope_per_min": 0.05,       // units per minute (positive = rising)
-      "ttt_minutes":   45          // minutes to reach nearest alert threshold
-                                   // omitted if no alert rule is configured
+      "ttt_minutes":   45          // minutes to nearest alert threshold; omitted if no rule
     },
     "humidity": {
       "direction":     "stable",
@@ -328,15 +339,15 @@
                         {# ═══ SECTION 4 — events ═══ #}
                         <div class="fw-ref-section">
                             <p class="fw-ref-heading">Topic 3 &nbsp;<code class="fw-ref-topic-inline">…/events</code></p>
-                            <p class="fw-ref-sub"><strong>Published immediately on change — not on a timer.</strong> Your server receives this the moment a device goes offline, recovers, or an alert rule fires or resolves. Use this topic for real-time alerting; do not rely on polling sensor_data for state changes.</p>
-                            <p class="fw-ref-sub" style="margin-top:0.3rem">Both event types share the same topic. Distinguish them by the <code>type</code> field.</p>
+                            <p class="fw-ref-sub"><strong>Published immediately on change — not on a timer.</strong> Your server receives this the moment a device goes offline, recovers, or an alert rule fires or resolves. Use this topic for real-time alerting. Both event types share the same topic; distinguish them by the <code>type</code> field.</p>
                             <pre class="fw-topics-pre">// ── Event type 1: status_change ──────────────────────────────────────────
 // Fired when device health transitions between ok / warning / error / offline
 {
-  "ts":        1714567890123,
-  "device_id": "dustrak_01",
-  "source":    "rs232",
-  "type":      "status_change",
+  "gateway_id": "metacrust_b827eb1a2c3d",
+  "ts":         1714567890123,
+  "device_id":  "dustrak_01",
+  "source":     "rs232",
+  "type":       "status_change",
   "payload": {
     "previous": "ok",             // status before the change
     "current":  "error",          // "ok" | "warning" | "error" | "offline"
@@ -347,10 +358,11 @@
 // ── Event type 2: alert ───────────────────────────────────────────────────
 // Fired when an alert rule is triggered or when it clears back to normal
 {
-  "ts":        1714567900000,
-  "device_id": "env_b2",
-  "source":    "rs485",
-  "type":      "alert",
+  "gateway_id": "metacrust_b827eb1a2c3d",
+  "ts":         1714567900000,
+  "device_id":  "env_b2",
+  "source":     "rs485",
+  "type":       "alert",
   "payload": {
     "rule_id":   "ab12cd34",
     "metric":    "temperature",
@@ -428,10 +440,21 @@
                             </div>
                         </div>
 
+                        {# ── Gateway identification callout ── #}
+                        <div class="fw-ref-section">
+                            <div class="fw-ref-callout fw-ref-callout-gw">
+                                <span class="fw-ref-callout-icon">🔑</span>
+                                <div>
+                                    <p style="margin:0 0 0.4rem;font-weight:700;color:var(--text)">How your server tells gateways apart</p>
+                                    <p style="margin:0">Unlike MQTT — where the topic prefix <code>metacrust_b827eb1a2c3d/…</code> identifies the gateway — HTTPS POSTs go to a plain URL with no built-in identity. <strong>Every POST body therefore includes <code>gateway_id</code> as the first field.</strong> Your server must read this field to distinguish which physical gateway sent the data. Two gateways can have devices with identical names (e.g. both have a device called <code>env_b2</code>); without <code>gateway_id</code> the data would be indistinguishable.<br><br>Index your database on <strong><code>gateway_id</code> + <code>source</code> + <code>device_id</code></strong> together. That triple is globally unique.</p>
+                                </div>
+                            </div>
+                        </div>
+
                         {# ── Request format ── #}
                         <div class="fw-ref-section">
                             <p class="fw-ref-heading">Request Format</p>
-                            <p class="fw-ref-sub"><strong>All three endpoints receive HTTP POST requests with a JSON body.</strong> The gateway does not use GET, PUT, or PATCH. Your server must return HTTP 2xx to acknowledge — any other response is logged as a failure and the gateway will retry on the next interval.</p>
+                            <p class="fw-ref-sub"><strong>All three endpoints receive HTTP POST requests with a JSON body.</strong> Your server must return HTTP 2xx — any other response is logged as a failure and the gateway retries on the next interval.</p>
                             <pre class="fw-topics-pre">POST /ingest HTTP/1.1
 Host: api.example.com
 Content-Type: application/json
@@ -439,23 +462,24 @@ Authorization: Bearer &lt;token&gt;          ← only if Bearer auth is configur
 X-API-Key: &lt;key&gt;                       ← only if API Key auth is configured
 Content-Length: &lt;n&gt;
 
-{ ... JSON body ... }                   ← see per-endpoint formats below</pre>
+{ "gateway_id": "metacrust_b827eb1a2c3d", ... }  ← gateway_id always first</pre>
                             <div class="fw-ref-callout" style="margin-top:0.5rem">
                                 <span class="fw-ref-callout-icon">ℹ</span>
-                                <span><strong>Basic Auth</strong> is sent as a standard <code>Authorization: Basic &lt;base64(user:pass)&gt;</code> header. The gateway does not send cookies or multipart data — only <code>application/json</code>.</span>
+                                <span><strong>Basic Auth</strong> uses a standard <code>Authorization: Basic &lt;base64(user:pass)&gt;</code> header. The gateway only sends <code>application/json</code> — no cookies, multipart, or form data.</span>
                             </div>
                         </div>
 
                         {# ── Endpoint 1: sensor readings ── #}
                         <div class="fw-ref-section">
                             <p class="fw-ref-heading">Endpoint 1 — Sensor Readings path</p>
-                            <p class="fw-ref-sub"><strong>Posted every interval.</strong> Contains all current metric readings from every device. The JSON body is identical to the MQTT <code>sensor_data</code> topic payload. One POST per device per interval — if you have 3 devices, your server receives 3 separate POST requests.</p>
+                            <p class="fw-ref-sub"><strong>Posted every interval.</strong> One POST per device — if you have 3 devices, your server receives 3 separate POST requests each interval. The JSON body matches the MQTT <code>sensor_data</code> topic payload exactly.</p>
                             <pre class="fw-topics-pre">// POST body — DustTrak (RS232, device_id = "dustrak_01")
 {
-  "ts":        1714567890123,
-  "device_id": "dustrak_01",
-  "source":    "rs232",
-  "status":    "ok",
+  "gateway_id": "metacrust_b827eb1a2c3d",  // ← use this to identify the gateway
+  "ts":         1714567890123,
+  "device_id":  "dustrak_01",
+  "source":     "rs232",
+  "status":     "ok",
   "readings": {
     "pm1_0": { "value": 8.1,  "unit": "µg/m³", "quality": "good" },
     "pm2_5": { "value": 12.3, "unit": "µg/m³", "quality": "good" },
@@ -463,12 +487,13 @@ Content-Length: &lt;n&gt;
   }
 }
 
-// POST body — RS485 temp + humidity sensor (device_id = "env_b2")
+// POST body — RS485 temp + humidity (device_id = "env_b2")
 {
-  "ts":        1714567890123,
-  "device_id": "env_b2",
-  "source":    "rs485",
-  "status":    "ok",
+  "gateway_id": "metacrust_b827eb1a2c3d",
+  "ts":         1714567890123,
+  "device_id":  "env_b2",
+  "source":     "rs485",
+  "status":     "ok",
   "readings": {
     "temperature": { "value": 24.5, "unit": "°C", "quality": "good" },
     "humidity":    { "value": 65.2, "unit": "%",  "quality": "good" }
@@ -479,16 +504,17 @@ Content-Length: &lt;n&gt;
                         {# ── Endpoint 2: analytics ── #}
                         <div class="fw-ref-section">
                             <p class="fw-ref-heading">Endpoint 2 — Analytics path <span style="font-weight:400;color:rgba(157,179,187,0.5)">(optional)</span></p>
-                            <p class="fw-ref-sub"><strong>Posted every interval alongside the sensor readings POST.</strong> Contains rolling statistics, trend detection results, and active alert states. Leave the path blank to skip analytics POSTs entirely. The body is identical to the MQTT <code>analytics</code> topic payload — sections are dynamic and only included when data is available.</p>
+                            <p class="fw-ref-sub"><strong>Posted every interval.</strong> Sections are dynamic — only included when data is available. Leave blank to skip.</p>
                             <div class="fw-ref-callout">
                                 <span class="fw-ref-callout-icon">ℹ</span>
-                                <span><code>stats</code> and <code>trends</code> sections appear after ~5 minutes of continuous readings. <code>active_alerts</code> appears only when alert rules are configured in the Insights page. If a device is new or offline, the analytics POST may contain only the header fields.</span>
+                                <span><code>stats</code> and <code>trends</code> appear after ~5 min of readings. <code>active_alerts</code> only when alert rules are configured.</span>
                             </div>
-                            <pre class="fw-topics-pre">// POST body — env_b2 with all analytics sections present
+                            <pre class="fw-topics-pre">// POST body — env_b2, all sections present
 {
-  "ts":        1714567890123,
-  "device_id": "env_b2",
-  "source":    "rs485",
+  "gateway_id": "metacrust_b827eb1a2c3d",
+  "ts":         1714567890123,
+  "device_id":  "env_b2",
+  "source":     "rs485",
   "stats": {
     "temperature": {
       "5min": { "avg": 24.1, "min": 23.8, "max": 24.5, "stddev": 0.22 },
@@ -508,13 +534,14 @@ Content-Length: &lt;n&gt;
                         {# ── Endpoint 3: events ── #}
                         <div class="fw-ref-section">
                             <p class="fw-ref-heading">Endpoint 3 — Events path <span style="font-weight:400;color:rgba(157,179,187,0.5)">(optional)</span></p>
-                            <p class="fw-ref-sub"><strong>Posted immediately when something changes — not on a timer.</strong> Your server receives this POST the moment a device goes offline, comes back online, or an alert rule fires or resolves. Leave blank to skip event POSTs. The body is identical to the MQTT <code>events</code> topic payload.</p>
+                            <p class="fw-ref-sub"><strong>Posted immediately on change — not on a timer.</strong> Leave blank to skip. Distinguish event types by the <code>type</code> field.</p>
                             <pre class="fw-topics-pre">// POST body — device went offline
 {
-  "ts":        1714567890123,
-  "device_id": "dustrak_01",
-  "source":    "rs232",
-  "type":      "status_change",
+  "gateway_id": "metacrust_b827eb1a2c3d",
+  "ts":         1714567890123,
+  "device_id":  "dustrak_01",
+  "source":     "rs232",
+  "type":       "status_change",
   "payload": {
     "previous": "ok",
     "current":  "offline",
@@ -524,10 +551,11 @@ Content-Length: &lt;n&gt;
 
 // POST body — alert rule fired
 {
-  "ts":        1714567900000,
-  "device_id": "env_b2",
-  "source":    "rs485",
-  "type":      "alert",
+  "gateway_id": "metacrust_b827eb1a2c3d",
+  "ts":         1714567900000,
+  "device_id":  "env_b2",
+  "source":     "rs485",
+  "type":       "alert",
   "payload": {
     "rule_id":   "ab12cd34",
     "metric":    "temperature",

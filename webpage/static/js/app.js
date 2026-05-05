@@ -772,6 +772,78 @@ document.addEventListener("DOMContentLoaded", () => {
 
         refreshRuntimeState();
         window.setInterval(refreshRuntimeState, 5000);
+
+        // ── Ethernet interface details ─────────────────────────────────────
+        const ethGrid = document.getElementById("eth-iface-grid");
+        if (ethGrid) {
+            const ethNote = document.getElementById("eth-refresh-note");
+
+            const setEl = (id, val) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = val;
+            };
+            const showEl = (id, show) => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = show ? "" : "none";
+            };
+
+            const renderIface = (name, d, activeUplink) => {
+                const isUp     = d.link_up || d.operstate === "up";
+                const isActive = activeUplink === name;
+
+                // Status dot + state
+                const dot = document.getElementById(`${name}-dot`);
+                if (dot) {
+                    dot.className = `eth-link-dot ${isUp ? "is-up" : "is-down"}`;
+                }
+                setEl(`${name}-state`, isUp ? "Link up" : "Link down");
+                showEl(`${name}-pill`, isActive);
+                showEl(`${name}-inet`, d.internet_ok);
+
+                // Address fields
+                setEl(`${name}-mac`,     d.mac     || "—");
+                setEl(`${name}-ipv4`,    d.ipv4    || "Waiting for DHCP");
+                setEl(`${name}-gateway`, d.gateway || "—");
+                setEl(`${name}-dns`,     d.dns?.join(", ") || "—");
+                setEl(`${name}-speed`,   d.speed   || "—");
+                setEl(`${name}-duplex`,  d.duplex  || "—");
+                setEl(`${name}-mtu`,     d.mtu     || "—");
+
+                // IPv6 list
+                const ipv6El = document.getElementById(`${name}-ipv6`);
+                if (ipv6El) {
+                    if (d.ipv6 && d.ipv6.length > 0) {
+                        ipv6El.innerHTML = d.ipv6.map((e) =>
+                            `<span class="eth-ipv6-entry"><code>${e.addr}</code><span class="eth-ipv6-scope">${e.scope}</span></span>`
+                        ).join("");
+                    } else {
+                        ipv6El.textContent = isUp ? "No IPv6 assigned" : "—";
+                    }
+                }
+            };
+
+            const loadIfaceDetails = async () => {
+                try {
+                    const r = await fetch("/api/network/iface-details");
+                    if (!r.ok) return;
+                    const d = await r.json();
+                    if (!d.ok) return;
+                    const ifaces = d.interfaces || {};
+                    renderIface("eth0", ifaces.eth0 || {}, d.active_uplink);
+                    renderIface("eth1", ifaces.eth1 || {}, d.active_uplink);
+                    if (ethNote) {
+                        const t = new Date().toLocaleTimeString();
+                        ethNote.textContent = `Last refreshed: ${t}`;
+                    }
+                } catch (e) {
+                    console.warn("[Connectivity] iface-details fetch failed:", e);
+                }
+            };
+
+            document.getElementById("eth-refresh-btn")?.addEventListener("click", loadIfaceDetails);
+            loadIfaceDetails();
+            window.setInterval(loadIfaceDetails, 15000);
+        }
     }
 
     const monitorShell = document.querySelector("[data-monitor-shell]");

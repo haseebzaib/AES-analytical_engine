@@ -874,6 +874,243 @@ h2 {
     font-family: var(--font-display);
 }
 
+/* ── Dashboard: gateway identity strip ──────────────────────── */
+.gw-identity-strip {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-top: 0.85rem;
+    padding: 0.65rem 0.9rem;
+    background: rgba(0,0,0,0.2);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 0.65rem;
+}
+.gw-identity-row { display: flex; align-items: center; gap: 0.7rem; }
+.gw-identity-label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    width: 6rem;
+    flex-shrink: 0;
+}
+.gw-identity-val {
+    font-family: monospace;
+    font-size: 0.78rem;
+    color: rgba(157,179,187,0.8);
+}
+
+/* ── Dashboard: system metric cards ────────────────────────── */
+.ov-sysmetrics.domain-grid { margin-top: 1.4rem; }
+.ov-metric-card { display: flex; flex-direction: column; gap: 0.15rem; }
+.ov-metric-eyebrow {
+    margin: 0;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+.ov-metric-title {
+    margin: 0 0 0.1rem;
+    font-family: var(--font-display);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: rgba(157,179,187,0.75);
+}
+.ov-metric-value {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.1;
+}
+.ov-metric-sub {
+    margin: 0;
+    font-size: 0.72rem;
+    color: rgba(157,179,187,0.5);
+    line-height: 1.4;
+}
+.ov-metric-card.ov-metric-warn { border-color: rgba(240,166,75,0.3); background: rgba(240,166,75,0.04); }
+.ov-metric-card.ov-metric-warn .ov-metric-value { color: var(--accent); }
+
+/* ── Dashboard: feature/domain cards ────────────────────────── */
+.ov-feature-grid.domain-grid { margin-top: 1.4rem; }
+a.ov-feature-card {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+    transition: border-color 180ms, background 180ms, transform 120ms;
+}
+a.ov-feature-card:hover {
+    border-color: rgba(57,208,200,0.3);
+    background: rgba(57,208,200,0.04);
+    transform: translateY(-2px);
+}
+.ov-feature-card.is-disabled { opacity: 0.45; cursor: default; }
+.ov-feature-eyebrow {
+    margin: 0 0 0.3rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+a.ov-feature-card:hover .ov-feature-eyebrow { color: var(--accent-cool); }
+.ov-feature-card.is-disabled .ov-feature-eyebrow { color: rgba(157,179,187,0.35); }
+
+/* ── Connectivity: ethernet interface cards ──────────────────── */
+.eth-iface-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+@media (max-width: 900px) { .eth-iface-grid { grid-template-columns: 1fr; } }
+
+.eth-iface-card {
+    border-radius: 0.85rem;
+    border: 1px solid rgba(255,255,255,0.07);
+    background: rgba(6,17,23,0.5);
+    overflow: hidden;
+}
+
+.eth-iface-head {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.75rem 1rem;
+    background: rgba(255,255,255,0.025);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    flex-wrap: wrap;
+}
+.eth-link-dot {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: rgba(157,179,187,0.3);
+    transition: background 300ms;
+}
+.eth-link-dot.is-up   { background: var(--success); box-shadow: 0 0 6px var(--success); }
+.eth-link-dot.is-down { background: rgba(157,179,187,0.2); }
+
+.eth-iface-name {
+    font-family: monospace;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--text);
+}
+.eth-iface-state {
+    font-size: 0.78rem;
+    color: var(--muted);
+    flex: 1;
+}
+.eth-active-pill {
+    font-size: 0.67rem;
+    font-weight: 700;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    background: rgba(57,208,200,0.12);
+    color: var(--accent-cool);
+    border: 1px solid rgba(57,208,200,0.25);
+    white-space: nowrap;
+}
+.eth-inet-pill {
+    font-size: 0.67rem;
+    font-weight: 700;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    background: rgba(98,211,158,0.1);
+    color: var(--success);
+    border: 1px solid rgba(98,211,158,0.25);
+    white-space: nowrap;
+}
+
+.eth-detail-table {
+    display: grid;
+    gap: 0;
+    padding: 0.5rem 0;
+}
+.eth-detail-row {
+    display: grid;
+    grid-template-columns: 9rem 1fr;
+    gap: 0.5rem;
+    padding: 0.38rem 1rem;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    align-items: start;
+}
+.eth-detail-row:last-child { border-bottom: none; }
+.eth-detail-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: rgba(157,179,187,0.55);
+    white-space: nowrap;
+    padding-top: 0.05rem;
+}
+.eth-detail-val {
+    font-family: monospace;
+    font-size: 0.78rem;
+    color: var(--text);
+    word-break: break-all;
+}
+.eth-detail-row-meta {
+    display: flex;
+    gap: 1rem;
+    grid-column: 1 / -1;
+    padding-top: 0.5rem;
+    border-top: 1px solid rgba(255,255,255,0.04);
+    border-bottom: none;
+    margin-top: 0.15rem;
+}
+.eth-meta-chip {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+.eth-meta-chip > span {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(157,179,187,0.4);
+}
+.eth-meta-chip > code {
+    font-family: monospace;
+    font-size: 0.78rem;
+    color: var(--text);
+}
+
+.eth-ipv6-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+.eth-ipv6-entry { display: flex; align-items: center; gap: 0.45rem; }
+.eth-ipv6-entry code {
+    font-family: monospace;
+    font-size: 0.76rem;
+    color: var(--text);
+    word-break: break-all;
+}
+.eth-ipv6-scope {
+    font-size: 0.65rem;
+    color: rgba(157,179,187,0.4);
+    background: rgba(255,255,255,0.04);
+    padding: 0.08rem 0.35rem;
+    border-radius: 3px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.eth-refresh-note {
+    margin-top: 0.55rem;
+    font-size: 0.72rem;
+    color: rgba(157,179,187,0.35);
+}
+
 .network-shell {
     width: min(100%, 98rem);
     margin-top: 1.4rem;
@@ -5162,6 +5399,11 @@ h2 {
     color: var(--accent-cool);
     flex-shrink: 0;
     margin-top: 0.05rem;
+}
+.fw-ref-callout-gw {
+    background: rgba(199,146,234,0.05);
+    border-color: rgba(199,146,234,0.2);
+    align-items: flex-start;
 }
 .fw-ref-callout code {
     font-family: monospace;

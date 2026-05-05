@@ -33,6 +33,18 @@
                     <div class="gateway-port port-ethernet{% if overview_visual.ethernet_active %} is-active{% endif %}" data-overview-eth-port>ETH</div>
                     <div class="gateway-port port-wifi{% if overview_visual.wifi_active %} is-active{% endif %}" data-overview-wifi-port>WIFI</div>
                 </div>
+
+                {# Gateway identity strip #}
+                <div class="gw-identity-strip">
+                    <div class="gw-identity-row">
+                        <span class="gw-identity-label">Gateway ID</span>
+                        <code class="gw-identity-val">{{ gateway_id }}</code>
+                    </div>
+                    <div class="gw-identity-row">
+                        <span class="gw-identity-label">Uptime</span>
+                        <code class="gw-identity-val">{{ system_uptime }}</code>
+                    </div>
+                </div>
             </article>
 
             <article class="connectivity-card">
@@ -55,43 +67,89 @@
             </article>
         </section>
 
-        <section class="domain-grid" data-system-metrics-shell>
-            <article class="domain-card">
-                <h3>CPU</h3>
-                <p data-system-cpu-summary>{{ system_metrics.cpu.total_percent if system_metrics and system_metrics.cpu else 0 }}% total usage</p>
+        {# ── System metrics ─────────────────────────────────────────────────── #}
+        <section class="domain-grid ov-sysmetrics" data-system-metrics-shell>
+            {# CPU #}
+            <article class="domain-card ov-metric-card">
+                <p class="ov-metric-eyebrow">System</p>
+                <h3 class="ov-metric-title">CPU</h3>
+                <p class="ov-metric-value" data-system-cpu-summary>
+                    {% if system_metrics and system_metrics.cpu %}
+                    {{ system_metrics.cpu.total_percent }}%
+                    {% else %}—{% endif %}
+                </p>
+                <p class="ov-metric-sub">total usage across all cores</p>
             </article>
-            <article class="domain-card">
-                <h3>Memory</h3>
-                <p data-system-memory-summary>
+
+            {# Memory #}
+            <article class="domain-card ov-metric-card">
+                <p class="ov-metric-eyebrow">System</p>
+                <h3 class="ov-metric-title">Memory</h3>
+                <p class="ov-metric-value" data-system-memory-summary>
                     {% if system_metrics and system_metrics.memory %}
-                    {{ system_metrics.memory.memory_bytes.used_percent }}% used
-                    {% else %}
-                    No samples yet
-                    {% endif %}
+                    {{ system_metrics.memory.memory_bytes.used_percent }}%
+                    {% else %}—{% endif %}
+                </p>
+                <p class="ov-metric-sub" data-system-memory-detail>
+                    {% if system_metrics and system_metrics.memory %}
+                    {% set used_mb  = (system_metrics.memory.memory_bytes.used  / 1048576) | round(0) | int %}
+                    {% set total_mb = (system_metrics.memory.memory_bytes.total / 1048576) | round(0) | int %}
+                    {{ used_mb }} MB of {{ total_mb }} MB used
+                    {% else %}No samples yet{% endif %}
                 </p>
             </article>
-            <article class="domain-card">
-                <h3>Temperature</h3>
-                <p data-system-temp-summary>
+
+            {# Temperature #}
+            <article class="domain-card ov-metric-card{% if system_metrics and system_metrics.temperature_c is not none and system_metrics.temperature_c | float > 70 %} ov-metric-warn{% endif %}">
+                <p class="ov-metric-eyebrow">System</p>
+                <h3 class="ov-metric-title">Temperature</h3>
+                <p class="ov-metric-value" data-system-temp-summary>
                     {% if system_metrics and system_metrics.temperature_c is not none %}
-                    {{ system_metrics.temperature_c }} C
-                    {% else %}
-                    No reading yet
-                    {% endif %}
+                    {{ system_metrics.temperature_c }}&nbsp;°C
+                    {% else %}—{% endif %}
+                </p>
+                <p class="ov-metric-sub">
+                    {% if system_metrics and system_metrics.temperature_c is not none %}
+                    {% if system_metrics.temperature_c | float > 80 %}⚠ Critical — check ventilation
+                    {% elif system_metrics.temperature_c | float > 70 %}⚠ Elevated — monitor closely
+                    {% else %}Normal operating range{% endif %}
+                    {% else %}No sensor reading{% endif %}
                 </p>
             </article>
-            <article class="domain-card">
-                <h3>Network</h3>
-                <p data-system-network-summary>No samples yet</p>
+
+            {# Storage #}
+            <article class="domain-card ov-metric-card{% if disk.pct > 85 %} ov-metric-warn{% endif %}">
+                <p class="ov-metric-eyebrow">System</p>
+                <h3 class="ov-metric-title">Storage</h3>
+                <p class="ov-metric-value">{{ disk.pct }}%</p>
+                <p class="ov-metric-sub">{{ disk.used_gb }} GB of {{ disk.total_gb }} GB used</p>
+            </article>
+
+            {# Network I/O #}
+            <article class="domain-card ov-metric-card">
+                <p class="ov-metric-eyebrow">System</p>
+                <h3 class="ov-metric-title">Network I/O</h3>
+                <p class="ov-metric-value" data-system-network-summary style="font-size:1rem">—</p>
+                <p class="ov-metric-sub" data-system-network-detail>Waiting for samples</p>
             </article>
         </section>
 
-        <section class="domain-grid">
+        {# ── Feature cards ──────────────────────────────────────────────────── #}
+        <section class="domain-grid ov-feature-grid">
             {% for card in domain_cards %}
-            <article class="domain-card">
+            {% if card.disabled %}
+            <article class="domain-card ov-feature-card is-disabled">
+                <p class="ov-feature-eyebrow">Coming soon</p>
                 <h3>{{ card.title }}</h3>
                 <p>{{ card.description }}</p>
             </article>
+            {% else %}
+            <a href="{{ card.url }}" class="domain-card ov-feature-card">
+                <p class="ov-feature-eyebrow">Open →</p>
+                <h3>{{ card.title }}</h3>
+                <p>{{ card.description }}</p>
+            </a>
+            {% endif %}
             {% endfor %}
         </section>
 {% endblock %}

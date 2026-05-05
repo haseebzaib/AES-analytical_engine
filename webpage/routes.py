@@ -44,6 +44,115 @@ def _system_metrics_store(request: Request):
 def _sensor_store(request: Request):
     return request.app.state.sensor_store
 
+
+# ── System helpers ────────────────────────────────────────────────────────────
+
+def _system_uptime() -> str:
+    try:
+        secs = float(Path("/proc/uptime").read_text().split()[0])
+        d = int(secs // 86400); h = int((secs % 86400) // 3600); m = int((secs % 3600) // 60)
+        if d:   return f"{d}d {h}h {m}m"
+        if h:   return f"{h}h {m}m"
+        return f"{m}m"
+    except Exception:
+        return "—"
+
+
+def _disk_usage() -> dict:
+    try:
+        import shutil
+        u = shutil.disk_usage("/")
+        pct  = round(u.used / u.total * 100, 1)
+        used = round(u.used  / 1_073_741_824, 1)
+        total= round(u.total / 1_073_741_824, 1)
+        return {"pct": pct, "used_gb": used, "total_gb": total}
+    except Exception:
+        return {"pct": 0, "used_gb": 0, "total_gb": 0}
+
+
+# ── Network interface detail reader ───────────────────────────────────────────
+
+def _read_iface_details(iface: str, ipv4_address: str = "") -> dict:
+    """Read rich interface info from /sys and /proc. No blocking calls except ip-route."""
+    import ipaddress as _ip
+    base = Path(f"/sys/class/net/{iface}")
+
+    def _sys(name: str, default: str = "") -> str:
+        try:
+            return (base / name).read_text().strip()
+        except OSError:
+            return default
+
+    mac       = _sys("address") or "—"
+    operstate = _sys("operstate", "down")   # "up" | "down" | "unknown"
+    mtu       = _sys("mtu") or "—"
+    duplex    = _sys("duplex")              # "full" | "half" | ""
+
+    speed = "—"
+    try:
+        s = int(_sys("speed", "0") or "0")
+        if s > 0:
+            speed = f"{s} Mbps" if s < 1000 else f"{s // 1000} Gbps"
+    except ValueError:
+        pass
+
+    # IPv6 from /proc/net/if_inet6
+    ipv6_addrs: list[dict] = []
+    try:
+        scope_map = {0x00: "global", 0x10: "site", 0x20: "link-local", 0xfe: "host"}
+        for line in Path("/proc/net/if_inet6").read_text().splitlines():
+            parts = line.split()
+            if len(parts) >= 6 and parts[5] == iface:
+                compressed  = str(_ip.ip_address(int(parts[0], 16)))
+                prefix_len  = int(parts[2], 16)
+                scope_val   = int(parts[3], 16)
+                scope_label = scope_map.get(scope_val, f"scope-{scope_val:02x}")
+                ipv6_addrs.append({"addr": f"{compressed}/{prefix_len}", "scope": scope_label})
+    except (OSError, ValueError):
+        pass
+
+    # Default gateway via ip route
+    gateway = "—"
+    try:
+        r = subprocess.run(
+            ["ip", "route", "show", "dev", iface],
+            capture_output=True, text=True, timeout=2,
+        )
+        for line in r.stdout.splitlines():
+            if "default via" in line:
+                parts = line.split()
+                gateway = parts[parts.index("via") + 1]
+                break
+    except Exception:
+        pass
+
+    # DNS from systemd-resolve or /etc/resolv.conf
+    dns_servers: list[str] = []
+    try:
+        for p in (Path("/run/systemd/resolve/resolv.conf"), Path("/etc/resolv.conf")):
+            if p.exists():
+                for line in p.read_text().splitlines():
+                    if line.startswith("nameserver "):
+                        ns = line.split()[1]
+                        if ns not in dns_servers:
+                            dns_servers.append(ns)
+                if dns_servers:
+                    break
+    except OSError:
+        pass
+
+    return {
+        "mac":       mac,
+        "operstate": operstate,
+        "mtu":       mtu,
+        "speed":     speed,
+        "duplex":    duplex,
+        "ipv4":      ipv4_address or "—",
+        "ipv6":      ipv6_addrs,
+        "gateway":   gateway,
+        "dns":       dns_servers,
+    }
+
 def _continuity_state(request: Request):
     return getattr(request.app.state, "continuity_state", None)
 
@@ -367,44 +476,56 @@ async def dashboard_page(request: Request) -> HTMLResponse:
     if not _is_authenticated(request):
         return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
-    network_state = _network_settings_store(request).get_state()
+    network_state    = _network_settings_store(request).get_state()
     overview_payload = _overview_status_payload(network_state)
-    system_metrics = _system_metrics_store(request).get_current()
+    system_metrics   = _system_metrics_store(request).get_current()
+    disk             = _disk_usage()
 
     return templates.TemplateResponse(
         request,
         "dashboard.html",
         {
-            "product_name": "MetaCrust Edge Gateway",
-            "page_title": "Control Plane",
-            "primary_sections": _primary_sections("Overview"),
-            "status_chips": overview_payload["status_chips"],
+            "product_name":       "MetaCrust Edge Gateway",
+            "page_title":         "Control Plane",
+            "primary_sections":   _primary_sections("Overview"),
+            "status_chips":       overview_payload["status_chips"],
             "connectivity_items": overview_payload["connectivity_items"],
-            "overview_visual": overview_payload["visual"],
-            "system_metrics": system_metrics,
+            "overview_visual":    overview_payload["visual"],
+            "system_metrics":     system_metrics,
+            "system_uptime":      _system_uptime(),
+            "disk":               disk,
+            "gateway_id":         getattr(request.app.state, "gateway_id", "metacrust_unknown"),
             "domain_cards": [
                 {
                     "title": "Insights",
-                    "description": "Continuity, anomalies, incidents, trends, and evidence across sensor and network data.",
+                    "url":   "/insights",
+                    "description": "Analytics engine — rolling stats, trend detection, alert rules, and event timeline.",
                 },
                 {
                     "title": "Interfaces",
-                    "description": "RS232, RS485, Modbus RTU, GPS, IMU, DI/DO, and attached field devices.",
+                    "url":   "/interfaces",
+                    "description": "RS232, RS485, Modbus RTU, and attached field devices.",
                 },
                 {
                     "title": "Network Probe",
-                    "description": "Ping, SNMP, discovery, interface statistics, and later flow visibility.",
+                    "url":   "#",
+                    "disabled": True,
+                    "description": "Ping, SNMP, discovery, interface statistics, and flow visibility.",
                 },
                 {
-                    "title": "Destinations",
-                    "description": "MQTTS, HTTPS, buffering, retries, and upstream delivery profiles.",
+                    "title": "Data Forwarding",
+                    "url":   "/forwarding",
+                    "description": "MQTT/MQTTS and HTTPS upstream delivery — sensor data, analytics, and events.",
                 },
                 {
                     "title": "Connectivity",
+                    "url":   "/connectivity",
                     "description": "Ethernet, Wi-Fi, uplink setup, and local network behavior.",
                 },
                 {
                     "title": "Security",
+                    "url":   "#",
+                    "disabled": True,
                     "description": "Gateway access, certificates, keys, firewall policy, and trust controls.",
                 },
             ],
@@ -615,6 +736,29 @@ async def get_network_apply_result(request: Request) -> JSONResponse:
         return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
 
     return JSONResponse(_network_settings_store(request).get_apply_result())
+
+
+@router.get("/api/network/iface-details")
+async def get_iface_details(request: Request) -> JSONResponse:
+    """Return rich live interface details for eth0 and eth1."""
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+    state = _network_settings_store(request).get_state()
+    eth0_addr = state.get("eth0", {}).get("address", "")
+    eth1_addr = state.get("eth1", {}).get("address", "")
+    return JSONResponse({
+        "ok":           True,
+        "active_uplink": state.get("active_uplink", "none"),
+        "internet_ok":  state.get("eth0", {}).get("internet_ok") or state.get("eth1", {}).get("internet_ok"),
+        "interfaces": {
+            "eth0": {**_read_iface_details("eth0", eth0_addr),
+                     "link_up": bool(state.get("eth0", {}).get("link_up")),
+                     "internet_ok": bool(state.get("eth0", {}).get("internet_ok"))},
+            "eth1": {**_read_iface_details("eth1", eth1_addr),
+                     "link_up": bool(state.get("eth1", {}).get("link_up")),
+                     "internet_ok": bool(state.get("eth1", {}).get("internet_ok"))},
+        },
+    })
 
 
 @router.get("/api/system/metrics")
