@@ -107,6 +107,7 @@ from analytics_engine.analytics.continuity import ContinuityState
 from analytics_engine.analytics.rules import RulesEngine
 from analytics_engine.analytics.stats import StatsEngine
 from analytics_engine.analytics.trends import TrendsEngine
+from analytics_engine.comms.mqtt_forwarder import MqttForwarder
 from utils.redis_client import RedisClient as RedisNotifier
 from analytics_engine.runtime import AnalyticsRuntime
 from analytics_engine.settings_store import SettingsStore
@@ -139,6 +140,15 @@ runtime                 = AnalyticsRuntime(
 # Register the archival worker (every 5 minutes) before runtime.start()
 _archival_job = ArchivalJob(pes_db_path=pes_db_path, analytical_store=analytical_store)
 runtime.register_worker("archival", interval_seconds=300.0, tick_fn=_archival_job.tick)
+
+# Register the MQTT forwarding worker (ticks every 1 s; publishes per profile interval)
+_mqtt_forwarder = MqttForwarder(
+    sensor_store            = sensor_store,
+    analytical_store        = analytical_store,
+    forwarding_config_store = forwarding_config_store,
+    gateway_id              = GATEWAY_ID,
+)
+runtime.register_worker("mqtt-forwarder", interval_seconds=1.0, tick_fn=_mqtt_forwarder.tick)
 
 
 @asynccontextmanager
@@ -186,6 +196,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        _mqtt_forwarder.stop()
         runtime.stop()
         logger.info("━━━ AES stopped ━━━")
 
@@ -196,4 +207,4 @@ configure_webpage(app)
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, log_config=None)
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_config=None)

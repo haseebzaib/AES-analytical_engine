@@ -34,7 +34,8 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_MAX_PROFILES = 10
+_MAX_PROFILES     = 10  # total profiles
+_MAX_MQTT_PROFILES = 1   # only one MQTT broker connection makes sense
 
 
 # ── Primitive validators ──────────────────────────────────────────────────────
@@ -317,6 +318,11 @@ class ForwardingConfigStore:
             except Exception as exc:
                 logger.error("Forwarding config validation error: %s", exc)
                 return False, {"message": "Invalid configuration payload."}
+
+            # Enforce protocol limits
+            mqtt_profiles = [p for p in new_profiles if p.get("protocol") == "mqtt"]
+            if len(mqtt_profiles) > _MAX_MQTT_PROFILES:
+                return False, {"message": f"Only {_MAX_MQTT_PROFILES} MQTT profile is allowed. Use HTTPS for additional destinations."}
 
             # Clean up cert files for deleted profiles
             new_ids = {p["id"] for p in new_profiles}

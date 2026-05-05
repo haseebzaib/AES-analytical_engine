@@ -3703,11 +3703,31 @@ document.addEventListener("DOMContentLoaded", () => {
             btn.textContent = val ? "ON" : "OFF";
         };
 
+        // ── Protocol option management (1 MQTT max) ──────────────────────────
+        const fwMqttExists = () => fwProfiles.some((p) => p.protocol === "mqtt");
+
+        const fwUpdateProtocolOptions = (editingProfileId = null) => {
+            if (!fwFProtocol) return;
+            const mqttTaken = fwProfiles.some(
+                (p) => p.protocol === "mqtt" && p.id !== editingProfileId
+            );
+            const mqttOpt = fwFProtocol.querySelector('option[value="mqtt"]');
+            if (mqttOpt) {
+                mqttOpt.disabled = mqttTaken;
+                mqttOpt.textContent = mqttTaken
+                    ? "MQTT / MQTTS  (1 profile already configured)"
+                    : "MQTT / MQTTS";
+            }
+        };
+
         const fwShowForm = (profile = null) => {
             fwEditId = profile?.id || null;
             if (fwFormTitle) fwFormTitle.textContent = profile ? `Edit: ${profile.name}` : "New Forwarding Profile";
 
-            const proto = profile?.protocol || "mqtt";
+            // For new profiles: default to HTTPS if MQTT is already taken
+            const mqttTaken = fwProfiles.some((p) => p.protocol === "mqtt" && p.id !== fwEditId);
+            const proto = profile?.protocol || (mqttTaken ? "https" : "mqtt");
+            fwUpdateProtocolOptions(fwEditId);
             if (fwFProtocol) fwFProtocol.value = proto;
             fwShowProto(proto);
 
@@ -3779,9 +3799,11 @@ document.addEventListener("DOMContentLoaded", () => {
             if (fwProfiles.length === 0) {
                 fwProfileList.innerHTML = "";
                 fwEmpty?.classList.remove("ov-hidden");
+                fwUpdateProtocolOptions();
                 return;
             }
             fwEmpty?.classList.add("ov-hidden");
+            fwUpdateProtocolOptions();
 
             fwProfileList.innerHTML = fwProfiles.map((p) => {
                 const proto   = p.protocol || "mqtt";
@@ -3883,7 +3905,8 @@ document.addEventListener("DOMContentLoaded", () => {
         };
 
         // ── Wire static buttons ──────────────────────────────────────────────
-        fwShell.querySelectorAll("[data-fw-add]").forEach((btn) => {
+        // Use document scope — the "+ Add Profile" header button is outside fwShell
+        document.querySelectorAll("[data-fw-add]").forEach((btn) => {
             btn.addEventListener("click", () => fwShowForm(null));
         });
         fwShell.querySelector("[data-fw-cancel]")?.addEventListener("click", fwHideForm);
