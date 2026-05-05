@@ -3344,8 +3344,9 @@ document.addEventListener("DOMContentLoaded", () => {
         // HTTPS
         const fwFHttpsHost       = fwShell.querySelector("[data-fw-f-https-host]");
         const fwFHttpsPort       = fwShell.querySelector("[data-fw-f-https-port]");
-        const fwFHttpsSensorPath = fwShell.querySelector("[data-fw-f-https-sensor-path]");
-        const fwFHttpsEventsPath = fwShell.querySelector("[data-fw-f-https-events-path]");
+        const fwFHttpsSensorPath    = fwShell.querySelector("[data-fw-f-https-sensor-path]");
+        const fwFHttpsAnalyticsPath = fwShell.querySelector("[data-fw-f-https-analytics-path]");
+        const fwFHttpsEventsPath    = fwShell.querySelector("[data-fw-f-https-events-path]");
         const fwFHttpsAuth       = fwShell.querySelector("[data-fw-f-https-auth-type]");
         const fwFHttpsAVal       = fwShell.querySelector("[data-fw-f-https-auth-val]");
         const fwFHttpsMtls       = fwShell.querySelector("[data-fw-f-https-mtls]");
@@ -3354,8 +3355,9 @@ document.addEventListener("DOMContentLoaded", () => {
         const fwAuthValWrap      = fwShell.querySelector("[data-fw-auth-val-wrap]");
         const fwAuthValLbl       = fwShell.querySelector("[data-fw-auth-val-label]");
         const fwHttpsMtlsBlock   = fwShell.querySelector("[data-fw-https-mtls-block]");
-        const fwHttpsSensorPrev  = fwShell.querySelector("[data-fw-https-sensor-preview]");
-        const fwHttpsEventsPrev  = fwShell.querySelector("[data-fw-https-events-preview]");
+        const fwHttpsSensorPrev    = fwShell.querySelector("[data-fw-https-sensor-preview]");
+        const fwHttpsAnalyticsPrev = fwShell.querySelector("[data-fw-https-analytics-preview]");
+        const fwHttpsEventsPrev    = fwShell.querySelector("[data-fw-https-events-preview]");
 
         // ── State ────────────────────────────────────────────────────────────
         let fwProfiles   = [];
@@ -3494,24 +3496,45 @@ document.addEventListener("DOMContentLoaded", () => {
             const ps    = port === 443 ? "" : `:${port}`;
             const base  = `https://${host}${ps}`;
             const sp    = fwFHttpsSensorPath?.value.trim();
+            const ap    = fwFHttpsAnalyticsPath?.value.trim();
             const ep    = fwFHttpsEventsPath?.value.trim();
-            if (fwHttpsSensorPrev) fwHttpsSensorPrev.textContent = sp ? `${base}${sp}` : "—";
-            if (fwHttpsEventsPrev) fwHttpsEventsPrev.textContent = ep ? `${base}${ep}` : "(not configured)";
+            if (fwHttpsSensorPrev)    fwHttpsSensorPrev.textContent    = sp ? `${base}${sp}` : "—";
+            if (fwHttpsAnalyticsPrev) fwHttpsAnalyticsPrev.textContent = ap ? `${base}${ap}` : "(not configured)";
+            if (fwHttpsEventsPrev)    fwHttpsEventsPrev.textContent    = ep ? `${base}${ep}` : "(not configured)";
         };
-        [fwFHttpsHost, fwFHttpsPort, fwFHttpsSensorPath, fwFHttpsEventsPath].forEach((el) => {
+        [fwFHttpsHost, fwFHttpsPort, fwFHttpsSensorPath, fwFHttpsAnalyticsPath, fwFHttpsEventsPath].forEach((el) => {
             el?.addEventListener("input", fwUpdateHttpsPreview);
         });
 
-        // ── Topics info panel toggle ─────────────────────────────────────────
-        fwShell.querySelectorAll("[data-fw-topics-toggle]").forEach((btn) => {
-            btn.addEventListener("click", () => {
-                const body  = fwShell.querySelector("[data-fw-topics-body]");
-                const arrow = fwShell.querySelector("[data-fw-topics-arrow]");
-                const shown = !body?.classList.contains("fw-hidden");
-                body?.classList.toggle("fw-hidden", shown);
-                if (arrow) arrow.textContent = shown ? "▼" : "▲";
+        // ── Panel toggles (MQTT topics + HTTPS endpoint reference) ──────────
+        const fwInitPanelToggle = (toggleAttr, bodyAttr, arrowAttr) => {
+            fwShell.querySelectorAll(`[${toggleAttr}]`).forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    const body  = fwShell.querySelector(`[${bodyAttr}]`);
+                    const arrow = fwShell.querySelector(`[${arrowAttr}]`);
+                    const shown = !body?.classList.contains("fw-hidden");
+                    body?.classList.toggle("fw-hidden", shown);
+                    if (arrow) arrow.textContent = shown ? "▼" : "▲";
+                });
             });
-        });
+        };
+        fwInitPanelToggle("data-fw-topics-toggle",   "data-fw-topics-body",   "data-fw-topics-arrow");
+        fwInitPanelToggle("data-fw-https-ref-toggle", "data-fw-https-ref-body", "data-fw-https-ref-arrow");
+
+        // ── Gateway ID display (live from API) ───────────────────────────────
+        const fwApplyGatewayId = (gwId) => {
+            if (!gwId) return;
+            // Pattern box and "live" label
+            fwShell.querySelectorAll("[data-fw-gw-id]").forEach((el) => { el.textContent = gwId; });
+            fwShell.querySelectorAll("[data-fw-gw-live]").forEach((el) => { el.textContent = gwId; });
+            // Example chip in the label text
+            fwShell.querySelectorAll("[data-fw-gw-eg]").forEach((el) => { el.textContent = gwId; });
+            // Topic example rows
+            fwShell.querySelectorAll("[data-fw-topic-eg]").forEach((el) => {
+                const suffix = el.getAttribute("data-fw-topic-eg");
+                el.textContent = `${gwId}/${suffix}`;
+            });
+        };
 
         // ── Load config ──────────────────────────────────────────────────────
         const fwLoad = async () => {
@@ -3520,6 +3543,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (!r.ok) return;
                 const d = await r.json();
                 fwProfiles = d.profiles || [];
+                fwApplyGatewayId(d.gateway_id || "");
             } catch (e) {
                 console.warn("[Forwarding] load failed:", e);
             }
@@ -3559,8 +3583,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 profile.https = {
                     host:             fwFHttpsHost?.value.trim() || "",
                     port:             Number(fwFHttpsPort?.value) || 443,
-                    sensor_path:      fwFHttpsSensorPath?.value.trim() || "/ingest",
-                    events_path:      fwFHttpsEventsPath?.value.trim() || "",
+                    sensor_path:      fwFHttpsSensorPath?.value.trim()    || "/ingest",
+                    analytics_path:   fwFHttpsAnalyticsPath?.value.trim() || "",
+                    events_path:      fwFHttpsEventsPath?.value.trim()    || "",
                     auth_type:        fwFHttpsAuth?.value || "none",
                     auth_value:       fwFHttpsAVal?.value || "",
                     // null=keep, ""=clear, "<pem>"=new. When mTLS toggled OFF, send "" to clear all.
@@ -3644,10 +3669,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
             } else {
                 const h = profile?.https || {};
-                if (fwFHttpsHost)       fwFHttpsHost.value       = h.host         || "";
-                if (fwFHttpsPort)       fwFHttpsPort.value       = String(h.port  || 443);
-                if (fwFHttpsSensorPath) fwFHttpsSensorPath.value = h.sensor_path  || "/ingest";
-                if (fwFHttpsEventsPath) fwFHttpsEventsPath.value = h.events_path  || "";
+                if (fwFHttpsHost)           fwFHttpsHost.value           = h.host            || "";
+                if (fwFHttpsPort)           fwFHttpsPort.value           = String(h.port     || 443);
+                if (fwFHttpsSensorPath)     fwFHttpsSensorPath.value     = h.sensor_path     || "/ingest";
+                if (fwFHttpsAnalyticsPath)  fwFHttpsAnalyticsPath.value  = h.analytics_path  || "";
+                if (fwFHttpsEventsPath)     fwFHttpsEventsPath.value     = h.events_path     || "";
                 if (fwFHttpsAuth)       fwFHttpsAuth.value       = h.auth_type    || "none";
                 if (fwFHttpsAVal)       fwFHttpsAVal.value       = h.auth_value   || "";
                 if (fwFHttpsInt)        fwFHttpsInt.value        = String(h.interval_seconds || 30);
@@ -3722,6 +3748,11 @@ document.addEventListener("DOMContentLoaded", () => {
                             <span class="fw-detail-label">Sensor URL</span>
                             <span class="fw-detail-val">${base}${h.sensor_path || "/ingest"}${sec}</span>
                         </div>
+                        ${h.analytics_path ? `
+                        <div class="fw-profile-detail">
+                            <span class="fw-detail-label">Analytics URL</span>
+                            <span class="fw-detail-val">${base}${h.analytics_path}</span>
+                        </div>` : ""}
                         ${h.events_path ? `
                         <div class="fw-profile-detail">
                             <span class="fw-detail-label">Events URL</span>

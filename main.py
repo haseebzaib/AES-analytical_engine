@@ -60,6 +60,28 @@ class _PollingEndpointFilter(logging.Filter):
         return not any(ep in msg for ep in self._SKIP)
 
 
+# ── Gateway identity ──────────────────────────────────────────────────────────
+def _gateway_id() -> str:
+    """
+    Return a stable gateway identifier derived from the MAC address of eth0 or
+    eth1 (whichever is present first), formatted as 'metacrust_AABBCCDDEEFF'.
+    Falls back to 'metacrust_unknown' if neither interface can be read.
+    """
+    for iface in ("eth0", "eth1"):
+        mac_path = Path(f"/sys/class/net/{iface}/address")
+        try:
+            raw = mac_path.read_text().strip()          # e.g. "aa:bb:cc:dd:ee:ff"
+            clean = raw.replace(":", "").lower()         # "aabbccddeeff"
+            if clean and len(clean) == 12:
+                return f"metacrust_{clean}"
+        except OSError:
+            continue
+    return "metacrust_unknown"
+
+
+GATEWAY_ID = _gateway_id()
+
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
 gateway_root        = Path(os.environ.get("METACRUST_GATEWAY_ROOT", "/opt/gateway"))
 storage_root        = Path(os.environ.get("METACRUST_STORAGE_ROOT", str(gateway_root / "software_storage")))
@@ -122,6 +144,7 @@ runtime.register_worker("archival", interval_seconds=300.0, tick_fn=_archival_jo
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("━━━ MetaCrust AES starting ━━━")
+    logger.info("  gateway_id       : %s", GATEWAY_ID)
     logger.info("  gateway_root     : %s", gateway_root)
     logger.info("  storage_root     : %s", storage_root)
     logger.info("  pes_db_path      : %s  (exists=%s)", pes_db_path, pes_db_path.exists())
@@ -129,6 +152,7 @@ async def lifespan(app: FastAPI):
     logger.info("  log_dir          : %s", log_dir)
 
     app.state.session_nonce = secrets.token_urlsafe(16)
+    app.state.gateway_id    = GATEWAY_ID
 
     network_settings_store.ensure_initialized()
     rs232_config_store.ensure_initialized()

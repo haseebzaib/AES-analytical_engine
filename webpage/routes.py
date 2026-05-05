@@ -801,7 +801,8 @@ async def get_forwarding_config(request: Request) -> JSONResponse:
     if not _is_authenticated(request):
         return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
     config = _forwarding_store(request).get_config_for_ui()
-    config["ok"] = True
+    config["ok"]         = True
+    config["gateway_id"] = getattr(request.app.state, "gateway_id", "metacrust_unknown")
     return JSONResponse(config)
 
 

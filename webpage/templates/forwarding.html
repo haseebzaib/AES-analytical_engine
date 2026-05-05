@@ -66,7 +66,8 @@
                     </p>
                     <div class="fw-cert-grid">
                         <div class="fw-cert-field">
-                            <label class="fw-label">CA Certificate <span class="fw-hint">PEM — verifies broker identity</span></label>
+                            <span class="fw-label">CA Certificate</span>
+                            <span class="fw-cert-hint">PEM — verifies broker identity</span>
                             <div class="fw-cert-widget" data-fw-cert="mqtt-ca">
                                 <button type="button" class="fw-cert-btn" data-fw-cert-btn>Upload .pem / .crt</button>
                                 <span class="fw-cert-status" data-fw-cert-status>No file</span>
@@ -76,7 +77,8 @@
                             </div>
                         </div>
                         <div class="fw-cert-field">
-                            <label class="fw-label">Client Certificate <span class="fw-hint">PEM — optional, for mTLS</span></label>
+                            <span class="fw-label">Client Certificate</span>
+                            <span class="fw-cert-hint">PEM — optional, only for mTLS</span>
                             <div class="fw-cert-widget" data-fw-cert="mqtt-cert">
                                 <button type="button" class="fw-cert-btn" data-fw-cert-btn>Upload .pem / .crt</button>
                                 <span class="fw-cert-status" data-fw-cert-status>No file</span>
@@ -86,7 +88,8 @@
                             </div>
                         </div>
                         <div class="fw-cert-field">
-                            <label class="fw-label">Client Key <span class="fw-hint">PEM — optional, for mTLS</span></label>
+                            <span class="fw-label">Client Private Key</span>
+                            <span class="fw-cert-hint">PEM — optional, only for mTLS</span>
                             <div class="fw-cert-widget" data-fw-cert="mqtt-key">
                                 <button type="button" class="fw-cert-btn" data-fw-cert-btn>Upload .pem / .key</button>
                                 <span class="fw-cert-status" data-fw-cert-status>No file</span>
@@ -147,41 +150,219 @@
                 <div class="fw-topics-panel">
                     <button type="button" class="fw-topics-toggle" data-fw-topics-toggle>
                         <span class="fw-topics-icon">📡</span>
-                        Published Topics &amp; Message Format
+                        Published Topics &amp; Message Formats
                         <span class="fw-topics-arrow" data-fw-topics-arrow>▼</span>
                     </button>
                     <div class="fw-topics-body fw-hidden" data-fw-topics-body>
-                        <p class="fw-topics-note">Your broker subscribers should listen to these topics (gateway <strong>publishes</strong> only — no subscriptions):</p>
-                        <table class="fw-topics-table">
-                            <thead><tr><th>Topic</th><th>Description</th><th>Direction</th></tr></thead>
-                            <tbody>
-                                <tr>
-                                    <td><code>metacrust/{source}/{device_id}/{metric}</code></td>
-                                    <td>One message per metric per interval</td>
-                                    <td><span class="fw-dir-badge pub">PUB</span></td>
-                                </tr>
-                                <tr>
-                                    <td><code>metacrust/{source}/{device_id}/status</code></td>
-                                    <td>Device status changes (online / offline / error)</td>
-                                    <td><span class="fw-dir-badge pub">PUB</span></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                        <p class="fw-topics-note" style="margin-top:0.85rem">Message format (JSON):</p>
-                        <pre class="fw-topics-pre">{
-  "device_id":  "sensor_01",
-  "source":     "rs485",
-  "metric":     "temperature",
-  "value":      24.5,
-  "unit":       "°C",
-  "quality":    "good",
-  "ts":         1714567890123
+
+                        {# ═══ SECTION 1 — Topic Structure ═══ #}
+                        <div class="fw-ref-section">
+                            <p class="fw-ref-heading">Topic Structure</p>
+                            <p class="fw-ref-sub">Every topic follows this pattern. Your server subscribes to these — the gateway only publishes, never subscribes.</p>
+                            <div class="fw-ref-pattern-box">
+                                <span class="fw-pat-gw" data-fw-gw-id>metacrust_&lt;mac&gt;</span><span class="fw-pat-fixed">/</span><span class="fw-pat-var">{source}</span><span class="fw-pat-fixed">/</span><span class="fw-pat-var">{device_id}</span><span class="fw-pat-fixed">/</span><span class="fw-pat-type">{data_type}</span>
+                            </div>
+                            <p class="fw-ref-gw-note">This gateway's prefix: <strong class="fw-ref-gw-live" data-fw-gw-live>loading…</strong> &nbsp;—&nbsp; derived from the <code>eth0</code> MAC address. Each physical gateway has a unique prefix so topics never collide across a fleet.</p>
+
+                            <div class="fw-ref-var-list">
+                                <div class="fw-ref-var-row">
+                                    <div class="fw-ref-var-name"><span class="fw-pat-gw">gateway_id</span></div>
+                                    <div class="fw-ref-var-body">
+                                        <p class="fw-ref-var-rule"><strong>Uniquely identifies this physical gateway across your entire fleet.</strong> Automatically derived from the <code>eth0</code> MAC address at startup — you never configure this manually. Format: <code>metacrust_</code> followed by the 12-character MAC without colons (e.g. <code>metacrust_b827eb1a2c3d</code>). Every gateway produces a different prefix, so two gateways with identically-named devices never collide on the broker.</p>
+                                    </div>
+                                </div>
+                                <div class="fw-ref-var-row">
+                                    <div class="fw-ref-var-name"><span class="fw-pat-var">{source}</span></div>
+                                    <div class="fw-ref-var-body">
+                                        <p class="fw-ref-var-rule">The interface protocol — always one of these exact strings:</p>
+                                        <div class="fw-ref-source-chips">
+                                            <span class="fw-source-chip"><code>rs232</code> RS-232 serial</span>
+                                            <span class="fw-source-chip"><code>rs485</code> RS-485 / Modbus RTU</span>
+                                            <span class="fw-source-chip"><code>modbus_tcp</code> Modbus TCP</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="fw-ref-var-row">
+                                    <div class="fw-ref-var-name"><span class="fw-pat-var">{device_id}</span></div>
+                                    <div class="fw-ref-var-body">
+                                        <p class="fw-ref-var-rule"><strong>The name you typed when adding the device in the Interfaces page.</strong> It is not auto-generated — whatever name you entered is exactly what appears in the topic. To find or change it, go to <strong>Interfaces → RS232 / RS485 / Modbus TCP</strong> and check the Device ID field.</p>
+                                    </div>
+                                </div>
+                                <div class="fw-ref-var-row">
+                                    <div class="fw-ref-var-name"><span class="fw-pat-type">{data_type}</span></div>
+                                    <div class="fw-ref-var-body">
+                                        <p class="fw-ref-var-rule">Three fixed values:</p>
+                                        <div class="fw-ref-dtype-list">
+                                            <span class="fw-dtype-row"><code>sensor_data</code> — live readings from the device</span>
+                                            <span class="fw-dtype-row"><code>analytics</code> &nbsp;&nbsp;— computed stats, trends &amp; alert states</span>
+                                            <span class="fw-dtype-row"><code>events</code> &nbsp;&nbsp;&nbsp;&nbsp;— status changes &amp; alert events (on-change only)</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <p class="fw-ref-eg-label">Example — DustTrak particle counter, RS232, named <code>dustrak_01</code>, on gateway <code data-fw-gw-eg>metacrust_b827eb1a2c3d</code></p>
+                            <div class="fw-ref-eg-strip">
+                                <div class="fw-ref-eg-row"><span class="fw-ref-eg-type">sensor_data</span><code data-fw-topic-eg="rs232/dustrak_01/sensor_data">metacrust_b827eb1a2c3d/rs232/dustrak_01/sensor_data</code></div>
+                                <div class="fw-ref-eg-row"><span class="fw-ref-eg-type">analytics</span><code data-fw-topic-eg="rs232/dustrak_01/analytics">metacrust_b827eb1a2c3d/rs232/dustrak_01/analytics</code></div>
+                                <div class="fw-ref-eg-row"><span class="fw-ref-eg-type">events</span><code data-fw-topic-eg="rs232/dustrak_01/events">metacrust_b827eb1a2c3d/rs232/dustrak_01/events</code></div>
+                            </div>
+
+                            <p class="fw-ref-eg-label" style="margin-top:0.7rem">RS485 temperature + humidity sensor named <code>env_b2</code>, same gateway</p>
+                            <div class="fw-ref-eg-strip">
+                                <div class="fw-ref-eg-row"><span class="fw-ref-eg-type">sensor_data</span><code data-fw-topic-eg="rs485/env_b2/sensor_data">metacrust_b827eb1a2c3d/rs485/env_b2/sensor_data</code></div>
+                                <div class="fw-ref-eg-row"><span class="fw-ref-eg-type">analytics</span><code data-fw-topic-eg="rs485/env_b2/analytics">metacrust_b827eb1a2c3d/rs485/env_b2/analytics</code></div>
+                                <div class="fw-ref-eg-row"><span class="fw-ref-eg-type">events</span><code data-fw-topic-eg="rs485/env_b2/events">metacrust_b827eb1a2c3d/rs485/env_b2/events</code></div>
+                            </div>
+                        </div>
+
+                        {# ═══ SECTION 2 — sensor_data ═══ #}
+                        <div class="fw-ref-section">
+                            <p class="fw-ref-heading">Topic 1 &nbsp;<code class="fw-ref-topic-inline">…/sensor_data</code></p>
+                            <p class="fw-ref-sub"><strong>Published every interval</strong> (configured above). Contains all current metric readings from the device. The metric names inside <code>readings</code> match exactly what the device reports — they depend on the sensor model and how it was configured in the Interfaces page.</p>
+                            <pre class="fw-topics-pre">// DustTrak particle counter — RS232, device_id = "dustrak_01"
+// Metrics: PM1.0, PM2.5, PM10 in µg/m³
+{
+  "ts":        1714567890123,   // Unix timestamp in milliseconds (UTC)
+  "device_id": "dustrak_01",   // as configured in Interfaces → RS232
+  "source":    "rs232",
+  "status":    "ok",           // "ok" | "warning" | "error" | "offline"
+  "readings": {
+    "pm1_0": { "value": 8.1,  "unit": "µg/m³", "quality": "good" },
+    "pm2_5": { "value": 12.3, "unit": "µg/m³", "quality": "good" },
+    "pm10":  { "value": 28.7, "unit": "µg/m³", "quality": "good" }
+  }
+}
+
+// RS485 multi-sensor — device_id = "env_b2"
+// Metrics: temperature, humidity, CO2
+{
+  "ts":        1714567890123,
+  "device_id": "env_b2",
+  "source":    "rs485",
+  "status":    "ok",
+  "readings": {
+    "temperature": { "value": 24.5, "unit": "°C",  "quality": "good" },
+    "humidity":    { "value": 65.2, "unit": "%",   "quality": "good" },
+    "co2":         { "value": 420,  "unit": "ppm", "quality": "stale" }
+  }
+}
+
+// Modbus TCP flow meter — device_id = "flow_meter_01"
+{
+  "ts":        1714567890123,
+  "device_id": "flow_meter_01",
+  "source":    "modbus_tcp",
+  "status":    "ok",
+  "readings": {
+    "flow_rate":   { "value": 3.42, "unit": "m³/h", "quality": "good" },
+    "total_volume":{ "value": 1250, "unit": "m³",   "quality": "good" }
+  }
 }</pre>
-                        <p class="fw-topics-note" style="margin-top:0.6rem;opacity:.6">
-                            <code>{source}</code> = rs232 / rs485 / modbus_tcp &nbsp;·&nbsp;
-                            <code>{device_id}</code> = device identifier &nbsp;·&nbsp;
-                            <code>{metric}</code> = metric name (e.g. temperature, humidity)
-                        </p>
+                            <div class="fw-ref-field-list">
+                                <p class="fw-ref-field-heading">Field reference</p>
+                                <div class="fw-ref-field-row"><code>ts</code><span>Timestamp of the reading in milliseconds since Unix epoch (UTC). Parse with <code>new Date(ts)</code> in JS or <code>datetime.fromtimestamp(ts/1000)</code> in Python.</span></div>
+                                <div class="fw-ref-field-row"><code>status</code><span>Overall device health: <strong>ok</strong> = all good, <strong>warning</strong> = degraded but reading, <strong>error</strong> = device fault, <strong>offline</strong> = no communication.</span></div>
+                                <div class="fw-ref-field-row"><code>readings.*.quality</code><span><strong>good</strong> = fresh valid reading, <strong>stale</strong> = device not responding but last value retained, <strong>error</strong> = read failed.</span></div>
+                            </div>
+                        </div>
+
+                        {# ═══ SECTION 3 — analytics ═══ #}
+                        <div class="fw-ref-section">
+                            <p class="fw-ref-heading">Topic 2 &nbsp;<code class="fw-ref-topic-inline">…/analytics</code></p>
+                            <p class="fw-ref-sub"><strong>Published every interval</strong> alongside sensor_data. Contains computed analytics for the device. <strong>Sections are dynamic</strong> — only sections that have data are included in the message. A newly connected device will have no <code>stats</code> or <code>trends</code> for the first ~5 minutes while data accumulates.</p>
+                            <div class="fw-ref-callout">
+                                <span class="fw-ref-callout-icon">ℹ</span>
+                                <span><code>stats</code> and <code>trends</code> appear after ~5 minutes of continuous readings. <code>active_alerts</code> appears only when you have configured alert rules in the Insights page. If a device has no rules and insufficient data, the analytics message will only contain the header fields.</span>
+                            </div>
+                            <pre class="fw-topics-pre">// Full example — all sections present (env_b2, rs485)
+{
+  "ts":        1714567890123,
+  "device_id": "env_b2",
+  "source":    "rs485",
+
+  // Rolling window statistics — averages, min/max, std deviation
+  // Computed across 5-minute, 1-hour, and 24-hour sliding windows
+  "stats": {
+    "temperature": {
+      "5min": { "avg": 24.1, "min": 23.8, "max": 24.5, "stddev": 0.22 },
+      "1hr":  { "avg": 23.9, "min": 22.1, "max": 25.1, "stddev": 0.80 },
+      "24hr": { "avg": 23.5, "min": 21.0, "max": 26.3, "stddev": 1.10 }
+    },
+    "humidity": {
+      "5min": { "avg": 65.0, "min": 64.5, "max": 65.8, "stddev": 0.30 },
+      "1hr":  { "avg": 64.2, "min": 62.0, "max": 66.5, "stddev": 0.90 },
+      "24hr": { "avg": 63.8, "min": 58.0, "max": 70.2, "stddev": 2.10 }
+    }
+  },
+
+  // Trend detection — slope and direction over the last ~5 minutes
+  "trends": {
+    "temperature": {
+      "direction":     "rising",   // "rising" | "falling" | "stable"
+      "slope_per_min": 0.05,       // units per minute (positive = rising)
+      "ttt_minutes":   45          // minutes to reach nearest alert threshold
+                                   // omitted if no alert rule is configured
+    },
+    "humidity": {
+      "direction":     "stable",
+      "slope_per_min": 0.01
+    }
+  },
+
+  // Alert rule states — one entry per configured rule
+  "active_alerts": [
+    {
+      "rule_id":      "ab12cd34",
+      "metric":       "temperature",
+      "condition":    "gt",        // "gt" | "lt" | "gte" | "lte" | "eq"
+      "threshold":    30,
+      "severity":     "warning",   // "warning" | "critical"
+      "state":        "ok",        // "ok" = below threshold, "fired" = threshold exceeded
+      "triggered_at": null         // ms timestamp when fired; null if state = "ok"
+    }
+  ]
+}</pre>
+                        </div>
+
+                        {# ═══ SECTION 4 — events ═══ #}
+                        <div class="fw-ref-section">
+                            <p class="fw-ref-heading">Topic 3 &nbsp;<code class="fw-ref-topic-inline">…/events</code></p>
+                            <p class="fw-ref-sub"><strong>Published immediately on change — not on a timer.</strong> Your server receives this the moment a device goes offline, recovers, or an alert rule fires or resolves. Use this topic for real-time alerting; do not rely on polling sensor_data for state changes.</p>
+                            <p class="fw-ref-sub" style="margin-top:0.3rem">Both event types share the same topic. Distinguish them by the <code>type</code> field.</p>
+                            <pre class="fw-topics-pre">// ── Event type 1: status_change ──────────────────────────────────────────
+// Fired when device health transitions between ok / warning / error / offline
+{
+  "ts":        1714567890123,
+  "device_id": "dustrak_01",
+  "source":    "rs232",
+  "type":      "status_change",
+  "payload": {
+    "previous": "ok",             // status before the change
+    "current":  "error",          // "ok" | "warning" | "error" | "offline"
+    "message":  "No response from device after 3 attempts"
+  }
+}
+
+// ── Event type 2: alert ───────────────────────────────────────────────────
+// Fired when an alert rule is triggered or when it clears back to normal
+{
+  "ts":        1714567900000,
+  "device_id": "env_b2",
+  "source":    "rs485",
+  "type":      "alert",
+  "payload": {
+    "rule_id":   "ab12cd34",
+    "metric":    "temperature",
+    "condition": "gt 30",         // human-readable condition string
+    "value":     31.2,            // current reading that triggered the rule
+    "threshold": 30,
+    "severity":  "warning",       // "warning" | "critical"
+    "state":     "fired"          // "fired" = threshold exceeded, "resolved" = back to normal
+  }
+}</pre>
+                        </div>
+
                     </div>
                 </div>
 
@@ -206,16 +387,160 @@
                 </div>
 
                 {# Data endpoint mappings #}
-                <p class="fw-section-label">Data Endpoints <span class="fw-hint">configure which paths receive which data</span></p>
-                <div class="fw-endpoint-row">
-                    <span class="fw-endpoint-label">Sensor readings</span>
-                    <input class="fw-input fw-field-md" type="text" placeholder="/ingest" data-fw-f-https-sensor-path maxlength="512">
-                    <span class="fw-endpoint-preview" data-fw-https-sensor-preview>—</span>
+                <p class="fw-section-label">Data Endpoints</p>
+                <div class="fw-endpoint-grid">
+                    <div class="fw-endpoint-row">
+                        <span class="fw-endpoint-label">Sensor readings</span>
+                        <input class="fw-input fw-field-md" type="text" placeholder="/ingest" data-fw-f-https-sensor-path maxlength="512">
+                        <span class="fw-endpoint-preview" data-fw-https-sensor-preview>—</span>
+                    </div>
+                    <div class="fw-endpoint-row">
+                        <span class="fw-endpoint-label">Analytics <span class="fw-hint">optional</span></span>
+                        <input class="fw-input fw-field-md" type="text" placeholder="/analytics" data-fw-f-https-analytics-path maxlength="512">
+                        <span class="fw-endpoint-preview" data-fw-https-analytics-preview>—</span>
+                    </div>
+                    <div class="fw-endpoint-row">
+                        <span class="fw-endpoint-label">Events <span class="fw-hint">optional</span></span>
+                        <input class="fw-input fw-field-md" type="text" placeholder="/events" data-fw-f-https-events-path maxlength="512">
+                        <span class="fw-endpoint-preview" data-fw-https-events-preview>—</span>
+                    </div>
                 </div>
-                <div class="fw-endpoint-row" style="margin-top:0.4rem">
-                    <span class="fw-endpoint-label">Events <span class="fw-hint">optional</span></span>
-                    <input class="fw-input fw-field-md" type="text" placeholder="/events" data-fw-f-https-events-path maxlength="512">
-                    <span class="fw-endpoint-preview" data-fw-https-events-preview>—</span>
+
+                {# HTTPS endpoint reference panel #}
+                <div class="fw-topics-panel">
+                    <button type="button" class="fw-topics-toggle" data-fw-https-ref-toggle>
+                        <span class="fw-topics-icon">🔗</span>
+                        Endpoint Reference &amp; Request Format
+                        <span class="fw-topics-arrow" data-fw-https-ref-arrow>▼</span>
+                    </button>
+                    <div class="fw-topics-body fw-hidden" data-fw-https-ref-body>
+
+                        {# ── URL construction ── #}
+                        <div class="fw-ref-section">
+                            <p class="fw-ref-heading">How URLs Are Constructed</p>
+                            <p class="fw-ref-sub">The gateway combines the host, port, and path you enter above into a full HTTPS URL. Port 443 is omitted from the URL (standard HTTPS default).</p>
+                            <div class="fw-ref-pattern-box">
+                                <span class="fw-pat-fixed">https://</span><span class="fw-pat-var">{host}</span><span class="fw-pat-fixed">:</span><span class="fw-pat-var">{port}</span><span class="fw-pat-fixed">/</span><span class="fw-pat-type">{path}</span>
+                            </div>
+                            <div class="fw-ref-eg-strip" style="margin-top:0.5rem">
+                                <div class="fw-ref-eg-row"><span class="fw-ref-eg-type">port 443</span><code>https://api.example.com/ingest</code></div>
+                                <div class="fw-ref-eg-row"><span class="fw-ref-eg-type">custom port</span><code>https://api.example.com:8443/ingest</code></div>
+                            </div>
+                        </div>
+
+                        {# ── Request format ── #}
+                        <div class="fw-ref-section">
+                            <p class="fw-ref-heading">Request Format</p>
+                            <p class="fw-ref-sub"><strong>All three endpoints receive HTTP POST requests with a JSON body.</strong> The gateway does not use GET, PUT, or PATCH. Your server must return HTTP 2xx to acknowledge — any other response is logged as a failure and the gateway will retry on the next interval.</p>
+                            <pre class="fw-topics-pre">POST /ingest HTTP/1.1
+Host: api.example.com
+Content-Type: application/json
+Authorization: Bearer &lt;token&gt;          ← only if Bearer auth is configured
+X-API-Key: &lt;key&gt;                       ← only if API Key auth is configured
+Content-Length: &lt;n&gt;
+
+{ ... JSON body ... }                   ← see per-endpoint formats below</pre>
+                            <div class="fw-ref-callout" style="margin-top:0.5rem">
+                                <span class="fw-ref-callout-icon">ℹ</span>
+                                <span><strong>Basic Auth</strong> is sent as a standard <code>Authorization: Basic &lt;base64(user:pass)&gt;</code> header. The gateway does not send cookies or multipart data — only <code>application/json</code>.</span>
+                            </div>
+                        </div>
+
+                        {# ── Endpoint 1: sensor readings ── #}
+                        <div class="fw-ref-section">
+                            <p class="fw-ref-heading">Endpoint 1 — Sensor Readings path</p>
+                            <p class="fw-ref-sub"><strong>Posted every interval.</strong> Contains all current metric readings from every device. The JSON body is identical to the MQTT <code>sensor_data</code> topic payload. One POST per device per interval — if you have 3 devices, your server receives 3 separate POST requests.</p>
+                            <pre class="fw-topics-pre">// POST body — DustTrak (RS232, device_id = "dustrak_01")
+{
+  "ts":        1714567890123,
+  "device_id": "dustrak_01",
+  "source":    "rs232",
+  "status":    "ok",
+  "readings": {
+    "pm1_0": { "value": 8.1,  "unit": "µg/m³", "quality": "good" },
+    "pm2_5": { "value": 12.3, "unit": "µg/m³", "quality": "good" },
+    "pm10":  { "value": 28.7, "unit": "µg/m³", "quality": "good" }
+  }
+}
+
+// POST body — RS485 temp + humidity sensor (device_id = "env_b2")
+{
+  "ts":        1714567890123,
+  "device_id": "env_b2",
+  "source":    "rs485",
+  "status":    "ok",
+  "readings": {
+    "temperature": { "value": 24.5, "unit": "°C", "quality": "good" },
+    "humidity":    { "value": 65.2, "unit": "%",  "quality": "good" }
+  }
+}</pre>
+                        </div>
+
+                        {# ── Endpoint 2: analytics ── #}
+                        <div class="fw-ref-section">
+                            <p class="fw-ref-heading">Endpoint 2 — Analytics path <span style="font-weight:400;color:rgba(157,179,187,0.5)">(optional)</span></p>
+                            <p class="fw-ref-sub"><strong>Posted every interval alongside the sensor readings POST.</strong> Contains rolling statistics, trend detection results, and active alert states. Leave the path blank to skip analytics POSTs entirely. The body is identical to the MQTT <code>analytics</code> topic payload — sections are dynamic and only included when data is available.</p>
+                            <div class="fw-ref-callout">
+                                <span class="fw-ref-callout-icon">ℹ</span>
+                                <span><code>stats</code> and <code>trends</code> sections appear after ~5 minutes of continuous readings. <code>active_alerts</code> appears only when alert rules are configured in the Insights page. If a device is new or offline, the analytics POST may contain only the header fields.</span>
+                            </div>
+                            <pre class="fw-topics-pre">// POST body — env_b2 with all analytics sections present
+{
+  "ts":        1714567890123,
+  "device_id": "env_b2",
+  "source":    "rs485",
+  "stats": {
+    "temperature": {
+      "5min": { "avg": 24.1, "min": 23.8, "max": 24.5, "stddev": 0.22 },
+      "1hr":  { "avg": 23.9, "min": 22.1, "max": 25.1, "stddev": 0.80 }
+    }
+  },
+  "trends": {
+    "temperature": { "direction": "rising", "slope_per_min": 0.05, "ttt_minutes": 45 }
+  },
+  "active_alerts": [
+    { "rule_id": "ab12cd34", "metric": "temperature", "condition": "gt",
+      "threshold": 30, "severity": "warning", "state": "ok", "triggered_at": null }
+  ]
+}</pre>
+                        </div>
+
+                        {# ── Endpoint 3: events ── #}
+                        <div class="fw-ref-section">
+                            <p class="fw-ref-heading">Endpoint 3 — Events path <span style="font-weight:400;color:rgba(157,179,187,0.5)">(optional)</span></p>
+                            <p class="fw-ref-sub"><strong>Posted immediately when something changes — not on a timer.</strong> Your server receives this POST the moment a device goes offline, comes back online, or an alert rule fires or resolves. Leave blank to skip event POSTs. The body is identical to the MQTT <code>events</code> topic payload.</p>
+                            <pre class="fw-topics-pre">// POST body — device went offline
+{
+  "ts":        1714567890123,
+  "device_id": "dustrak_01",
+  "source":    "rs232",
+  "type":      "status_change",
+  "payload": {
+    "previous": "ok",
+    "current":  "offline",
+    "message":  "No response from device after 3 attempts"
+  }
+}
+
+// POST body — alert rule fired
+{
+  "ts":        1714567900000,
+  "device_id": "env_b2",
+  "source":    "rs485",
+  "type":      "alert",
+  "payload": {
+    "rule_id":   "ab12cd34",
+    "metric":    "temperature",
+    "condition": "gt 30",
+    "value":     31.2,
+    "threshold": 30,
+    "severity":  "warning",
+    "state":     "fired"     // "fired" | "resolved"
+  }
+}</pre>
+                        </div>
+
+                    </div>
                 </div>
 
                 {# Auth #}
@@ -252,7 +577,8 @@
                 <div class="fw-tls-block fw-hidden" data-fw-https-mtls-block>
                     <div class="fw-cert-grid">
                         <div class="fw-cert-field">
-                            <label class="fw-label">CA Certificate <span class="fw-hint">PEM — optional if server uses self-signed or private CA</span></label>
+                            <span class="fw-label">CA Certificate</span>
+                            <span class="fw-cert-hint">PEM — for self-signed / private CA</span>
                             <div class="fw-cert-widget" data-fw-cert="https-ca">
                                 <button type="button" class="fw-cert-btn" data-fw-cert-btn>Upload .pem / .crt</button>
                                 <span class="fw-cert-status" data-fw-cert-status>No file</span>
@@ -262,7 +588,8 @@
                             </div>
                         </div>
                         <div class="fw-cert-field">
-                            <label class="fw-label">Client Certificate <span class="fw-hint">PEM — only for mutual TLS</span></label>
+                            <span class="fw-label">Client Certificate</span>
+                            <span class="fw-cert-hint">PEM — only for mutual TLS</span>
                             <div class="fw-cert-widget" data-fw-cert="https-cert">
                                 <button type="button" class="fw-cert-btn" data-fw-cert-btn>Upload .pem / .crt</button>
                                 <span class="fw-cert-status" data-fw-cert-status>No file</span>
@@ -272,7 +599,8 @@
                             </div>
                         </div>
                         <div class="fw-cert-field">
-                            <label class="fw-label">Client Key <span class="fw-hint">PEM — only for mutual TLS</span></label>
+                            <span class="fw-label">Client Private Key</span>
+                            <span class="fw-cert-hint">PEM — only for mutual TLS</span>
                             <div class="fw-cert-widget" data-fw-cert="https-key">
                                 <button type="button" class="fw-cert-btn" data-fw-cert-btn>Upload .pem / .key</button>
                                 <span class="fw-cert-status" data-fw-cert-status>No file</span>
