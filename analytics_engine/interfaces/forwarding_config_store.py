@@ -34,8 +34,9 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_MAX_PROFILES     = 10  # total profiles
+_MAX_PROFILES      = 6   # 1 MQTT + up to 5 HTTPS
 _MAX_MQTT_PROFILES = 1   # only one MQTT broker connection makes sense
+_MAX_HTTPS_PROFILES = 5  # five independent HTTP/HTTPS destinations
 
 
 # ── Primitive validators ──────────────────────────────────────────────────────
@@ -177,6 +178,7 @@ class ForwardingConfigStore:
             profile["https"] = {
                 "host":             _str(r.get("host"), 253),
                 "port":             _int_clamp(r.get("port", 443), 1, 65535, 443),
+                "tls":              _bool(r.get("tls"), True),
                 "sensor_path":      _str(r.get("sensor_path", "/ingest"), 512, "/ingest"),
                 "analytics_path":   _str(r.get("analytics_path", ""), 512),
                 "events_path":      _str(r.get("events_path", ""), 512),
@@ -235,6 +237,7 @@ class ForwardingConfigStore:
                 profile["https"] = {
                     "host":             _str(h.get("host"), 253),
                     "port":             _int_clamp(h.get("port", 443), 1, 65535, 443),
+                    "tls":              _bool(h.get("tls"), True),
                     "sensor_path":      _str(h.get("sensor_path", "/ingest"), 512, "/ingest"),
                     "analytics_path":   _str(h.get("analytics_path", ""), 512),
                     "events_path":      _str(h.get("events_path", ""), 512),
@@ -320,9 +323,12 @@ class ForwardingConfigStore:
                 return False, {"message": "Invalid configuration payload."}
 
             # Enforce protocol limits
-            mqtt_profiles = [p for p in new_profiles if p.get("protocol") == "mqtt"]
+            mqtt_profiles  = [p for p in new_profiles if p.get("protocol") == "mqtt"]
+            https_profiles = [p for p in new_profiles if p.get("protocol") == "https"]
             if len(mqtt_profiles) > _MAX_MQTT_PROFILES:
-                return False, {"message": f"Only {_MAX_MQTT_PROFILES} MQTT profile is allowed. Use HTTPS for additional destinations."}
+                return False, {"message": f"Only {_MAX_MQTT_PROFILES} MQTT profile is allowed."}
+            if len(https_profiles) > _MAX_HTTPS_PROFILES:
+                return False, {"message": f"Maximum {_MAX_HTTPS_PROFILES} HTTPS profiles allowed."}
 
             # Clean up cert files for deleted profiles
             new_ids = {p["id"] for p in new_profiles}

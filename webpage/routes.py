@@ -3,6 +3,7 @@ import hashlib
 import io
 import json
 import logging
+import os
 from pathlib import Path
 import subprocess
 import time as _time
@@ -16,7 +17,7 @@ from analytics_engine.settings_store import DEFAULT_USERNAME, ROOT_USERNAME
 logger = logging.getLogger(__name__)
 
 router    = APIRouter()
-_here     = Path(__file__).resolve().parent
+_here     = Path(os.environ.get("AES_WEBPAGE_DIR", Path(__file__).resolve().parent))
 templates = Jinja2Templates(directory=str(_here / "templates"))
 
 # ── Cache-busting hashes computed once at server start ────────────────────────
@@ -738,9 +739,110 @@ async def get_network_apply_result(request: Request) -> JSONResponse:
     return JSONResponse(_network_settings_store(request).get_apply_result())
 
 
+def _read_wifi_details(iface: str, network_state: dict) -> dict:
+    """Read WiFi-specific info from iw and /sys. Returns empty dict if wifi absent."""
+    base = Path(f"/sys/class/net/{iface}")
+    if not base.exists():
+        return {}
+
+    def _sys(name: str, default: str = "") -> str:
+        try:
+            return (base / name).read_text().strip()
+        except OSError:
+            return default
+
+    mac       = _sys("address") or "—"
+    operstate = _sys("operstate", "down")
+
+    # iw wlan0 link — only meaningful in client (managed) mode
+    ssid = connected_bssid = freq_mhz = signal_dbm = rx_bitrate = tx_bitrate = ""
+    try:
+        r = subprocess.run(
+            ["iw", iface, "link"],
+            capture_output=True, text=True, timeout=3,
+        )
+        for line in r.stdout.splitlines():
+            line = line.strip()
+            if line.startswith("SSID:"):
+                ssid = line.split(":", 1)[1].strip()
+            elif line.startswith("Connected to"):
+                connected_bssid = line.split()[2]
+            elif line.startswith("freq:"):
+                freq_mhz = line.split(":")[1].strip()
+            elif line.startswith("signal:"):
+                signal_dbm = line.split(":")[1].strip()
+            elif line.startswith("rx bitrate:"):
+                rx_bitrate = line.split(":", 1)[1].strip()
+            elif line.startswith("tx bitrate:"):
+                tx_bitrate = line.split(":", 1)[1].strip()
+    except Exception:
+        pass
+
+    # iw dev wlan0 info — always available, gives channel/mode even in AP mode
+    channel = mode = ""
+    try:
+        r = subprocess.run(
+            ["iw", "dev", iface, "info"],
+            capture_output=True, text=True, timeout=3,
+        )
+        for line in r.stdout.splitlines():
+            line = line.strip()
+            if line.startswith("channel "):
+                channel = line.split()[1]
+            elif line.startswith("type "):
+                mode = line.split(None, 1)[1].strip()   # "managed" | "AP" | etc.
+    except Exception:
+        pass
+
+    # IPv4 from network state (wifi_client section already has it)
+    wc = network_state.get("wifi_client", {}) if isinstance(network_state.get("wifi_client"), dict) else {}
+    ipv4 = wc.get("address", "—") or "—"
+
+    # IPv6 from /proc/net/if_inet6
+    import ipaddress as _ip
+    ipv6_addrs: list[dict] = []
+    try:
+        scope_map = {0x00: "global", 0x10: "site", 0x20: "link-local", 0xfe: "host"}
+        for line in Path("/proc/net/if_inet6").read_text().splitlines():
+            parts = line.split()
+            if len(parts) >= 6 and parts[5] == iface:
+                compressed  = str(_ip.ip_address(int(parts[0], 16)))
+                prefix_len  = int(parts[2], 16)
+                scope_val   = int(parts[3], 16)
+                scope_label = scope_map.get(scope_val, f"scope-{scope_val:02x}")
+                ipv6_addrs.append({"addr": f"{compressed}/{prefix_len}", "scope": scope_label})
+    except (OSError, ValueError):
+        pass
+
+    # Signal quality 0-100 (approximate: -30 dBm = 100%, -90 dBm = 0%)
+    signal_pct = None
+    try:
+        dbm = int(signal_dbm.split()[0])
+        signal_pct = max(0, min(100, 2 * (dbm + 100)))
+    except (ValueError, IndexError):
+        pass
+
+    return {
+        "mac":           mac,
+        "operstate":     operstate,
+        "mode":          mode,
+        "ssid":          ssid,
+        "bssid":         connected_bssid,
+        "channel":       channel,
+        "freq_mhz":      freq_mhz,
+        "signal_dbm":    signal_dbm,
+        "signal_pct":    signal_pct,
+        "rx_bitrate":    rx_bitrate,
+        "tx_bitrate":    tx_bitrate,
+        "ipv4":          ipv4,
+        "ipv6":          ipv6_addrs,
+        "link_up":       operstate == "up",
+    }
+
+
 @router.get("/api/network/iface-details")
 async def get_iface_details(request: Request) -> JSONResponse:
-    """Return rich live interface details for eth0 and eth1."""
+    """Return rich live interface details for eth0, eth1, and wlan0."""
     if not _is_authenticated(request):
         return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
     state = _network_settings_store(request).get_state()
@@ -758,6 +860,21 @@ async def get_iface_details(request: Request) -> JSONResponse:
                      "link_up": bool(state.get("eth1", {}).get("link_up")),
                      "internet_ok": bool(state.get("eth1", {}).get("internet_ok"))},
         },
+        "wifi": _read_wifi_details("wlan0", state),
+    })
+
+
+@router.get("/api/forwarding/status")
+async def get_forwarding_status(request: Request) -> JSONResponse:
+    """Return live MQTT and HTTPS forwarding status for all active profiles."""
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+    mqtt_fwd  = getattr(request.app.state, "mqtt_forwarder",  None)
+    https_fwd = getattr(request.app.state, "https_forwarder", None)
+    return JSONResponse({
+        "ok":    True,
+        "mqtt":  mqtt_fwd.get_status()  if mqtt_fwd  else [],
+        "https": https_fwd.get_status() if https_fwd else [],
     })
 
 

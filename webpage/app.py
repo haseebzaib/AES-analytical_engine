@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -6,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from webpage.routes import router as webpage_router
 
 
-WEBPAGE_DIR = Path(__file__).resolve().parent
+WEBPAGE_DIR = Path(os.environ.get("AES_WEBPAGE_DIR", Path(__file__).resolve().parent))
 
 
 def configure_webpage(app: FastAPI) -> None:

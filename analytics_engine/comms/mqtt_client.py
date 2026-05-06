@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import ssl
 import threading
+import time
 from pathlib import Path
 
 import paho.mqtt.client as mqtt
@@ -42,6 +43,13 @@ class MqttProfileClient:
         self._connected  = False
         self._client: mqtt.Client | None = None
 
+        # Status tracking (read by get_status())
+        self._state:           str        = "stopped"   # stopped|connecting|connected|error
+        self._last_error:      str        = ""
+        self._connected_at:    float | None = None      # monotonic
+        self._last_publish_at: float | None = None      # monotonic
+        self._publish_count:   int        = 0
+
         self._log = logging.getLogger(f"comms.mqtt[{self._name}]")
 
     # ── Public interface ──────────────────────────────────────────────────────
@@ -52,7 +60,10 @@ class MqttProfileClient:
         port = int(self._cfg.get("port", 1883))
 
         if not host:
-            self._log.error("No broker host configured for profile '%s' — skipping", self._name)
+            msg = f"No broker host configured for profile '{self._name}'"
+            self._log.error("%s — skipping", msg)
+            self._state = "error"
+            self._last_error = msg
             return
 
         try:
@@ -60,6 +71,8 @@ class MqttProfileClient:
         except Exception as exc:
             self._log.error("Failed to build MQTT client for '%s': %s", self._name, exc)
             self._client = None
+            self._state = "error"
+            self._last_error = str(exc)
             return
 
         try:
@@ -68,11 +81,14 @@ class MqttProfileClient:
                 host, port,
                 " (TLS)" if self._cfg.get("tls") else "",
             )
+            self._state = "connecting"
             self._client.connect_async(host, port, keepalive=60)
             self._client.loop_start()
         except Exception as exc:
             self._log.error("connect_async failed for '%s': %s — will not retry until config reload", self._name, exc)
             self._client = None
+            self._state = "error"
+            self._last_error = str(exc)
 
     def stop(self) -> None:
         """Disconnect and shut down the paho loop thread."""
@@ -105,6 +121,8 @@ class MqttProfileClient:
                 )
                 return False
             self._log.debug("→ %s  %d bytes  QoS=%d", topic, len(payload), qos)
+            self._publish_count   += 1
+            self._last_publish_at  = time.monotonic()
             return True
         except Exception as exc:
             self._log.error("Unexpected publish error on '%s': %s", topic, exc)
@@ -113,6 +131,21 @@ class MqttProfileClient:
     @property
     def is_connected(self) -> bool:
         return self._connected
+
+    def get_status(self) -> dict:
+        """Return a snapshot of connection status for the UI."""
+        now = time.monotonic()
+        return {
+            "profile_id":      self._pid,
+            "profile_name":    self._name,
+            "state":           self._state,
+            "broker":          f"{self._cfg.get('host','?')}:{self._cfg.get('port',1883)}",
+            "tls":             bool(self._cfg.get("tls")),
+            "last_error":      self._last_error,
+            "connected_since": round(now - self._connected_at)  if self._connected_at  else None,
+            "last_publish_ago": round(now - self._last_publish_at) if self._last_publish_at else None,
+            "publish_count":   self._publish_count,
+        }
 
     # ── Client construction ───────────────────────────────────────────────────
 
@@ -196,13 +229,19 @@ class MqttProfileClient:
             failed = bool(reason_code)
 
         if failed:
-            self._connected = False
+            self._connected    = False
+            self._state        = "error"
+            self._last_error   = str(reason_code)
+            self._connected_at = None
             self._log.error(
                 "Broker refused connection for profile '%s': %s  (will retry in %d–%d s)",
                 self._name, reason_code, _RECONNECT_MIN, _RECONNECT_MAX,
             )
         else:
-            self._connected = True
+            self._connected    = True
+            self._state        = "connected"
+            self._last_error   = ""
+            self._connected_at = time.monotonic()
             self._log.info(
                 "Connected to %s:%d  profile='%s'  QoS=%d  retain=%s",
                 self._cfg.get("host", "?"),
@@ -213,13 +252,16 @@ class MqttProfileClient:
             )
 
     def _on_disconnect(self, client, userdata, disconnect_flags, reason_code, properties) -> None:
-        self._connected = False
+        self._connected    = False
+        self._connected_at = None
         try:
             failed = reason_code.is_failure
         except AttributeError:
             failed = bool(reason_code)
 
         if failed:
+            self._state      = "connecting"   # paho will retry
+            self._last_error = str(reason_code)
             self._log.warning(
                 "Disconnected unexpectedly from %s:%d  profile='%s'  reason=%s  "
                 "— paho will reconnect automatically (backoff %d–%d s)",
@@ -231,6 +273,7 @@ class MqttProfileClient:
                 _RECONNECT_MAX,
             )
         else:
+            self._state = "stopped"
             self._log.info("Cleanly disconnected from broker (profile '%s')", self._name)
 
     def _on_publish(self, client, userdata, mid, reason_code, properties) -> None:

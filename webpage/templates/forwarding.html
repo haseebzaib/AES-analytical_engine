@@ -396,6 +396,10 @@
                         <label class="fw-label">Port</label>
                         <input class="fw-input" type="number" value="443" min="1" max="65535" data-fw-f-https-port>
                     </div>
+                    <div class="fw-field">
+                        <label class="fw-label">TLS</label>
+                        <button class="fw-toggle-btn" data-fw-f-https-tls>ON</button>
+                    </div>
                 </div>
 
                 {# Data endpoint mappings #}
@@ -589,7 +593,8 @@ Content-Length: &lt;n&gt;
                     </div>
                 </div>
 
-                {# Security / mTLS #}
+                {# Security / mTLS — hidden when TLS is off #}
+                <div data-fw-https-tls-section>
                 <p class="fw-section-label">Security</p>
                 <div class="fw-form-row fw-mtls-header-row">
                     <div class="fw-field fw-field-sm">
@@ -639,6 +644,7 @@ Content-Length: &lt;n&gt;
                         </div>
                     </div>
                 </div>
+                </div>{# end data-fw-https-tls-section #}
 
                 {# Delivery #}
                 <p class="fw-section-label" style="margin-top:1.1rem">Delivery</p>
@@ -678,6 +684,15 @@ Content-Length: &lt;n&gt;
             <button class="fw-btn-cancel" data-fw-cancel>Cancel</button>
             <button class="fw-btn-save"   data-fw-save>Save Profile</button>
         </footer>
+    </div>
+
+    {# ── Live status overview ─────────────────────────────────────────────── #}
+    <div class="fw-status-panel ov-hidden" data-fw-status-panel>
+        <div class="fw-status-header">
+            <span class="fw-status-title">Live Status</span>
+            <span class="fw-status-ts" data-fw-status-ts></span>
+        </div>
+        <div class="fw-status-list" data-fw-status-list></div>
     </div>
 
     {# ── Profile list ─────────────────────────────────────────────────────── #}

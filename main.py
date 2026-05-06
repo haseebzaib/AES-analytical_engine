@@ -53,6 +53,7 @@ class _PollingEndpointFilter(logging.Filter):
         "/api/system/metrics",
         "/api/insights/live",
         "/api/insights/summary",
+        "/api/forwarding/status",
     ])
 
     def filter(self, record: logging.LogRecord) -> bool:
@@ -108,6 +109,7 @@ from analytics_engine.analytics.rules import RulesEngine
 from analytics_engine.analytics.stats import StatsEngine
 from analytics_engine.analytics.trends import TrendsEngine
 from analytics_engine.comms.mqtt_forwarder import MqttForwarder
+from analytics_engine.comms.https_forwarder import HttpsForwarder
 from utils.redis_client import RedisClient as RedisNotifier
 from analytics_engine.runtime import AnalyticsRuntime
 from analytics_engine.settings_store import SettingsStore
@@ -150,6 +152,15 @@ _mqtt_forwarder = MqttForwarder(
 )
 runtime.register_worker("mqtt-forwarder", interval_seconds=1.0, tick_fn=_mqtt_forwarder.tick)
 
+# Register the HTTPS forwarding worker (ticks every 1 s; POSTs per profile interval)
+_https_forwarder = HttpsForwarder(
+    sensor_store            = sensor_store,
+    analytical_store        = analytical_store,
+    forwarding_config_store = forwarding_config_store,
+    gateway_id              = GATEWAY_ID,
+)
+runtime.register_worker("https-forwarder", interval_seconds=1.0, tick_fn=_https_forwarder.tick)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -186,6 +197,8 @@ async def lifespan(app: FastAPI):
     app.state.rs485_config_store      = rs485_config_store
     app.state.modbus_tcp_config_store   = modbus_tcp_config_store
     app.state.forwarding_config_store   = forwarding_config_store
+    app.state.mqtt_forwarder          = _mqtt_forwarder
+    app.state.https_forwarder         = _https_forwarder
     app.state.redis_notifier          = redis_notifier
     app.state.sensor_store            = sensor_store
     app.state.analytical_store        = analytical_store
@@ -197,6 +210,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         _mqtt_forwarder.stop()
+        _https_forwarder.stop()
         runtime.stop()
         logger.info("━━━ AES stopped ━━━")
 

@@ -135,6 +135,37 @@
                     </div>
 
                 </div>
+
+                {# wlan0 live info card #}
+                <div class="settings-section" style="margin-top:1.4rem">
+                    <div class="settings-section-head" style="margin-bottom:.8rem">
+                        <span class="hero-band-eyebrow" style="font-size:.7rem">Live Status</span>
+                        <h3 style="margin:0;font-size:1rem">Wireless Interface (wlan0)</h3>
+                    </div>
+                    <div class="eth-iface-card" id="eth-card-wlan0" style="max-width:100%">
+                        <div class="eth-iface-head">
+                            <span class="eth-link-dot" id="wlan0-dot"></span>
+                            <span class="eth-iface-name">wlan0</span>
+                            <span class="eth-iface-state" id="wlan0-state">Loading…</span>
+                            <span class="eth-active-pill" id="wlan0-mode-pill" style="display:none"></span>
+                        </div>
+                        <div class="eth-detail-table" id="wlan0-body">
+                            <div class="eth-detail-row"><span class="eth-detail-label">MAC Address</span><code class="eth-detail-val" id="wlan0-mac">—</code></div>
+                            <div class="eth-detail-row" id="wlan0-ssid-row"><span class="eth-detail-label">SSID</span><code class="eth-detail-val" id="wlan0-ssid">—</code></div>
+                            <div class="eth-detail-row" id="wlan0-bssid-row"><span class="eth-detail-label">AP (BSSID)</span><code class="eth-detail-val" id="wlan0-bssid">—</code></div>
+                            <div class="eth-detail-row"><span class="eth-detail-label">IPv4 Address</span><code class="eth-detail-val" id="wlan0-ipv4">—</code></div>
+                            <div class="eth-detail-row" id="wlan0-ipv6-row"><span class="eth-detail-label">IPv6 Addresses</span><div class="eth-ipv6-list" id="wlan0-ipv6">—</div></div>
+                            <div class="eth-detail-row eth-detail-row-meta">
+                                <span class="eth-meta-chip"><span>Channel</span><code id="wlan0-channel">—</code></span>
+                                <span class="eth-meta-chip"><span>Frequency</span><code id="wlan0-freq">—</code></span>
+                                <span class="eth-meta-chip"><span>Signal</span><code id="wlan0-signal">—</code></span>
+                                <span class="eth-meta-chip"><span>RX rate</span><code id="wlan0-rxrate">—</code></span>
+                                <span class="eth-meta-chip"><span>TX rate</span><code id="wlan0-txrate">—</code></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <p class="eth-refresh-note" id="eth-refresh-note"></p>
             </div>
         </section>

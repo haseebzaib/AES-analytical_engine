@@ -134,6 +134,15 @@
             </article>
         </section>
 
+        {# ── Data Forwarding live status strip ──────────────────────────────── #}
+        <section class="ov-fwd-strip" data-ov-fwd-strip>
+            <div class="ov-fwd-strip-head">
+                <span class="ov-fwd-strip-label">Data Forwarding</span>
+                <span class="ov-fwd-strip-hint" data-ov-fwd-hint>Loading…</span>
+            </div>
+            <div class="ov-fwd-strip-cards" data-ov-fwd-cards></div>
+        </section>
+
         {# ── Feature cards ──────────────────────────────────────────────────── #}
         <section class="domain-grid ov-feature-grid">
             {% for card in domain_cards %}

@@ -163,6 +163,74 @@ document.addEventListener("DOMContentLoaded", () => {
 
         refreshOverviewState();
         window.setInterval(refreshOverviewState, 5000);
+
+        // ── Forwarding status strip ──────────────────────────────────────────
+        const fwdStrip      = overviewShell.querySelector("[data-ov-fwd-strip]");
+        const fwdCards      = overviewShell.querySelector("[data-ov-fwd-cards]");
+        const fwdHint       = overviewShell.querySelector("[data-ov-fwd-hint]");
+
+        const _fwdAgo = (secs) => {
+            if (secs === null || secs === undefined) return "never";
+            if (secs < 60)  return `${secs}s ago`;
+            if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+            return `${Math.floor(secs / 3600)}h ago`;
+        };
+
+        const _fwdStateClass = (state) => {
+            if (state === "connected" || state === "active") return "is-ok";
+            if (state === "connecting") return "is-warn";
+            return "is-err";
+        };
+
+        const refreshFwdStrip = async () => {
+            if (!fwdStrip) return;
+            try {
+                const r = await fetch("/api/forwarding/status");
+                if (!r.ok) return;
+                const d = await r.json();
+                if (!d.ok) return;
+
+                const mqttItems  = d.mqtt  || [];
+                const httpsItems = d.https || [];
+                const allItems   = [...mqttItems, ...httpsItems];
+
+                if (allItems.length === 0) {
+                    fwdStrip.classList.add("ov-hidden");
+                    return;
+                }
+                fwdStrip.classList.remove("ov-hidden");
+                if (fwdHint) fwdHint.textContent = `${allItems.length} profile${allItems.length > 1 ? "s" : ""} active`;
+
+                if (fwdCards) {
+                    fwdCards.innerHTML = allItems.map((item) => {
+                        const isMqtt = "broker" in item;
+                        const state  = isMqtt ? item.state : (item.tunnel_alive ? "active" : "error");
+                        const stCls  = _fwdStateClass(state);
+                        const label  = isMqtt ? "MQTT" : "HTTPS";
+                        const dest   = isMqtt ? item.broker : item.endpoint;
+                        const lastEv = isMqtt
+                            ? (item.last_publish_ago !== null ? `Last pub: ${_fwdAgo(item.last_publish_ago)}` : "No publishes yet")
+                            : (item.last_post_ago   !== null ? `Last POST: ${_fwdAgo(item.last_post_ago)} (HTTP ${item.last_status_code || "?"})` : "No posts yet");
+                        const errLine = item.last_error
+                            ? `<span class="ov-fwd-error">${item.last_error}</span>` : "";
+                        return `
+                        <div class="ov-fwd-card ${stCls}">
+                            <div class="ov-fwd-card-head">
+                                <span class="ov-fwd-badge">${label}</span>
+                                <span class="ov-fwd-name">${item.profile_name || item.profile_id || "—"}</span>
+                                <span class="ov-fwd-state">${state}</span>
+                            </div>
+                            <div class="ov-fwd-dest">${dest}</div>
+                            <div class="ov-fwd-meta">${lastEv}${errLine}</div>
+                        </div>`;
+                    }).join("");
+                }
+            } catch (e) {
+                console.warn("[Dashboard] fwd status fetch failed:", e);
+            }
+        };
+        refreshFwdStrip();
+        window.setInterval(refreshFwdStrip, 8000);
     }
 
     const systemShell = document.querySelector("[data-system-shell]");
@@ -822,6 +890,62 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             };
 
+            const renderWifi = (w) => {
+                if (!w || !w.mac) {
+                    const card = document.getElementById("eth-card-wlan0");
+                    if (card) card.style.display = "none";
+                    return;
+                }
+                const isUp = w.link_up || w.operstate === "up";
+                const dot = document.getElementById("wlan0-dot");
+                if (dot) dot.className = `eth-link-dot ${isUp ? "is-up" : "is-down"}`;
+
+                const connected = !!w.ssid;
+                setEl("wlan0-state", connected ? "Connected" : isUp ? "Up / not associated" : "Down");
+                setEl("wlan0-mac",    w.mac     || "—");
+                setEl("wlan0-ipv4",   w.ipv4    || "—");
+                setEl("wlan0-ssid",   w.ssid    || (connected ? "—" : "Not associated"));
+                setEl("wlan0-bssid",  w.bssid   || "—");
+                setEl("wlan0-channel", w.channel || "—");
+                setEl("wlan0-freq",   w.freq_mhz ? `${w.freq_mhz} MHz` : "—");
+
+                const sigText = w.signal_dbm
+                    ? `${w.signal_dbm}${w.signal_pct !== null ? ` (${w.signal_pct}%)` : ""}`
+                    : "—";
+                setEl("wlan0-signal", sigText);
+                setEl("wlan0-rxrate", w.rx_bitrate || "—");
+                setEl("wlan0-txrate", w.tx_bitrate || "—");
+
+                // Mode pill
+                const modePill = document.getElementById("wlan0-mode-pill");
+                if (modePill) {
+                    if (w.mode) {
+                        modePill.textContent = w.mode === "AP" ? "Access Point" : w.mode;
+                        modePill.style.display = "";
+                    } else {
+                        modePill.style.display = "none";
+                    }
+                }
+
+                // IPv6
+                const ipv6El = document.getElementById("wlan0-ipv6");
+                if (ipv6El) {
+                    if (w.ipv6 && w.ipv6.length > 0) {
+                        ipv6El.innerHTML = w.ipv6.map((e) =>
+                            `<span class="eth-ipv6-entry"><code>${e.addr}</code><span class="eth-ipv6-scope">${e.scope}</span></span>`
+                        ).join("");
+                    } else {
+                        ipv6El.textContent = isUp ? "No IPv6 assigned" : "—";
+                    }
+                }
+
+                // Hide SSID/BSSID rows if in AP mode or not connected
+                const ssidRow  = document.getElementById("wlan0-ssid-row");
+                const bssidRow = document.getElementById("wlan0-bssid-row");
+                if (ssidRow)  ssidRow.style.display  = connected ? "" : "none";
+                if (bssidRow) bssidRow.style.display = connected ? "" : "none";
+            };
+
             const loadIfaceDetails = async () => {
                 try {
                     const r = await fetch("/api/network/iface-details");
@@ -831,6 +955,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     const ifaces = d.interfaces || {};
                     renderIface("eth0", ifaces.eth0 || {}, d.active_uplink);
                     renderIface("eth1", ifaces.eth1 || {}, d.active_uplink);
+                    renderWifi(d.wifi || null);
                     if (ethNote) {
                         const t = new Date().toLocaleTimeString();
                         ethNote.textContent = `Last refreshed: ${t}`;
@@ -2019,19 +2144,47 @@ document.addEventListener("DOMContentLoaded", () => {
             const devSub = kpiSub("devices");
             if (devSub) devSub.textContent = `of ${ovConfiguredCount} configured`;
 
-            // Quality + health from live devices
+            // ── Data Quality: good readings / total metric slots ──────────────
+            // A metric counts as "good" only when:
+            //   • the device itself is ok (not error/offline/warning)
+            //   • the metric has an actual value (not null)
+            //   • PES quality field is "good"
+            // If a device is in error, ALL its metrics count as bad — even if
+            // the quality field still says "good" from the last successful read.
             let totalMetrics = 0, goodMetrics = 0;
             for (const d of ovLiveDevices) {
-                for (const m of Object.values(d.metrics || {})) {
+                const deviceOk = d.status === "ok" && !d.error;
+                const metrics  = Object.values(d.metrics || {});
+                if (metrics.length === 0) {
+                    // Device has no metric data at all — count as one bad slot
                     totalMetrics++;
-                    if (m.quality === "good") goodMetrics++;
+                } else {
+                    for (const m of metrics) {
+                        totalMetrics++;
+                        if (deviceOk && m.value !== null && m.value !== undefined && m.quality === "good") {
+                            goodMetrics++;
+                        }
+                    }
                 }
             }
-            const qualPct   = totalMetrics > 0 ? Math.round((goodMetrics / totalMetrics) * 100) : (liveCount > 0 ? 100 : 0);
-            const healthPct = qualPct;  // same calculation for now; will use SQLite rollup later
+            const qualPct = ovConfiguredCount > 0
+                ? Math.round((goodMetrics / Math.max(totalMetrics, 1)) * 100)
+                : 0;
+
+            // ── System Health: devices fully operational / configured ──────────
+            // Distinct from data quality — measures device-level reachability.
+            const okDevices = ovLiveDevices.filter(
+                (d) => d.status === "ok" && !d.error &&
+                       !Object.values(d.metrics || {}).some(
+                           (m) => m.quality !== "good" || m.value === null || m.value === undefined
+                       )
+            ).length;
+            const healthPct = ovConfiguredCount > 0
+                ? Math.round((okDevices / ovConfiguredCount) * 100)
+                : 0;
 
             const qEl = kpi("quality");
-            if (qEl) qEl.textContent = liveCount > 0 ? `${qualPct}%` : "--%";
+            if (qEl) qEl.textContent = ovConfiguredCount > 0 ? `${qualPct}%` : "--%";
             const qBar = insightsShell.querySelector(`[data-ov-kpi-bar="quality"]`);
             if (qBar) {
                 qBar.style.width  = `${qualPct}%`;
@@ -2039,7 +2192,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             const hEl = kpi("health");
-            if (hEl) hEl.textContent = liveCount > 0 ? `${healthPct}%` : "--%";
+            if (hEl) hEl.textContent = ovConfiguredCount > 0 ? `${healthPct}%` : "--%";
             const hBar = insightsShell.querySelector(`[data-ov-kpi-bar="health"]`);
             if (hBar) {
                 hBar.style.width = `${healthPct}%`;
@@ -3416,6 +3569,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // HTTPS
         const fwFHttpsHost       = fwShell.querySelector("[data-fw-f-https-host]");
         const fwFHttpsPort       = fwShell.querySelector("[data-fw-f-https-port]");
+        const fwFHttpsTlsBtn     = fwShell.querySelector("[data-fw-f-https-tls]");
         const fwFHttpsSensorPath    = fwShell.querySelector("[data-fw-f-https-sensor-path]");
         const fwFHttpsAnalyticsPath = fwShell.querySelector("[data-fw-f-https-analytics-path]");
         const fwFHttpsEventsPath    = fwShell.querySelector("[data-fw-f-https-events-path]");
@@ -3427,6 +3581,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const fwAuthValWrap      = fwShell.querySelector("[data-fw-auth-val-wrap]");
         const fwAuthValLbl       = fwShell.querySelector("[data-fw-auth-val-label]");
         const fwHttpsMtlsBlock   = fwShell.querySelector("[data-fw-https-mtls-block]");
+        const fwHttpsTlsSection  = fwShell.querySelector("[data-fw-https-tls-section]");
         const fwHttpsSensorPrev    = fwShell.querySelector("[data-fw-https-sensor-preview]");
         const fwHttpsAnalyticsPrev = fwShell.querySelector("[data-fw-https-analytics-preview]");
         const fwHttpsEventsPrev    = fwShell.querySelector("[data-fw-https-events-preview]");
@@ -3435,9 +3590,10 @@ document.addEventListener("DOMContentLoaded", () => {
         let fwProfiles   = [];
         let fwEditId     = null;
         let fwEnabledVal = false;
-        let fwTlsVal     = false;
-        let fwRetainVal  = false;
-        let fwMtlsVal    = false;
+        let fwTlsVal      = false;   // MQTT TLS
+        let fwHttpsTlsVal = true;    // HTTPS TLS (default on)
+        let fwRetainVal   = false;
+        let fwMtlsVal     = false;
 
         // ── Cert widget factory ──────────────────────────────────────────────
         const fwInitCertWidget = (container) => {
@@ -3539,6 +3695,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
         fwToggle(fwFMqttRetain, () => fwRetainVal, (v) => { fwRetainVal = v; });
 
+        fwToggle(fwFHttpsTlsBtn, () => fwHttpsTlsVal, (v) => {
+            fwHttpsTlsVal = v;
+            fwHttpsTlsSection?.classList.toggle("fw-hidden", !v);
+            // When TLS is turned off, also collapse mTLS cert section
+            if (!v) {
+                fwMtlsVal = false;
+                fwSyncToggleBtn(fwFHttpsMtls, false);
+                fwHttpsMtlsBlock?.classList.add("fw-hidden");
+            }
+            fwUpdateHttpsPreview();
+        });
+
         fwToggle(fwFHttpsMtls, () => fwMtlsVal, (v) => {
             fwMtlsVal = v;
             fwHttpsMtlsBlock?.classList.toggle("fw-hidden", !v);
@@ -3563,10 +3731,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // ── HTTPS URL preview ────────────────────────────────────────────────
         const fwUpdateHttpsPreview = () => {
-            const host  = fwFHttpsHost?.value.trim() || "host";
-            const port  = Number(fwFHttpsPort?.value) || 443;
-            const ps    = port === 443 ? "" : `:${port}`;
-            const base  = `https://${host}${ps}`;
+            const host    = fwFHttpsHost?.value.trim() || "host";
+            const port    = Number(fwFHttpsPort?.value) || 443;
+            const scheme  = fwHttpsTlsVal ? "https" : "http";
+            const defPort = fwHttpsTlsVal ? 443 : 80;
+            const ps      = port === defPort ? "" : `:${port}`;
+            const base    = `${scheme}://${host}${ps}`;
             const sp    = fwFHttpsSensorPath?.value.trim();
             const ap    = fwFHttpsAnalyticsPath?.value.trim();
             const ep    = fwFHttpsEventsPath?.value.trim();
@@ -3655,6 +3825,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 profile.https = {
                     host:             fwFHttpsHost?.value.trim() || "",
                     port:             Number(fwFHttpsPort?.value) || 443,
+                    tls:              fwHttpsTlsVal,
                     sensor_path:      fwFHttpsSensorPath?.value.trim()    || "/ingest",
                     analytics_path:   fwFHttpsAnalyticsPath?.value.trim() || "",
                     events_path:      fwFHttpsEventsPath?.value.trim()    || "",
@@ -3706,17 +3877,31 @@ document.addEventListener("DOMContentLoaded", () => {
         // ── Protocol option management (1 MQTT max) ──────────────────────────
         const fwMqttExists = () => fwProfiles.some((p) => p.protocol === "mqtt");
 
+        const _MAX_HTTPS_PROFILES = 5;
+
         const fwUpdateProtocolOptions = (editingProfileId = null) => {
             if (!fwFProtocol) return;
             const mqttTaken = fwProfiles.some(
                 (p) => p.protocol === "mqtt" && p.id !== editingProfileId
             );
-            const mqttOpt = fwFProtocol.querySelector('option[value="mqtt"]');
+            const httpsCount = fwProfiles.filter(
+                (p) => p.protocol === "https" && p.id !== editingProfileId
+            ).length;
+            const httpsFull = httpsCount >= _MAX_HTTPS_PROFILES;
+
+            const mqttOpt  = fwFProtocol.querySelector('option[value="mqtt"]');
+            const httpsOpt = fwFProtocol.querySelector('option[value="https"]');
             if (mqttOpt) {
-                mqttOpt.disabled = mqttTaken;
+                mqttOpt.disabled    = mqttTaken;
                 mqttOpt.textContent = mqttTaken
                     ? "MQTT / MQTTS  (1 profile already configured)"
                     : "MQTT / MQTTS";
+            }
+            if (httpsOpt) {
+                httpsOpt.disabled    = httpsFull;
+                httpsOpt.textContent = httpsFull
+                    ? `HTTPS / mTLS  (${_MAX_HTTPS_PROFILES} profiles max)`
+                    : "HTTPS / mTLS";
             }
         };
 
@@ -3761,6 +3946,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
             } else {
                 const h = profile?.https || {};
+                fwHttpsTlsVal = h.tls !== undefined ? !!h.tls : true;
+                fwSyncToggleBtn(fwFHttpsTlsBtn, fwHttpsTlsVal);
+                fwHttpsTlsSection?.classList.toggle("fw-hidden", !fwHttpsTlsVal);
                 if (fwFHttpsHost)           fwFHttpsHost.value           = h.host            || "";
                 if (fwFHttpsPort)           fwFHttpsPort.value           = String(h.port     || 443);
                 if (fwFHttpsSensorPath)     fwFHttpsSensorPath.value     = h.sensor_path     || "/ingest";
@@ -3832,10 +4020,12 @@ document.addEventListener("DOMContentLoaded", () => {
                             <span class="fw-detail-val">${intvl}</span>
                         </div>`;
                 } else {
-                    const h     = p.https || {};
-                    const port  = Number(h.port) || 443;
-                    const ps    = port === 443 ? "" : `:${port}`;
-                    const base  = `https://${h.host || "—"}${ps}`;
+                    const h       = p.https || {};
+                    const port    = Number(h.port) || 443;
+                    const scheme  = h.tls !== false ? "https" : "http";
+                    const defPort = h.tls !== false ? 443 : 80;
+                    const ps      = port === defPort ? "" : `:${port}`;
+                    const base    = `${scheme}://${h.host || "—"}${ps}`;
                     const sec   = h.tls_cert_loaded ? " · mTLS" : h.tls_ca_loaded ? " · custom CA" : "";
                     details = `
                         <div class="fw-profile-detail">
@@ -3912,8 +4102,93 @@ document.addEventListener("DOMContentLoaded", () => {
         fwShell.querySelector("[data-fw-cancel]")?.addEventListener("click", fwHideForm);
         fwShell.querySelector("[data-fw-save]")?.addEventListener("click", fwSave);
 
+        // ── Live status overview panel ────────────────────────────────────────
+        const fwStatusPanel = fwShell.querySelector("[data-fw-status-panel]");
+        const fwStatusList  = fwShell.querySelector("[data-fw-status-list]");
+        const fwStatusTs    = fwShell.querySelector("[data-fw-status-ts]");
+
+        const _fwAgo = (secs) => {
+            if (secs === null || secs === undefined) return "—";
+            if (secs < 2)   return "just now";
+            if (secs < 60)  return `${secs}s ago`;
+            if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+            return `${Math.floor(secs / 3600)}h ago`;
+        };
+
+        const _fwStateLabel = (item, isMqtt) => {
+            if (isMqtt) {
+                const map = { connected: "Connected", connecting: "Connecting…", error: "Error", stopped: "Stopped" };
+                return map[item.state] || item.state;
+            }
+            return item.tunnel_alive ? "Tunnel alive" : "Tunnel down";
+        };
+
+        const _fwStateCls = (item, isMqtt) => {
+            if (isMqtt) {
+                if (item.state === "connected") return "is-ok";
+                if (item.state === "connecting") return "is-warn";
+                return "is-err";
+            }
+            return item.tunnel_alive ? "is-ok" : "is-err";
+        };
+
+        const fwRefreshStatus = async () => {
+            if (!fwStatusPanel) return;
+            try {
+                const r = await fetch("/api/forwarding/status");
+                if (!r.ok) return;
+                const d = await r.json();
+                if (!d.ok) return;
+
+                const mqttItems  = (d.mqtt  || []).map((x) => ({...x, _isMqtt: true}));
+                const httpsItems = (d.https || []).map((x) => ({...x, _isMqtt: false}));
+                const all = [...mqttItems, ...httpsItems];
+
+                if (all.length === 0) {
+                    fwStatusPanel.classList.add("ov-hidden");
+                    return;
+                }
+                fwStatusPanel.classList.remove("ov-hidden");
+                if (fwStatusTs) fwStatusTs.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+
+                if (fwStatusList) {
+                    fwStatusList.innerHTML = all.map((item) => {
+                        const isMqtt = item._isMqtt;
+                        const stCls  = _fwStateCls(item, isMqtt);
+                        const stLbl  = _fwStateLabel(item, isMqtt);
+                        const badge  = isMqtt ? "MQTT" : "HTTPS";
+                        const dest   = isMqtt ? item.broker : item.endpoint;
+                        const tls    = item.tls ? (isMqtt ? " · TLS" : "") : "";
+                        const count  = isMqtt ? item.publish_count : item.post_count;
+                        const lastEv = isMqtt
+                            ? `Last pub: ${_fwAgo(item.last_publish_ago)} · ${count} messages`
+                            : `Last POST: ${_fwAgo(item.last_post_ago)} · ${count} requests${item.last_status_code ? ` · HTTP ${item.last_status_code}` : ""}${item.tunnel_restarts ? ` · ${item.tunnel_restarts} restarts` : ""}`;
+                        const connInfo = isMqtt && item.state === "connected"
+                            ? `<span class="fw-st-meta-chip">Online ${_fwAgo(item.connected_since)}</span>` : "";
+                        const errHtml = item.last_error
+                            ? `<div class="fw-st-error"><span class="fw-st-error-icon">⚠</span> ${item.last_error}</div>` : "";
+                        return `
+                        <div class="fw-status-card ${stCls}">
+                            <div class="fw-st-head">
+                                <span class="fw-proto-badge is-${badge.toLowerCase()}">${badge}</span>
+                                <span class="fw-st-name">${item.profile_name || "—"}</span>
+                                <span class="fw-st-state">${stLbl}</span>
+                            </div>
+                            <div class="fw-st-dest">${dest}${tls}</div>
+                            <div class="fw-st-meta">${lastEv}${connInfo}</div>
+                            ${errHtml}
+                        </div>`;
+                    }).join("");
+                }
+            } catch (e) {
+                console.warn("[Forwarding] status fetch failed:", e);
+            }
+        };
+
         // Initial load
         fwLoad();
+        fwRefreshStatus();
+        window.setInterval(fwRefreshStatus, 6000);
     }
 
 

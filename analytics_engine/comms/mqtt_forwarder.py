@@ -112,6 +112,10 @@ class MqttForwarder:
         except Exception as exc:
             self._log.error("Publish error: %s", exc, exc_info=True)
 
+    def get_status(self) -> list[dict]:
+        """Return status snapshot for all active MQTT clients (used by /api/forwarding/status)."""
+        return [client.get_status() for client in self._clients.values()]
+
     def stop(self) -> None:
         """Disconnect all active clients cleanly. Called on AES shutdown."""
         count = len(self._clients)
