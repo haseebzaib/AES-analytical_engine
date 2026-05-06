@@ -21,9 +21,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const overviewShell = document.querySelector("[data-overview-shell]");
     if (overviewShell) {
-        const chipGateway = overviewShell.querySelector('[data-overview-chip="gateway"]');
-        const chipPrimary = overviewShell.querySelector('[data-overview-chip="primary-link"]');
+        const chipGateway  = overviewShell.querySelector('[data-overview-chip="gateway"]');
+        const chipPrimary  = overviewShell.querySelector('[data-overview-chip="primary-link"]');
         const chipWireless = overviewShell.querySelector('[data-overview-chip="wireless"]');
+        const chipCellular = overviewShell.querySelector('[data-overview-chip="cellular"]');
         const led = overviewShell.querySelector("[data-overview-led]");
         const ethLink = overviewShell.querySelector("[data-overview-eth-link]");
         const wifiLink = overviewShell.querySelector("[data-overview-wifi-link]");
@@ -61,62 +62,86 @@ document.addEventListener("DOMContentLoaded", () => {
             setTone(badge, tone);
         };
 
+        const cellularItem    = overviewShell.querySelector('[data-overview-item="cellular"]');
+        const fwdOverviewItem = overviewShell.querySelector('[data-overview-item="data-forwarding"]');
+        const cellLink        = overviewShell.querySelector("[data-overview-cell-link]");
+        const cellPort        = overviewShell.querySelector("[data-overview-cell-port]");
+
         const applyOverviewState = (networkState) => {
-            const eth0 = networkState?.eth0 || {};
-            const eth1 = networkState?.eth1 || {};
+            const eth0       = networkState?.eth0        || {};
+            const eth1       = networkState?.eth1        || {};
             const wifiClient = networkState?.wifi_client || {};
-            const wifiAp = networkState?.wifi_ap || {};
+            const wifiAp     = networkState?.wifi_ap     || {};
+            const cellular   = networkState?.cellular    || {};
             const activeUplink = String(networkState?.active_uplink || "none");
 
-            const eth0Connected = Boolean(eth0.link_up) && Boolean(eth0.address);
-            const eth1Connected = Boolean(eth1.link_up) && Boolean(eth1.address);
+            const eth0Connected     = Boolean(eth0.link_up) && Boolean(eth0.address);
+            const eth1Connected     = Boolean(eth1.link_up) && Boolean(eth1.address);
             const ethernetConnected = eth0Connected || eth1Connected;
-            const wifiConnected = Boolean(wifiClient.connected_ssid);
-            const wifiApEnabled = Boolean(wifiAp.enabled);
-            const wifiPresent = wifiClient.present !== false;
+            const wifiConnected     = Boolean(wifiClient.connected_ssid);
+            const wifiApEnabled     = Boolean(wifiAp.enabled);
+            const wifiPresent       = wifiClient.present !== false;
+            const celConnected      = Boolean(cellular.connected);
+            const celEnabled        = Boolean(cellular.enabled);
+            const celPresent        = Boolean(cellular.present);
 
-            const gatewayHealth = ethernetConnected || wifiConnected || wifiApEnabled ? "Online" : "Standby";
-            const primaryLink = ["eth0","eth1"].includes(activeUplink) ? "Ethernet" : activeUplink === "wifi_client" ? "Wi-Fi" : "Offline";
+            const anyOnline    = ethernetConnected || wifiConnected || wifiApEnabled || celConnected;
+            const gatewayHealth = anyOnline ? "Online" : "Standby";
+            const primaryLink   = ["eth0","eth1"].includes(activeUplink) ? "Ethernet"
+                                : activeUplink === "wifi_client"         ? "Wi-Fi"
+                                : activeUplink === "cellular"            ? "Cellular"
+                                : "Offline";
             const wirelessState = wifiConnected ? "Connected" : wifiApEnabled ? "Access Point" : wifiPresent ? "Standby" : "Unavailable";
 
-            if (chipGateway) chipGateway.textContent = gatewayHealth;
-            if (chipPrimary) chipPrimary.textContent = primaryLink;
+            if (chipGateway)  chipGateway.textContent  = gatewayHealth;
+            if (chipPrimary)  chipPrimary.textContent  = primaryLink;
             if (chipWireless) chipWireless.textContent = wirelessState;
+            if (chipCellular) chipCellular.textContent = celState;
 
-            if (led) {
-                led.classList.toggle("is-offline", !(ethernetConnected || wifiConnected || wifiApEnabled));
-            }
-            if (ethLink) {
-                ethLink.classList.toggle("is-inactive", !ethernetConnected && !["eth0","eth1"].includes(activeUplink));
-            }
-            if (wifiLink) {
-                wifiLink.classList.toggle("is-inactive", !wifiConnected && !wifiApEnabled && activeUplink !== "wifi_client");
-            }
-            if (ethPort) {
-                ethPort.classList.toggle("is-active", ethernetConnected || ["eth0","eth1"].includes(activeUplink));
-            }
-            if (wifiPort) {
-                wifiPort.classList.toggle("is-active", wifiConnected || wifiApEnabled || activeUplink === "wifi_client");
-            }
+            if (led) led.classList.toggle("is-offline", !anyOnline);
+            if (ethLink)  ethLink.classList.toggle("is-inactive",  !ethernetConnected && !["eth0","eth1"].includes(activeUplink));
+            if (wifiLink) wifiLink.classList.toggle("is-inactive", !wifiConnected && !wifiApEnabled && activeUplink !== "wifi_client");
+            if (cellLink) cellLink.classList.toggle("is-inactive", !celConnected && activeUplink !== "cellular");
+            if (ethPort)  ethPort.classList.toggle("is-active",   ethernetConnected || ["eth0","eth1"].includes(activeUplink));
+            if (wifiPort) wifiPort.classList.toggle("is-active",  wifiConnected || wifiApEnabled || activeUplink === "wifi_client");
+            if (cellPort) cellPort.classList.toggle("is-active",  celConnected || activeUplink === "cellular");
 
-            // Show active uplink address, fall back to whichever eth has an address
             const ethAddress = eth0.address || eth1.address || "";
-            const ethDetail = ethAddress
+            const ethDetail  = ethAddress
                 ? `${activeUplink === "eth1" ? "eth1" : "eth0"}: ${ethAddress}`
                 : "Waiting for DHCP";
-            updateItem(
-                ethernetItem,
+            updateItem(ethernetItem,
                 ethernetConnected ? "Connected" : "Disconnected",
-                ethernetConnected ? ethDetail : "No cable link",
-                ethernetConnected ? "active" : "inactive",
-            );
+                ethernetConnected ? ethDetail   : "No cable link",
+                ethernetConnected ? "active"    : "inactive");
 
-            updateItem(
-                wifiItem,
-                wifiConnected ? "Connected" : wifiApEnabled ? "Access Point" : wifiPresent ? "Standby" : "Unavailable",
-                wifiConnected ? (wifiClient.connected_ssid || "Wireless uplink active") : wifiApEnabled ? `${wifiAp.clients ?? 0} client(s) on hotspot` : wifiPresent ? "Radio available for setup" : "Wireless interface not detected",
-                wifiConnected ? "active" : wifiApEnabled || wifiPresent ? "standby" : "inactive",
-            );
+            updateItem(wifiItem,
+                wifiConnected ? "Connected"    : wifiApEnabled ? "Access Point" : wifiPresent ? "Standby" : "Unavailable",
+                wifiConnected ? (wifiClient.connected_ssid || "Wireless uplink active")
+                              : wifiApEnabled ? `${wifiAp.clients ?? 0} client(s) on hotspot`
+                              : wifiPresent   ? "Radio available for setup"
+                              : "Wireless interface not detected",
+                wifiConnected ? "active" : wifiApEnabled || wifiPresent ? "standby" : "inactive");
+
+            // Cellular item
+            const simStatus = String(cellular.sim_status || "");
+            let celState, celDetail, celTone;
+            if (celConnected) {
+                const operator = cellular.operator || "Unknown operator";
+                const sig      = cellular.signal_percent != null ? ` · ${cellular.signal_percent}% signal` : "";
+                celState  = "Connected";
+                celDetail = `${operator}${sig}`;
+                celTone   = "active";
+            } else if (celEnabled && celPresent) {
+                if (simStatus === "locked")  { celState = "PIN Locked";  celDetail = "SIM PIN required";             celTone = "standby"; }
+                else if (simStatus === "missing") { celState = "No SIM";   celDetail = "No SIM card detected";       celTone = "standby"; }
+                else                         { celState = "Connecting"; celDetail = "Modem present, establishing link"; celTone = "standby"; }
+            } else if (celEnabled && !celPresent) {
+                celState = "No Modem";  celDetail = "SIM7600 not detected"; celTone = "inactive";
+            } else {
+                celState = "Disabled";  celDetail = "Cellular fallback is off"; celTone = "inactive";
+            }
+            updateItem(cellularItem, celState, celDetail, celTone);
         };
 
         const refreshOverviewState = async () => {
@@ -164,10 +189,10 @@ document.addEventListener("DOMContentLoaded", () => {
         refreshOverviewState();
         window.setInterval(refreshOverviewState, 5000);
 
-        // ── Forwarding status strip ──────────────────────────────────────────
-        const fwdStrip      = overviewShell.querySelector("[data-ov-fwd-strip]");
-        const fwdCards      = overviewShell.querySelector("[data-ov-fwd-cards]");
-        const fwdHint       = overviewShell.querySelector("[data-ov-fwd-hint]");
+        // ── Forwarding status strip (lives outside overviewShell — use document) ──
+        const fwdStrip = document.querySelector("[data-ov-fwd-strip]");
+        const fwdCards = document.querySelector("[data-ov-fwd-cards]");
+        const fwdHint  = document.querySelector("[data-ov-fwd-hint]");
 
         const _fwdAgo = (secs) => {
             if (secs === null || secs === undefined) return "never";
@@ -183,7 +208,6 @@ document.addEventListener("DOMContentLoaded", () => {
         };
 
         const refreshFwdStrip = async () => {
-            if (!fwdStrip) return;
             try {
                 const r = await fetch("/api/forwarding/status");
                 if (!r.ok) return;
@@ -194,6 +218,31 @@ document.addEventListener("DOMContentLoaded", () => {
                 const httpsItems = d.https || [];
                 const allItems   = [...mqttItems, ...httpsItems];
 
+                // ── Update Data Forwarding connectivity item (always) ──────────
+                if (fwdOverviewItem) {
+                    if (allItems.length === 0) {
+                        updateItem(fwdOverviewItem, "No profiles", "No forwarding profiles configured", "inactive");
+                    } else {
+                        const okCount  = allItems.filter((x) =>
+                            ("broker" in x) ? x.state === "connected" : x.tunnel_alive === true
+                        ).length;
+                        const errCount = allItems.length - okCount;
+                        const fwdState  = okCount === allItems.length ? "Active"
+                                        : okCount > 0               ? `${okCount}/${allItems.length} active`
+                                        : "Error";
+                        const fwdDetail = allItems.map((x) => {
+                            const name = x.profile_name || "profile";
+                            const ok   = ("broker" in x) ? x.state === "connected" : x.tunnel_alive;
+                            return `${name}: ${ok ? "✓" : "✗"}`;
+                        }).join("  ·  ");
+                        const fwdTone = okCount === allItems.length ? "active"
+                                      : errCount === allItems.length ? "inactive" : "standby";
+                        updateItem(fwdOverviewItem, fwdState, fwdDetail, fwdTone);
+                    }
+                }
+
+                // ── Update forwarding strip (only if element exists) ──────────
+                if (!fwdStrip) return;
                 if (allItems.length === 0) {
                     fwdStrip.classList.add("ov-hidden");
                     return;
@@ -359,6 +408,8 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         };
 
+        let cellularRefreshTimer = null;
+
         const syncNetworkPanels = (tabId) => {
             tabs.forEach((tab) => {
                 const isCurrent = tab.getAttribute("data-network-tab") === tabId;
@@ -373,6 +424,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
             if (tabId === "wifi" && wifiSubtabs.length > 0) {
                 syncWifiSubpanels("client");
+            }
+
+            // Auto-refresh cellular status while on the cellular tab
+            clearInterval(cellularRefreshTimer);
+            if (tabId === "cellular") {
+                refreshCellularStatus();
+                cellularRefreshTimer = setInterval(refreshCellularStatus, 5000);
             }
         };
 
@@ -495,8 +553,25 @@ document.addEventListener("DOMContentLoaded", () => {
                         shared_uplink_mode: String(formData.get("wifi_ap_shared_uplink_mode") || "auto"),
                     },
                     cellular: {
-                        active_modem_id: "",
-                        modems: [],
+                        enabled:         formData.get("cellular_enabled") === "on",
+                        active_modem_id: "sim7600",
+                        apn:             String(formData.get("cellular_apn")      || "").trim(),
+                        username:        String(formData.get("cellular_username") || "").trim(),
+                        password:        String(formData.get("cellular_password") || ""),
+                        pin:             String(formData.get("cellular_pin")      || "").trim(),
+                        roaming_allowed: formData.get("cellular_roaming_allowed") === "on",
+                        modems: [
+                            {
+                                id:               "sim7600",
+                                enabled:          true,
+                                backend:          "qmi",
+                                interface_type:   "qmi",
+                                control_device:   "/dev/cdc-wdm0",
+                                data_interface:   "wwan0",
+                                route_metric:     500,
+                                ip_type:          "4",
+                            },
+                        ],
                     },
                     uplink: {
                         uplink_priority: [
@@ -579,6 +654,63 @@ document.addEventListener("DOMContentLoaded", () => {
                     ? `Recovery ${recovery.count ?? 0} · ${recovery.last_reason}`
                     : "No recovery action recorded";
             }
+
+            // ── Cellular status ──────────────────────────────────────────────
+            updateCellularStatus(networkState?.cellular || null, networkState?.active_uplink);
+        };
+
+        const _celStat = (key) => connectivityShell.querySelector(`[data-cel-stat="${key}"]`);
+        const _celSet   = (key, val) => { const el = _celStat(key); if (el) el.textContent = val ?? "—"; };
+
+        const _fmtBytes = (bytes) => {
+            if (!bytes || bytes === 0) return "0 B";
+            const units = ["B","KB","MB","GB"];
+            let b = Number(bytes), i = 0;
+            while (b >= 1024 && i < units.length - 1) { b /= 1024; i++; }
+            return `${b.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+        };
+
+        const updateCellularStatus = (cel, activeUplink) => {
+            if (!connectivityShell.querySelector("[data-cellular-status-grid]")) return;
+            if (!cel) {
+                _celSet("present",       "Unknown");
+                _celSet("sim_status",    "—");
+                _celSet("operator",      "—");
+                _celSet("signal",        "—");
+                _celSet("registered",    "—");
+                _celSet("connected",     "—");
+                _celSet("address",       "—");
+                _celSet("active_uplink", "—");
+                _celSet("data_usage",    "—");
+                return;
+            }
+
+            _celSet("present",    cel.present  ? "Yes — SIM7600 detected" : "No modem detected");
+            _celSet("sim_status", ({
+                ready:   "Ready",
+                locked:  "Locked (PIN required)",
+                missing: "No SIM inserted",
+                error:   "SIM error",
+            }[cel.sim_status] || cel.sim_status || "—"));
+            _celSet("operator",   cel.operator  || (cel.registered ? "Unknown operator" : "—"));
+            _celSet("signal",     cel.signal_percent !== undefined && cel.signal_percent !== null
+                ? `${cel.signal_percent}%`
+                : "—");
+            _celSet("registered", cel.registered ? "Yes" : "No");
+            _celSet("connected",  cel.connected  ? "Yes" : "No");
+            _celSet("address",    cel.address    || "—");
+            _celSet("active_uplink", activeUplink === "cellular" ? "Cellular (active)" : activeUplink || "—");
+
+            const rx = cel.session_rx_bytes ?? cel.rx_bytes ?? 0;
+            const tx = cel.session_tx_bytes ?? cel.tx_bytes ?? 0;
+            _celSet("data_usage", `↓ ${_fmtBytes(rx)}  ↑ ${_fmtBytes(tx)}`);
+
+            const errRow = connectivityShell.querySelector("[data-cel-error-row]");
+            if (errRow) {
+                const hasErr = !!(cel.last_error);
+                errRow.style.display = hasErr ? "" : "none";
+                if (hasErr) _celSet("last_error", cel.last_error);
+            }
         };
 
         const refreshRuntimeState = async () => {
@@ -594,6 +726,21 @@ document.addEventListener("DOMContentLoaded", () => {
                 console.warn("Failed to refresh runtime network state", error);
             }
         };
+
+        // ── Cellular status refresh ──────────────────────────────────────────
+        const refreshCellularStatus = async () => {
+            try {
+                const r = await fetch("/api/network/state");
+                if (!r.ok) return;
+                const d = await r.json();
+                updateCellularStatus(d?.cellular || null, d?.active_uplink);
+            } catch (e) {
+                console.warn("[Connectivity] cellular state fetch failed:", e);
+            }
+        };
+
+        connectivityShell.querySelector("[data-cellular-refresh]")
+            ?.addEventListener("click", refreshCellularStatus);
 
         // Auto-refresh runtime panel every 5s while it's visible
         let runtimeRefreshTimer = null;

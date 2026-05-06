@@ -61,8 +61,25 @@ def _default_network_document() -> dict[str, object]:
                 "shared_uplink_mode": "auto",
             },
             "cellular": {
-                "active_modem_id": "",
-                "modems": [],
+                "enabled":         False,
+                "active_modem_id": "sim7600",
+                "apn":             "",
+                "username":        "",
+                "password":        "",
+                "pin":             "",
+                "roaming_allowed": False,
+                "modems": [
+                    {
+                        "id":              "sim7600",
+                        "enabled":         True,
+                        "backend":         "qmi",
+                        "interface_type":  "qmi",
+                        "control_device":  "/dev/cdc-wdm0",
+                        "data_interface":  "wwan0",
+                        "route_metric":    500,
+                        "ip_type":         "4",
+                    }
+                ],
             },
             "uplink": {
                 "uplink_priority": ["eth0", "eth1", "wifi_client", "cellular"],
@@ -297,31 +314,28 @@ class NetworkSettingsStore:
         if bool(wifi_client.get("enabled", False)) and bool(wifi_ap.get("enabled", False)):
             errors.append({"scope": "wifi", "code": "client_ap_conflict", "message": "Current gateway image supports either Wi-Fi client or Wi-Fi AP on wlan0, not both at the same time."})
 
+        # Cellular — validate user-visible fields only; platform defaults are injected by the UI
+        if not isinstance(cellular.get("enabled"), bool):
+            errors.append({"scope": "cellular", "code": "invalid_enabled", "message": "Cellular enabled must be a boolean."})
+        if not isinstance(cellular.get("roaming_allowed"), bool):
+            errors.append({"scope": "cellular", "code": "invalid_roaming", "message": "Roaming allowed must be a boolean."})
+        for field in ("apn", "username", "password", "pin"):
+            if not isinstance(cellular.get(field, ""), str):
+                errors.append({"scope": "cellular", "code": f"invalid_{field}", "message": f"Cellular {field} must be a string."})
+        if bool(cellular.get("enabled")):
+            if not str(cellular.get("apn", "")).strip():
+                errors.append({"scope": "cellular", "code": "missing_apn", "message": "APN is required when cellular is enabled."})
+        pin = str(cellular.get("pin", "")).strip()
+        if pin and (not pin.isdigit() or not (4 <= len(pin) <= 8)):
+            errors.append({"scope": "cellular", "code": "invalid_pin", "message": "SIM PIN must be 4 to 8 digits."})
+        # Ensure SIM7600 platform default is present when cellular is enabled
         modems = cellular.get("modems")
-        active_modem_id = str(cellular.get("active_modem_id", "")).strip()
-        modem_ids: set[str] = set()
-        if not isinstance(modems, list):
-            errors.append({"scope": "cellular", "code": "invalid_modems", "message": "Cellular modems must be an array."})
-        else:
-            for modem in modems:
-                if not isinstance(modem, dict):
-                    errors.append({"scope": "cellular", "code": "invalid_modem_entry", "message": "Each modem entry must be an object."})
-                    continue
-                modem_id = str(modem.get("id", "")).strip()
-                if not modem_id:
-                    errors.append({"scope": "cellular", "code": "missing_modem_id", "message": "Each modem profile needs a unique id."})
-                elif modem_id in modem_ids:
-                    errors.append({"scope": "cellular", "code": "duplicate_modem_id", "message": f"Duplicate modem id '{modem_id}' found."})
-                modem_ids.add(modem_id)
-                if bool(modem.get("enabled", False)) and not str(modem.get("backend", "")).strip():
-                    errors.append({"scope": "cellular", "code": "missing_backend", "message": f"Enabled modem '{modem_id or 'unnamed'}' requires a backend."})
-                if str(modem.get("interface_type", "")).strip() == "ppp":
-                    if not str(modem.get("control_device", "")).strip():
-                        errors.append({"scope": "cellular", "code": "missing_control_device", "message": f"PPP modem '{modem_id or 'unnamed'}' requires a control device."})
-                    if not str(modem.get("dial_number", "")).strip():
-                        errors.append({"scope": "cellular", "code": "missing_dial_number", "message": f"PPP modem '{modem_id or 'unnamed'}' requires a dial number."})
-            if active_modem_id and active_modem_id not in modem_ids:
-                errors.append({"scope": "cellular", "code": "invalid_active_modem", "message": "Active modem id does not match any modem profile."})
+        if bool(cellular.get("enabled")) and (not isinstance(modems, list) or len(modems) == 0):
+            errors.append({"scope": "cellular", "code": "missing_modem", "message": "No modem profile found. Save again to reinject defaults."})
+        # Preserve uplink_priority cellular entry
+        uplink_priority = uplink.get("uplink_priority", [])
+        if isinstance(uplink_priority, list) and "cellular" not in uplink_priority:
+            pass  # UI may omit cellular — that's allowed
 
         uplink_priority = uplink.get("uplink_priority")
         if not isinstance(uplink_priority, list) or not all(isinstance(item, str) for item in uplink_priority):

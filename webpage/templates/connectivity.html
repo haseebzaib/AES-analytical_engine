@@ -414,40 +414,106 @@
             </div>
         </section>
 
-        <section class="system-panel system-panel-wide is-hidden network-disabled-panel" data-network-panel="cellular">
+        <section class="system-panel system-panel-wide is-hidden" data-network-panel="cellular">
             <div class="system-panel-head">
                 <div>
                     <p class="hero-band-eyebrow">Cellular</p>
-                    <h2>Cellular settings</h2>
+                    <h2>Cellular / SIM settings</h2>
                 </div>
             </div>
 
+            {# ── SIM configuration ─────────────────────────────────────────── #}
             <div class="settings-section">
-                <div class="settings-grid settings-grid-three is-muted">
-                    <label class="field">
-                        <span>Active modem id</span>
-                        <input type="text" value="{{ net.cellular.active_modem_id }}" disabled>
+                <div class="settings-section-head">
+                    <div>
+                        <p class="hero-band-eyebrow">Configuration</p>
+                        <h3>SIM credentials</h3>
+                    </div>
+                </div>
+
+                {# Toggle row — Enable / Roaming side by side #}
+                <div class="settings-grid settings-grid-two" style="margin-bottom:0.6rem">
+                    <label class="field checkbox-field">
+                        <span>Enable cellular fallback</span>
+                        <input type="checkbox" name="cellular_enabled" {% if net.cellular.enabled %}checked{% endif %}>
                     </label>
-                    <label class="field">
-                        <span>Backend</span>
-                        <input type="text" value="" disabled>
+                    <label class="field checkbox-field">
+                        <span>Allow roaming</span>
+                        <input type="checkbox" name="cellular_roaming_allowed" {% if net.cellular.roaming_allowed %}checked{% endif %}>
                     </label>
-                    <label class="field">
-                        <span>Data interface</span>
-                        <input type="text" value="ppp0" disabled>
-                    </label>
-                    <label class="field">
-                        <span>Control device</span>
-                        <input type="text" value="" disabled>
-                    </label>
-                    <label class="field">
+                </div>
+
+                {# Credential fields #}
+                <div class="settings-grid settings-grid-two">
+                    <label class="field settings-grid-span-2">
                         <span>APN</span>
-                        <input type="text" value="" disabled>
+                        <input type="text" name="cellular_apn" value="{{ net.cellular.apn }}" placeholder="internet">
                     </label>
                     <label class="field">
-                        <span>Route metric</span>
-                        <input type="text" value="" disabled>
+                        <span>Username <span class="settings-optional">(optional)</span></span>
+                        <input type="text" name="cellular_username" value="{{ net.cellular.username }}" placeholder="">
                     </label>
+                    <label class="field">
+                        <span>Password <span class="settings-optional">(optional)</span></span>
+                        <input type="password" name="cellular_password" value="{{ net.cellular.password }}" autocomplete="new-password">
+                    </label>
+                    <label class="field">
+                        <span>SIM PIN <span class="settings-optional">(optional — 4–8 digits)</span></span>
+                        <input type="password" name="cellular_pin" value="{{ net.cellular.pin }}" maxlength="8" placeholder="••••">
+                    </label>
+                </div>
+            </div>
+
+            {# ── Runtime status (read-only, populated by JS) ───────────────── #}
+            <div class="settings-section" data-network-runtime-panel>
+                <div class="settings-section-head">
+                    <div>
+                        <p class="hero-band-eyebrow">Live Status</p>
+                        <h3>Modem &amp; connection state</h3>
+                    </div>
+                    <button type="button" class="ghost-action" data-cellular-refresh>↻ Refresh</button>
+                </div>
+                <div class="cellular-status-grid" data-cellular-status-grid>
+                    <div class="cellular-stat-row">
+                        <span class="cellular-stat-label">Modem</span>
+                        <span class="cellular-stat-val" data-cel-stat="present">—</span>
+                    </div>
+                    <div class="cellular-stat-row">
+                        <span class="cellular-stat-label">SIM</span>
+                        <span class="cellular-stat-val" data-cel-stat="sim_status">—</span>
+                    </div>
+                    <div class="cellular-stat-row">
+                        <span class="cellular-stat-label">Operator</span>
+                        <span class="cellular-stat-val" data-cel-stat="operator">—</span>
+                    </div>
+                    <div class="cellular-stat-row">
+                        <span class="cellular-stat-label">Signal</span>
+                        <span class="cellular-stat-val" data-cel-stat="signal">—</span>
+                    </div>
+                    <div class="cellular-stat-row">
+                        <span class="cellular-stat-label">Registered</span>
+                        <span class="cellular-stat-val" data-cel-stat="registered">—</span>
+                    </div>
+                    <div class="cellular-stat-row">
+                        <span class="cellular-stat-label">Connected</span>
+                        <span class="cellular-stat-val" data-cel-stat="connected">—</span>
+                    </div>
+                    <div class="cellular-stat-row">
+                        <span class="cellular-stat-label">IP Address</span>
+                        <span class="cellular-stat-val" data-cel-stat="address">—</span>
+                    </div>
+                    <div class="cellular-stat-row">
+                        <span class="cellular-stat-label">Active uplink</span>
+                        <span class="cellular-stat-val" data-cel-stat="active_uplink">—</span>
+                    </div>
+                    <div class="cellular-stat-row">
+                        <span class="cellular-stat-label">Data used (session)</span>
+                        <span class="cellular-stat-val" data-cel-stat="data_usage">—</span>
+                    </div>
+                    <div class="cellular-stat-row" data-cel-error-row style="display:none">
+                        <span class="cellular-stat-label">Last error</span>
+                        <span class="cellular-stat-val cellular-stat-error" data-cel-stat="last_error">—</span>
+                    </div>
                 </div>
             </div>
         </section>

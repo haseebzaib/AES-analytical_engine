@@ -30,8 +30,10 @@
                     </div>
                     <div class="gateway-link gateway-link-left{% if not overview_visual.ethernet_active %} is-inactive{% endif %}" data-overview-eth-link></div>
                     <div class="gateway-link gateway-link-right{% if not overview_visual.wifi_active %} is-inactive{% endif %}" data-overview-wifi-link></div>
+                    <div class="gateway-link gateway-link-bottom{% if not overview_visual.cellular_active %} is-inactive{% endif %}" data-overview-cell-link></div>
                     <div class="gateway-port port-ethernet{% if overview_visual.ethernet_active %} is-active{% endif %}" data-overview-eth-port>ETH</div>
                     <div class="gateway-port port-wifi{% if overview_visual.wifi_active %} is-active{% endif %}" data-overview-wifi-port>WIFI</div>
+                    <div class="gateway-port port-cell{% if overview_visual.cellular_active %} is-active{% endif %}" data-overview-cell-port>CELL</div>
                 </div>
 
                 {# Gateway identity strip #}
@@ -132,15 +134,6 @@
                 <p class="ov-metric-value" data-system-network-summary style="font-size:1rem">—</p>
                 <p class="ov-metric-sub" data-system-network-detail>Waiting for samples</p>
             </article>
-        </section>
-
-        {# ── Data Forwarding live status strip ──────────────────────────────── #}
-        <section class="ov-fwd-strip" data-ov-fwd-strip>
-            <div class="ov-fwd-strip-head">
-                <span class="ov-fwd-strip-label">Data Forwarding</span>
-                <span class="ov-fwd-strip-hint" data-ov-fwd-hint>Loading…</span>
-            </div>
-            <div class="ov-fwd-strip-cards" data-ov-fwd-cards></div>
         </section>
 
         {# ── Feature cards ──────────────────────────────────────────────────── #}
