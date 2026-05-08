@@ -670,46 +670,101 @@ document.addEventListener("DOMContentLoaded", () => {
             return `${b.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
         };
 
+        const _celFmtTs = (ts) => {
+            if (!ts) return "—";
+            try { return new Date(ts).toLocaleString(); } catch { return ts; }
+        };
+
         const updateCellularStatus = (cel, activeUplink) => {
             if (!connectivityShell.querySelector("[data-cellular-status-grid]")) return;
+            const allKeys = [
+                "present","modem_hardware","sim_status","operator","signal",
+                "registration_state","registered","roaming","access_tech",
+                "connected","internet_ok","address","gateway","dns","active_uplink",
+                "session_usage","total_usage","last_connect","last_disconnect",
+            ];
             if (!cel) {
-                _celSet("present",       "Unknown");
-                _celSet("sim_status",    "—");
-                _celSet("operator",      "—");
-                _celSet("signal",        "—");
-                _celSet("registered",    "—");
-                _celSet("connected",     "—");
-                _celSet("address",       "—");
-                _celSet("active_uplink", "—");
-                _celSet("data_usage",    "—");
+                allKeys.forEach((k) => _celSet(k, "—"));
                 return;
             }
 
-            _celSet("present",    cel.present  ? "Yes — SIM7600 detected" : "No modem detected");
+            _celSet("present", cel.present ? "Yes — SIM7600 detected" : "No modem detected");
+
+            // Modem hardware: manufacturer / model / revision
+            const hw = [cel.modem_manufacturer, cel.modem_model, cel.modem_revision]
+                .filter(Boolean).join(" / ");
+            _celSet("modem_hardware", hw || (cel.present ? "—" : "Not detected"));
+
             _celSet("sim_status", ({
                 ready:   "Ready",
                 locked:  "Locked (PIN required)",
                 missing: "No SIM inserted",
                 error:   "SIM error",
             }[cel.sim_status] || cel.sim_status || "—"));
-            _celSet("operator",   cel.operator  || (cel.registered ? "Unknown operator" : "—"));
-            _celSet("signal",     cel.signal_percent !== undefined && cel.signal_percent !== null
-                ? `${cel.signal_percent}%`
-                : "—");
-            _celSet("registered", cel.registered ? "Yes" : "No");
-            _celSet("connected",  cel.connected  ? "Yes" : "No");
-            _celSet("address",    cel.address    || "—");
+
+            _celSet("operator", cel.operator || (cel.registered ? "Unknown operator" : "—"));
+
+            // Signal: dBm + percent
+            const sigParts = [];
+            if (cel.signal_dbm !== undefined && cel.signal_dbm !== null && cel.signal_dbm !== 0)
+                sigParts.push(`${cel.signal_dbm} dBm`);
+            if (cel.signal_percent !== undefined && cel.signal_percent !== null)
+                sigParts.push(`${cel.signal_percent}%`);
+            _celSet("signal", sigParts.length ? sigParts.join("  ") : "—");
+
+            _celSet("registration_state", cel.registration_state || "—");
+            _celSet("registered",  cel.registered ? "Yes" : "No");
+            _celSet("roaming",     cel.roaming    ? "Yes (roaming)" : cel.registered ? "No" : "—");
+            _celSet("access_tech", cel.access_technology || "—");
+
+            _celSet("connected",   cel.connected   ? "Yes" : "No");
+            _celSet("internet_ok", cel.internet_ok ? "✓ Reachable" : cel.connected ? "✗ No route" : "—");
+            _celSet("address",     cel.address || "—");
+            _celSet("gateway",     cel.gateway || "—");
+            _celSet("dns",         Array.isArray(cel.dns) && cel.dns.length ? cel.dns.join(", ") : "—");
             _celSet("active_uplink", activeUplink === "cellular" ? "Cellular (active)" : activeUplink || "—");
 
-            const rx = cel.session_rx_bytes ?? cel.rx_bytes ?? 0;
-            const tx = cel.session_tx_bytes ?? cel.tx_bytes ?? 0;
-            _celSet("data_usage", `↓ ${_fmtBytes(rx)}  ↑ ${_fmtBytes(tx)}`);
+            const sRx = cel.session_rx_bytes ?? 0;
+            const sTx = cel.session_tx_bytes ?? 0;
+            const tRx = cel.rx_bytes ?? 0;
+            const tTx = cel.tx_bytes ?? 0;
+            _celSet("session_usage", `↓ ${_fmtBytes(sRx)}  ↑ ${_fmtBytes(sTx)}`);
+            _celSet("total_usage",   `↓ ${_fmtBytes(tRx)}  ↑ ${_fmtBytes(tTx)}`);
+
+            _celSet("last_connect",    _celFmtTs(cel.last_connect_timestamp));
+            _celSet("last_disconnect", _celFmtTs(cel.last_disconnect_timestamp));
 
             const errRow = connectivityShell.querySelector("[data-cel-error-row]");
             if (errRow) {
                 const hasErr = !!(cel.last_error);
                 errRow.style.display = hasErr ? "" : "none";
                 if (hasErr) _celSet("last_error", cel.last_error);
+            }
+
+            // Retry status — only shown when there have been connection attempts
+            const retry = (typeof cel.retry === "object" && cel.retry !== null) ? cel.retry : null;
+            const retryRows = connectivityShell.querySelectorAll("[data-cel-retry-row]");
+            const hasRetry  = retry && (retry.attempt_count > 0 || retry.last_result);
+            retryRows.forEach((r) => { r.style.display = hasRetry ? "" : "none"; });
+            if (hasRetry) {
+                _celSet("retry_count", `${retry.attempt_count ?? 0} attempt(s)`);
+                _celSet("retry_last",  _celFmtTs(retry.last_attempt_timestamp));
+
+                // next_attempt_epoch is a Unix timestamp (seconds)
+                const nextEp = retry.next_attempt_epoch;
+                if (nextEp && nextEp > 0) {
+                    const secsUntil = Math.round(nextEp - Date.now() / 1000);
+                    if (secsUntil > 0) {
+                        _celSet("retry_next", `in ${secsUntil}s  (${new Date(nextEp * 1000).toLocaleTimeString()})`);
+                    } else {
+                        _celSet("retry_next", "Pending…");
+                    }
+                } else {
+                    _celSet("retry_next", "—");
+                }
+
+                const resultParts = [retry.last_result, retry.last_reason].filter(Boolean);
+                _celSet("retry_result", resultParts.join(" — ") || "—");
             }
         };
 
@@ -739,8 +794,31 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         };
 
-        connectivityShell.querySelector("[data-cellular-refresh]")
-            ?.addEventListener("click", refreshCellularStatus);
+        // Manual refresh button: calls gateway-cellular-qmi refresh-state for
+        // truly fresh modem data, then reads the updated state.
+        const refreshBtn = connectivityShell.querySelector("[data-cellular-refresh]");
+        if (refreshBtn) {
+            refreshBtn.addEventListener("click", async () => {
+                refreshBtn.disabled = true;
+                refreshBtn.textContent = "Refreshing…";
+                try {
+                    const r = await fetch("/api/cellular/refresh-state", { method: "POST" });
+                    const d = await r.json();
+                    if (d.ok) {
+                        updateCellularStatus(d.cellular || null, d.active_uplink || null);
+                    } else {
+                        // Fall back to regular state poll
+                        await refreshCellularStatus();
+                    }
+                } catch (e) {
+                    console.warn("[Connectivity] cellular refresh failed:", e);
+                    await refreshCellularStatus();
+                } finally {
+                    refreshBtn.disabled = false;
+                    refreshBtn.textContent = "↻ Refresh";
+                }
+            });
+        }
 
         // Auto-refresh runtime panel every 5s while it's visible
         let runtimeRefreshTimer = null;
@@ -759,7 +837,6 @@ document.addEventListener("DOMContentLoaded", () => {
         // Poll connection status after Save and Apply
         const startConnectionPoll = (wifiEnabled) => {
             const strip = connectivityShell.querySelector("[data-net-apply-strip]");
-            const dot   = connectivityShell.querySelector("[data-net-apply-dot]");
             const title = connectivityShell.querySelector("[data-net-apply-title]");
             const detail = connectivityShell.querySelector("[data-net-apply-detail]");
             const uplinkBadge = connectivityShell.querySelector("[data-net-apply-uplink]");
@@ -1742,7 +1819,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const rtuSaveMsg = rs485Panel.querySelector("[data-rtu-save-message]");
 
             const buildRtuPayload = () => {
-                const buildPort = (portId, portKey) => {
+                const buildPort = (portId) => {
                     const pane = rs485Panel.querySelector(`[data-rtu-port="${portId}"]`);
                     if (!pane) return null;
                     const serial = {};
@@ -1848,7 +1925,6 @@ document.addEventListener("DOMContentLoaded", () => {
                     if (mtcpList.querySelectorAll("[data-mtcp-conn]").length >= MAX_CONN) return;
                     const empty = mtcpList.querySelector("[data-mtcp-empty]");
                     if (empty) empty.style.display = "none";
-                    const id = `conn_${Date.now()}`;
                     const tmpl = document.createElement("template");
                     tmpl.innerHTML = `
 <div class="iface-alarm-row is-open" data-mtcp-conn>
@@ -4022,8 +4098,6 @@ document.addEventListener("DOMContentLoaded", () => {
         };
 
         // ── Protocol option management (1 MQTT max) ──────────────────────────
-        const fwMqttExists = () => fwProfiles.some((p) => p.protocol === "mqtt");
-
         const _MAX_HTTPS_PROFILES = 5;
 
         const fwUpdateProtocolOptions = (editingProfileId = null) => {

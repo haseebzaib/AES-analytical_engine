@@ -22,6 +22,10 @@ import threading
 import time
 from typing import Optional
 
+# Log a "device still in X state" reminder after this many seconds, then every N seconds
+_STUCK_FIRST_REMINDER_S  = 120    # 2 minutes
+_STUCK_REPEAT_REMINDER_S = 300    # every 5 minutes after that
+
 logger = logging.getLogger(__name__)
 
 # Belt-and-suspenders metric freshness threshold.
@@ -93,8 +97,10 @@ class ContinuityState:
 
     def __init__(self) -> None:
         self._lock    = threading.Lock()
-        self._devices: dict[str, dict] = {}     # current health snapshot per device key
-        self._prev_levels: dict[str, str] = {}  # previous health level per key (for change detection)
+        self._devices: dict[str, dict] = {}       # current health snapshot per device key
+        self._prev_levels: dict[str, str] = {}    # previous health level per key
+        self._degraded_since: dict[str, float] = {}  # key → monotonic time when degraded started
+        self._last_reminder: dict[str, float] = {}   # key → last reminder log time
         self._last_updated: Optional[float] = None
 
     def update(self, devices: list[dict]) -> None:
@@ -113,17 +119,48 @@ class ContinuityState:
             if current_level != prev_level:
                 # State changed — log at the appropriate level
                 if current_level == "ok":
-                    logger.info("Device %s  recovered → OK", name)
+                    degraded_since = self._degraded_since.pop(key, None)
+                    self._last_reminder.pop(key, None)
+                    if degraded_since is not None:
+                        duration_s = time.monotonic() - degraded_since
+                        logger.info(
+                            "Device %-28s  recovered → OK  (was degraded for %.0fs / %.1fmin)",
+                            name, duration_s, duration_s / 60,
+                        )
+                    else:
+                        logger.info("Device %-28s  recovered → OK", name)
                 elif current_level == "warning":
+                    self._degraded_since.setdefault(key, time.monotonic())
                     self._log_degraded(name, snap, "WARNING")
                 else:
+                    self._degraded_since.setdefault(key, time.monotonic())
                     self._log_degraded(name, snap, "ERROR")
             else:
-                # No change — DEBUG only (written to file, not console)
-                logger.debug(
-                    "Device %s  health=%s  (unchanged)",
-                    name, current_level,
-                )
+                # No state change — but log a periodic reminder if still degraded
+                if current_level != "ok" and key in self._degraded_since:
+                    now_mono   = time.monotonic()
+                    stuck_secs = now_mono - self._degraded_since[key]
+                    last_rem   = self._last_reminder.get(key, 0.0)
+                    next_rem   = (
+                        _STUCK_FIRST_REMINDER_S
+                        if last_rem == 0.0
+                        else last_rem - self._degraded_since[key] + _STUCK_REPEAT_REMINDER_S
+                    )
+                    if stuck_secs >= next_rem:
+                        log = logger.error if current_level == "error" else logger.warning
+                        log(
+                            "Device %-28s  still %s  (stuck for %.0fs / %.1fmin)",
+                            name, current_level.upper(), stuck_secs, stuck_secs / 60,
+                        )
+                        if snap["stale_metrics"]:
+                            log("  └─ stale: %s", ", ".join(snap["stale_metrics"]))
+                        if snap["error_metrics"]:
+                            log("  └─ error metrics: %s", ", ".join(snap["error_metrics"]))
+                        if snap["has_error"] and snap["error_message"]:
+                            log("  └─ error: %s", snap["error_message"])
+                        self._last_reminder[key] = now_mono
+                else:
+                    logger.debug("Device %s  health=%s  (unchanged)", name, current_level)
 
         # Log summary only when something is actually wrong
         anomalies = sum(1 for v in new.values() if v["anomaly"])

@@ -162,15 +162,49 @@ _https_forwarder = HttpsForwarder(
 runtime.register_worker("https-forwarder", interval_seconds=1.0, tick_fn=_https_forwarder.tick)
 
 
+def _file_size_str(path: Path) -> str:
+    try:
+        b = path.stat().st_size
+        for unit in ("B", "KB", "MB", "GB"):
+            if b < 1024:
+                return f"{b:.1f} {unit}"
+            b /= 1024
+        return f"{b:.1f} GB"
+    except OSError:
+        return "not found"
+
+
+def _disk_free_str(path: Path) -> str:
+    try:
+        import shutil
+        u = shutil.disk_usage(path if path.is_dir() else path.parent)
+        free_gb  = u.free  / 1_073_741_824
+        total_gb = u.total / 1_073_741_824
+        pct_used = 100 * (u.used / u.total)
+        return f"{free_gb:.1f} GB free of {total_gb:.1f} GB ({pct_used:.0f}% used)"
+    except Exception:
+        return "unknown"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("━━━ MetaCrust AES starting ━━━")
     logger.info("  gateway_id       : %s", GATEWAY_ID)
     logger.info("  gateway_root     : %s", gateway_root)
     logger.info("  storage_root     : %s", storage_root)
-    logger.info("  pes_db_path      : %s  (exists=%s)", pes_db_path, pes_db_path.exists())
-    logger.info("  analytical_db    : %s  (exists=%s)", analytical_db_path, analytical_db_path.exists())
+    logger.info("  pes_db_path      : %s  (%s)", pes_db_path,   _file_size_str(pes_db_path))
+    logger.info("  analytical_db    : %s  (%s)", analytical_db_path, _file_size_str(analytical_db_path))
     logger.info("  log_dir          : %s", log_dir)
+    logger.info("  disk             : %s", _disk_free_str(gateway_root))
+
+    # Warn if disk is getting tight (< 500 MB free)
+    try:
+        import shutil as _su
+        _free = _su.disk_usage(gateway_root).free
+        if _free < 500 * 1_048_576:
+            logger.warning("LOW DISK SPACE: only %.0f MB free — logs and archival may fail", _free / 1_048_576)
+    except Exception:
+        pass
 
     app.state.session_nonce = secrets.token_urlsafe(16)
     app.state.gateway_id    = GATEWAY_ID
@@ -182,10 +216,15 @@ async def lifespan(app: FastAPI):
     forwarding_config_store.ensure_initialized()
 
     redis_ok = redis_notifier.ping()
-    logger.info("  redis        : %s", "OK" if redis_ok else "UNREACHABLE — sensor data will be empty")
+    if redis_ok:
+        logger.info("  redis            : OK")
+    else:
+        logger.warning("  redis            : UNREACHABLE — sensor data will be empty until Redis recovers")
 
     runtime.start()
-    logger.info("  workers      : started (%d)", len(runtime._workers))
+    logger.info("  workers          : started (%d) — %s",
+                len(runtime._workers),
+                ", ".join(w.name for w in runtime._workers))
     logger.info("━━━ AES ready ━━━")
 
     app.state.runtime                 = runtime

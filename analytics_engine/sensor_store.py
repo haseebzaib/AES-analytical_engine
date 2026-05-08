@@ -17,8 +17,9 @@ _DEFAULT_PES_DB   = Path("/opt/gateway/software_storage/PES/pes.db")
 
 class SensorStore:
     def __init__(self, redis_client, db_path: Path | str | None = None) -> None:
-        self._redis  = redis_client
+        self._redis   = redis_client
         self._db_path = Path(db_path) if db_path else _DEFAULT_PES_DB
+        self._redis_empty_count = 0   # consecutive live_devices() calls returning empty
 
     # ── SQLite ────────────────────────────────────────────────────────────
 
@@ -45,8 +46,30 @@ class SensorStore:
         """Read pes:devices:index then each listed device state key."""
         raw = self._redis.get_full(_DEVICE_INDEX_KEY)
         if not raw:
-            logger.debug("Redis: pes:devices:index returned empty — no active devices")
+            self._redis_empty_count += 1
+            # Escalating warnings: first at 3 consecutive misses (~15s), then every 12 (~60s)
+            if self._redis_empty_count == 3:
+                logger.warning(
+                    "Redis: pes:devices:index empty for %d consecutive reads — "
+                    "is PES running? Is Redis reachable?",
+                    self._redis_empty_count,
+                )
+            elif self._redis_empty_count > 3 and self._redis_empty_count % 12 == 0:
+                logger.warning(
+                    "Redis: still no device data after %d reads (~%ds) — "
+                    "PES may be down or not yet connected to hardware",
+                    self._redis_empty_count, self._redis_empty_count * 5,
+                )
+            else:
+                logger.debug("Redis: pes:devices:index returned empty — no active devices")
             return []
+
+        if self._redis_empty_count >= 3:
+            logger.info(
+                "Redis: device data resumed after %d empty reads (~%ds)",
+                self._redis_empty_count, self._redis_empty_count * 5,
+            )
+        self._redis_empty_count = 0
 
         try:
             index = json.loads(raw)

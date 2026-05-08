@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time as _time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from threading import Event, Thread
@@ -40,14 +41,36 @@ class BackgroundWorker:
 
     def _run(self, stop_event: Event) -> None:
         self.status = "running"
+        _slow_threshold = max(self.interval_seconds * 0.9, 2.0)
+        _consecutive_errors = 0
+
         while not stop_event.is_set():
             if self.tick_fn:
+                t0 = _time.monotonic()
                 try:
                     self.tick_fn()
+                    _consecutive_errors = 0
+                    elapsed = _time.monotonic() - t0
+                    if elapsed > _slow_threshold:
+                        logger.warning(
+                            "Worker '%s' tick took %.2fs (interval=%.1fs) — consider tuning",
+                            self.name, elapsed, self.interval_seconds,
+                        )
                 except Exception as exc:
-                    logger.debug("Worker %s tick error: %s", self.name, exc)
+                    _consecutive_errors += 1
+                    # Escalate: first failure = WARNING, repeated = ERROR every 10
+                    if _consecutive_errors == 1:
+                        logger.warning(
+                            "Worker '%s' tick error (1st): %s", self.name, exc, exc_info=True,
+                        )
+                    elif _consecutive_errors % 10 == 0:
+                        logger.error(
+                            "Worker '%s' tick error (%d consecutive): %s",
+                            self.name, _consecutive_errors, exc,
+                        )
             sleep(self.interval_seconds)
         self.status = "stopped"
+        logger.info("Worker '%s' stopped", self.name)
 
 
 class AnalyticsRuntime:
@@ -78,13 +101,43 @@ class AnalyticsRuntime:
                 tick_fn=self._sensor_analytics_tick,
             ),
         ]
-        self._started = False
+        self._started   = False
+        self._tick_n    = 0
+        self._no_device_ticks = 0   # consecutive ticks with zero live devices
 
     def _sensor_analytics_tick(self) -> None:
         if self._sensor_store is None or self._continuity_state is None:
             return
-        logger.debug("sensor-analytics tick: reading live devices from Redis")
+
+        self._tick_n += 1
         devices = self._sensor_store.live_devices()
+
+        if not devices:
+            self._no_device_ticks += 1
+            # Warn once at 12 ticks (~60 s), then every 60 ticks (~5 min)
+            if self._no_device_ticks == 12 or self._no_device_ticks % 60 == 0:
+                logger.warning(
+                    "sensor-analytics: no live devices from Redis for %d consecutive ticks "
+                    "(~%ds) — PES running? Redis reachable?",
+                    self._no_device_ticks,
+                    self._no_device_ticks * 5,
+                )
+        else:
+            if self._no_device_ticks >= 12:
+                logger.info(
+                    "sensor-analytics: devices resumed after %d empty ticks (~%ds)",
+                    self._no_device_ticks, self._no_device_ticks * 5,
+                )
+            self._no_device_ticks = 0
+
+        # Periodic heartbeat every 5 min (60 ticks) — confirms engine is alive in field logs
+        if self._tick_n % 60 == 0:
+            anomaly_count = self._continuity_state.anomaly_count() if self._continuity_state else 0
+            logger.info(
+                "sensor-analytics heartbeat  tick=%d  devices=%d  anomalies=%d",
+                self._tick_n, len(devices), anomaly_count,
+            )
+
         self._continuity_state.update(devices)
         if self._rules_engine is not None:
             self._rules_engine.tick(devices)

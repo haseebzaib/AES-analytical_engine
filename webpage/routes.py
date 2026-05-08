@@ -746,7 +746,19 @@ async def get_network_state(request: Request) -> JSONResponse:
     if not _is_authenticated(request):
         return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
 
-    return JSONResponse(_network_settings_store(request).get_state())
+    state = _network_settings_store(request).get_state()
+
+    # Merge retry block into cellular if the monitor script writes it separately
+    cel = state.get("cellular") if isinstance(state.get("cellular"), dict) else None
+    if cel is not None and "retry" not in cel:
+        gateway_root = getattr(request.app.state, "gateway_root", Path("/opt/gateway"))
+        retry_path   = gateway_root / "network" / "cellular-retry-state.json"
+        try:
+            cel["retry"] = json.loads(retry_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    return JSONResponse(state)
 
 
 @router.get("/api/network/apply-result")
@@ -880,6 +892,61 @@ async def get_iface_details(request: Request) -> JSONResponse:
         },
         "wifi": _read_wifi_details("wlan0", state),
     })
+
+
+@router.post("/api/cellular/refresh-state")
+async def cellular_refresh_state(request: Request) -> JSONResponse:
+    """
+    Invoke gateway-cellular-qmi refresh-state, then return the freshest
+    cellular state from cellular-state.json (or state.json as fallback).
+    Safe to call when no modem is present.
+    """
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+
+    gateway_root       = getattr(request.app.state, "gateway_root", Path("/opt/gateway"))
+    network_dir        = gateway_root / "network"
+    cellular_ctl       = Path("/opt/gateway/scripts/gateway-cellular-qmi")
+    cel_state_file     = network_dir / "cellular-state.json"
+    cel_retry_file     = network_dir / "cellular-retry-state.json"
+    main_state_file    = network_dir / "state.json"
+
+    # Trigger a fresh modem probe — quick, safe even with no SIM
+    if cellular_ctl.exists():
+        try:
+            subprocess.run(
+                [str(cellular_ctl), "refresh-state"],
+                capture_output=True, timeout=8,
+            )
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            logger.warning("cellular refresh-state call failed: %s", exc)
+
+    # Read freshest cellular state — prefer cellular-state.json, fall back to state.json
+    cellular: dict = {}
+    active_uplink: str = "none"
+    for path in (cel_state_file, main_state_file):
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            if path == cel_state_file:
+                cellular = raw if isinstance(raw, dict) else {}
+            else:
+                cellular = raw.get("cellular", {}) if isinstance(raw, dict) else {}
+                active_uplink = str(raw.get("active_uplink", "none"))
+            if cellular:
+                break
+        except Exception:
+            continue
+
+    # Merge retry state if not already present in cellular block
+    if "retry" not in cellular:
+        try:
+            retry_raw = json.loads(cel_retry_file.read_text(encoding="utf-8"))
+            if isinstance(retry_raw, dict):
+                cellular["retry"] = retry_raw
+        except Exception:
+            pass
+
+    return JSONResponse({"ok": True, "cellular": cellular, "active_uplink": active_uplink})
 
 
 @router.get("/api/forwarding/status")
