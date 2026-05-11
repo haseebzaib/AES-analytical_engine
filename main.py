@@ -54,6 +54,7 @@ class _PollingEndpointFilter(logging.Filter):
         "/api/insights/live",
         "/api/insights/summary",
         "/api/forwarding/status",
+        "/api/forwarding/buffer-stats",
     ])
 
     def filter(self, record: logging.LogRecord) -> bool:
@@ -110,6 +111,7 @@ from analytics_engine.analytics.stats import StatsEngine
 from analytics_engine.analytics.trends import TrendsEngine
 from analytics_engine.comms.mqtt_forwarder import MqttForwarder
 from analytics_engine.comms.https_forwarder import HttpsForwarder
+from analytics_engine.forwarding_buffer_store import ForwardingBufferStore
 from utils.redis_client import RedisClient as RedisNotifier
 from analytics_engine.runtime import AnalyticsRuntime
 from analytics_engine.settings_store import SettingsStore
@@ -124,6 +126,7 @@ rs232_config_store      = Rs232ConfigStore(storage_root=storage_root)
 rs485_config_store      = Rs485ConfigStore(storage_root=storage_root)
 modbus_tcp_config_store   = ModbusTcpConfigStore(storage_root=storage_root)
 forwarding_config_store   = ForwardingConfigStore(storage_root=storage_root)
+forwarding_buffer_store   = ForwardingBufferStore(storage_root / "AES" / "forwarding_buffer.db")
 redis_notifier          = RedisNotifier()
 sensor_store            = SensorStore(redis_notifier, db_path=pes_db_path)
 analytical_store        = AnalyticalStore(analytical_db_path)
@@ -149,6 +152,7 @@ _mqtt_forwarder = MqttForwarder(
     analytical_store        = analytical_store,
     forwarding_config_store = forwarding_config_store,
     gateway_id              = GATEWAY_ID,
+    buffer_store            = forwarding_buffer_store,
 )
 runtime.register_worker("mqtt-forwarder", interval_seconds=1.0, tick_fn=_mqtt_forwarder.tick)
 
@@ -158,6 +162,7 @@ _https_forwarder = HttpsForwarder(
     analytical_store        = analytical_store,
     forwarding_config_store = forwarding_config_store,
     gateway_id              = GATEWAY_ID,
+    buffer_store            = forwarding_buffer_store,
 )
 runtime.register_worker("https-forwarder", interval_seconds=1.0, tick_fn=_https_forwarder.tick)
 
@@ -238,6 +243,7 @@ async def lifespan(app: FastAPI):
     app.state.forwarding_config_store   = forwarding_config_store
     app.state.mqtt_forwarder          = _mqtt_forwarder
     app.state.https_forwarder         = _https_forwarder
+    app.state.forwarding_buffer_store = forwarding_buffer_store
     app.state.redis_notifier          = redis_notifier
     app.state.sensor_store            = sensor_store
     app.state.analytical_store        = analytical_store

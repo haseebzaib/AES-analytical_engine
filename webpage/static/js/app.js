@@ -63,9 +63,26 @@ document.addEventListener("DOMContentLoaded", () => {
         };
 
         const cellularItem    = overviewShell.querySelector('[data-overview-item="cellular"]');
-        const fwdOverviewItem = overviewShell.querySelector('[data-overview-item="data-forwarding"]');
+        const fwdOverviewItem = document.querySelector('[data-overview-item="data-forwarding"]');
         const cellLink        = overviewShell.querySelector("[data-overview-cell-link]");
         const cellPort        = overviewShell.querySelector("[data-overview-cell-port]");
+
+        const _fmtDur = (secs) => {
+            if (!secs && secs !== 0) return "—";
+            secs = Math.round(secs);
+            if (secs < 60)   return `${secs}s`;
+            if (secs < 3600) return `${Math.floor(secs / 60)}m ${secs % 60}s`;
+            const h = Math.floor(secs / 3600);
+            const m = Math.floor((secs % 3600) / 60);
+            return `${h}h ${m}m`;
+        };
+        const _uplinkName = (key) =>
+            key === "eth0"        ? "Ethernet (eth0)"
+          : key === "eth1"        ? "Ethernet (eth1)"
+          : key === "wifi_client" ? "Wi-Fi"
+          : key === "cellular"    ? "Cellular"
+          : key === "none"        ? "Offline"
+          : (key || "—");
 
         const applyOverviewState = (networkState) => {
             const eth0       = networkState?.eth0        || {};
@@ -96,7 +113,6 @@ document.addEventListener("DOMContentLoaded", () => {
             if (chipGateway)  chipGateway.textContent  = gatewayHealth;
             if (chipPrimary)  chipPrimary.textContent  = primaryLink;
             if (chipWireless) chipWireless.textContent = wirelessState;
-            if (chipCellular) chipCellular.textContent = celState;
 
             if (led) led.classList.toggle("is-offline", !anyOnline);
             if (ethLink)  ethLink.classList.toggle("is-inactive",  !ethernetConnected && !["eth0","eth1"].includes(activeUplink));
@@ -115,12 +131,37 @@ document.addEventListener("DOMContentLoaded", () => {
                 ethernetConnected ? ethDetail   : "No cable link",
                 ethernetConnected ? "active"    : "inactive");
 
+            // WiFi diagnostic reason for improved status detail
+            const wifiDiag    = wifiClient.diagnostics || {};
+            const wifiCfgSsid = wifiClient.configured_ssid || "";
+            const _wifiReasonLabel = (r) => ({
+                scanning:                   "Scanning for network…",
+                disconnected:               "Disconnected",
+                authenticating:             "Authenticating…",
+                associating:                "Associating with AP…",
+                waiting_for_ip:             "Waiting for IP (DHCP)…",
+                connected_no_internet:      "Connected — no internet",
+                supplicant_inactive:        "Wi-Fi supplicant not running",
+                interface_missing:          "Interface not detected",
+                interface_disabled:         "Interface disabled",
+                ssid_missing:               "No SSID configured",
+                disabled:                   "Wi-Fi disabled",
+                supplicant_status_unavailable: "Status unavailable",
+            }[r] || r || "");
+
+            const wifiStandbyDetail = (() => {
+                if (wifiApEnabled) return `${wifiAp.clients ?? 0} client(s) on hotspot`;
+                if (!wifiPresent)  return "Wireless interface not detected";
+                if (wifiCfgSsid && wifiDiag.reason && wifiDiag.reason !== "disabled") {
+                    return `Target: "${wifiCfgSsid}" · ${_wifiReasonLabel(wifiDiag.reason)}`;
+                }
+                return wifiCfgSsid ? `Target: "${wifiCfgSsid}"` : "Radio available for setup";
+            })();
+
             updateItem(wifiItem,
-                wifiConnected ? "Connected"    : wifiApEnabled ? "Access Point" : wifiPresent ? "Standby" : "Unavailable",
+                wifiConnected ? "Connected" : wifiApEnabled ? "Access Point" : wifiPresent ? "Standby" : "Unavailable",
                 wifiConnected ? (wifiClient.connected_ssid || "Wireless uplink active")
-                              : wifiApEnabled ? `${wifiAp.clients ?? 0} client(s) on hotspot`
-                              : wifiPresent   ? "Radio available for setup"
-                              : "Wireless interface not detected",
+                              : wifiStandbyDetail,
                 wifiConnected ? "active" : wifiApEnabled || wifiPresent ? "standby" : "inactive");
 
             // Cellular item
@@ -128,9 +169,14 @@ document.addEventListener("DOMContentLoaded", () => {
             let celState, celDetail, celTone;
             if (celConnected) {
                 const operator = cellular.operator || "Unknown operator";
-                const sig      = cellular.signal_percent != null ? ` · ${cellular.signal_percent}% signal` : "";
+                const sigPct   = cellular.signal_percent;
+                const sigDbm   = cellular.signal_dbm;
+                const sigQual  = sigPct == null ? "" : sigPct >= 80 ? "Strong" : sigPct >= 60 ? "Good" : sigPct >= 40 ? "Fair" : sigPct >= 20 ? "Weak" : "Poor";
+                const sigStr   = sigPct != null
+                    ? ` · ${sigQual} signal (${sigPct}%${sigDbm != null ? ` · ${sigDbm} dBm` : ""})`
+                    : "";
                 celState  = "Connected";
-                celDetail = `${operator}${sig}`;
+                celDetail = `${operator}${sigStr}`;
                 celTone   = "active";
             } else if (celEnabled && celPresent) {
                 if (simStatus === "locked")  { celState = "PIN Locked";  celDetail = "SIM PIN required";             celTone = "standby"; }
@@ -142,6 +188,35 @@ document.addEventListener("DOMContentLoaded", () => {
                 celState = "Disabled";  celDetail = "Cellular fallback is off"; celTone = "inactive";
             }
             updateItem(cellularItem, celState, celDetail, celTone);
+            if (chipCellular) chipCellular.textContent = celState;
+
+            // ── Active uplink banner (connectivity summary card) ─────────────
+            const uplinkStats = networkState?.uplink_stats || {};
+            const uplinkBadgeEl = document.querySelector("[data-ov-uplink-badge]");
+            const uplinkSinceEl = document.querySelector("[data-ov-uplink-since]");
+            const failoverSumEl = document.querySelector("[data-ov-failover-summary]");
+
+            if (uplinkBadgeEl) {
+                uplinkBadgeEl.textContent = _uplinkName(activeUplink);
+                uplinkBadgeEl.className   = "ov-uplink-badge"
+                    + (activeUplink === "none" ? " is-none" : anyOnline ? " is-active" : " is-none");
+            }
+            if (uplinkSinceEl) {
+                const dur = uplinkStats.active_duration_seconds;
+                uplinkSinceEl.textContent = dur !== undefined && activeUplink !== "none"
+                    ? `Active for ${_fmtDur(dur)}`
+                    : activeUplink === "none" ? "No active uplink" : "";
+            }
+            if (failoverSumEl) {
+                const sw  = uplinkStats.switch_count || 0;
+                const ls  = uplinkStats.last_switch  || {};
+                if (sw > 0 && ls.from) {
+                    const durStr = ls.duration_seconds ? ` · took ${ls.duration_seconds}s` : "";
+                    failoverSumEl.textContent = `${sw} total failover${sw > 1 ? "s" : ""} since boot · last: ${_uplinkName(ls.from)} → ${_uplinkName(ls.to)}${durStr}`;
+                } else {
+                    failoverSumEl.textContent = "No failover recorded since boot";
+                }
+            }
         };
 
         const refreshOverviewState = async () => {
@@ -158,13 +233,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (systemMetricsShell && metricsResponse.ok) {
                     const metrics = await metricsResponse.json();
                     if (systemCpuSummary) {
-                        systemCpuSummary.textContent = `${metrics?.cpu?.total_percent ?? 0}% total usage`;
+                        systemCpuSummary.textContent = `${metrics?.cpu?.total_percent ?? "—"}%`;
                     }
                     if (systemMemorySummary) {
-                        systemMemorySummary.textContent = `${metrics?.memory?.memory_bytes?.used_percent ?? 0}% used`;
+                        systemMemorySummary.textContent = `${metrics?.memory?.memory_bytes?.used_percent ?? "—"}%`;
                     }
                     if (systemTempSummary) {
-                        systemTempSummary.textContent = metrics?.temperature_c != null ? `${metrics.temperature_c} C` : "No reading yet";
+                        systemTempSummary.textContent = metrics?.temperature_c != null ? `${metrics.temperature_c} °C` : "—";
                     }
                     if (systemNetworkSummary) {
                         const eth0 = metrics?.network?.eth0?.rates;
@@ -188,6 +263,33 @@ document.addEventListener("DOMContentLoaded", () => {
 
         refreshOverviewState();
         window.setInterval(refreshOverviewState, 5000);
+
+        // ── Insights summary for overview domain card ──────────────────────
+        const refreshInsightsSummary = async () => {
+            try {
+                const r = await fetch("/api/insights/summary");
+                if (!r.ok) return;
+                const d = await r.json();
+                const devEl  = document.querySelector("[data-ov-insights-devices]");
+                const anEl   = document.querySelector("[data-ov-insights-anomalies]");
+                const subEl  = document.querySelector("[data-ov-insights-sub]");
+                const total  = d.total_devices  ?? 0;
+                const live   = d.live_devices   ?? 0;
+                const anoms  = d.anomaly_count  ?? 0;
+                if (devEl) devEl.textContent = String(live);
+                if (anEl)  anEl.textContent  = String(anoms);
+                if (subEl) {
+                    subEl.textContent = anoms > 0
+                        ? `${anoms} anomal${anoms > 1 ? "ies" : "y"} detected`
+                        : live > 0 ? "All readings nominal" : `${total} configured, none live`;
+                    subEl.style.color = anoms > 0 ? "var(--accent)" : "";
+                }
+            } catch (e) {
+                console.warn("[Overview] insights summary failed:", e);
+            }
+        };
+        refreshInsightsSummary();
+        window.setInterval(refreshInsightsSummary, 15000);
 
         // ── Forwarding status strip (lives outside overviewShell — use document) ──
         const fwdStrip = document.querySelector("[data-ov-fwd-strip]");
@@ -218,26 +320,54 @@ document.addEventListener("DOMContentLoaded", () => {
                 const httpsItems = d.https || [];
                 const allItems   = [...mqttItems, ...httpsItems];
 
-                // ── Update Data Forwarding connectivity item (always) ──────────
+                // ── Update Data Forwarding domain card (always) ───────────────
                 if (fwdOverviewItem) {
                     if (allItems.length === 0) {
                         updateItem(fwdOverviewItem, "No profiles", "No forwarding profiles configured", "inactive");
+                        const pipeline = document.querySelector("[data-ov-fw-pipeline]");
+                        if (pipeline) pipeline.style.display = "none";
                     } else {
-                        const okCount  = allItems.filter((x) =>
+                        const okCount   = allItems.filter((x) =>
                             ("broker" in x) ? x.state === "connected" : x.tunnel_alive === true
                         ).length;
-                        const errCount = allItems.length - okCount;
-                        const fwdState  = okCount === allItems.length ? "Active"
-                                        : okCount > 0               ? `${okCount}/${allItems.length} active`
-                                        : "Error";
+                        const errCount  = allItems.length - okCount;
+                        const totalSent = allItems.reduce((s, x) => s + (x.publish_count ?? x.post_count ?? 0), 0);
+                        const totalBuf  = allItems.reduce((s, x) => s + (x.buffer?.pending ?? 0), 0);
+                        const totalRec  = allItems.reduce((s, x) => s + (x.buffer?.replayed ?? 0), 0);
+                        const totalDrop = allItems.reduce((s, x) => s + (x.buffer?.dropped ?? 0), 0);
+
+                        const fwdTone  = totalDrop > 0 ? "inactive"
+                                       : totalBuf > 0  ? "standby"
+                                       : okCount === allItems.length ? "active" : errCount === allItems.length ? "inactive" : "standby";
+                        const fwdState = totalBuf > 0 ? `Active — ${totalBuf.toLocaleString()} buffered`
+                                       : okCount === allItems.length ? "Active"
+                                       : okCount > 0 ? `${okCount}/${allItems.length} active` : "Error";
                         const fwdDetail = allItems.map((x) => {
                             const name = x.profile_name || "profile";
                             const ok   = ("broker" in x) ? x.state === "connected" : x.tunnel_alive;
                             return `${name}: ${ok ? "✓" : "✗"}`;
                         }).join("  ·  ");
-                        const fwdTone = okCount === allItems.length ? "active"
-                                      : errCount === allItems.length ? "inactive" : "standby";
                         updateItem(fwdOverviewItem, fwdState, fwdDetail, fwdTone);
+
+                        // Pipeline stats counters
+                        const pipeline = document.querySelector("[data-ov-fw-pipeline]");
+                        if (pipeline) {
+                            pipeline.style.display = "";
+                            const sentEl = document.querySelector("[data-ov-fw-sent]");
+                            const bufEl  = document.querySelector("[data-ov-fw-buffered]");
+                            const recEl  = document.querySelector("[data-ov-fw-recovered]");
+                            const bufWrap = document.querySelector("[data-ov-fw-buf-wrap]");
+                            const recWrap = document.querySelector("[data-ov-fw-rec-wrap]");
+                            if (sentEl) sentEl.textContent = totalSent.toLocaleString();
+                            if (bufEl)  bufEl.textContent  = totalBuf.toLocaleString();
+                            if (recEl)  recEl.textContent  = totalRec.toLocaleString();
+                            if (bufWrap) {
+                                bufWrap.className = `ov-fw-pipe-stat${totalBuf > 0 ? " is-buffering" : totalDrop > 0 ? " is-dropped" : ""}`;
+                            }
+                            if (recWrap) {
+                                recWrap.className = `ov-fw-pipe-stat${totalRec > 0 ? " is-recovered" : ""}`;
+                            }
+                        }
                     }
                 }
 
@@ -395,6 +525,269 @@ document.addEventListener("DOMContentLoaded", () => {
         const wifiSubtabs = Array.from(connectivityShell.querySelectorAll("[data-wifi-subtab]"));
         const wifiSubpanels = Array.from(connectivityShell.querySelectorAll("[data-wifi-subpanel]"));
 
+        // ── Status tab helpers ───────────────────────────────────────────────
+        const _stFmt = (secs) => {
+            if (!secs && secs !== 0) return "—";
+            secs = Math.round(secs);
+            if (secs < 60) return `${secs}s`;
+            if (secs < 3600) return `${Math.floor(secs / 60)}m ${secs % 60}s`;
+            const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60);
+            return `${h}h ${m}m`;
+        };
+        const _stUplink = (key) =>
+            key === "eth0" ? "Ethernet (eth0)" : key === "eth1" ? "Ethernet (eth1)"
+          : key === "wifi_client" ? "Wi-Fi (wlan0)" : key === "cellular" ? "Cellular"
+          : key === "none" ? "Offline" : (key || "—");
+
+        // Determine real interface status by cross-referencing uplink_stats + network_state
+        const _ifaceRealStatus = (key, uplinkStatus, activeUplink, state) => {
+            if (key === activeUplink && uplinkStatus === "up") return { label: "Active Uplink", cls: "is-active", tone: "active" };
+            if (uplinkStatus === "up")  return { label: "Up (standby)", cls: "is-up", tone: "standby" };
+            if (uplinkStatus === "disabled") return { label: "Disabled", cls: "is-disabled", tone: "inactive" };
+            // "down" — need to cross-ref for real meaning
+            if (key === "eth0")  { const l = state?.eth0?.link_up;        return l ? { label: "Link up (not routing)", cls: "is-standby", tone: "standby" } : { label: "No link", cls: "is-down", tone: "inactive" }; }
+            if (key === "eth1")  { const l = state?.eth1?.link_up;        return l ? { label: "Link up (not routing)", cls: "is-standby", tone: "standby" } : { label: "No link", cls: "is-down", tone: "inactive" }; }
+            if (key === "wifi_client") { const s = state?.wifi_client?.connected_ssid; return s ? { label: `Connected (standby)`, cls: "is-standby", tone: "standby" } : { label: "Not associated", cls: "is-down", tone: "inactive" }; }
+            if (key === "cellular") {
+                const c = state?.cellular?.connected;
+                const e = state?.cellular?.enabled;
+                if (!e) return { label: "Disabled", cls: "is-disabled", tone: "inactive" };
+                return c ? { label: "Connected · Standby", cls: "is-standby", tone: "standby" }
+                         : { label: "Modem offline", cls: "is-down", tone: "inactive" };
+            }
+            return { label: "Unknown", cls: "is-unknown", tone: "inactive" };
+        };
+
+        const renderStatusTab = (state) => {
+            const uplinkStats  = state?.uplink_stats  || {};
+            const tailscale    = state?.tailscale_recovery || {};
+            const activeUplink = String(state?.active_uplink || "none");
+            const network      = uplinkStats.network   || {};
+            const ifaces       = uplinkStats.interfaces || {};
+            const hasUplink    = Boolean(network.has_uplink);
+
+            // Hero — active uplink
+            const nsActiveDot  = connectivityShell.querySelector("[data-ns-active-dot]");
+            const nsActiveName = connectivityShell.querySelector("[data-ns-active-name]");
+            const nsActiveSince= connectivityShell.querySelector("[data-ns-active-since]");
+            const nsInternet   = connectivityShell.querySelector("[data-ns-internet]");
+            const nsOutageNow  = connectivityShell.querySelector("[data-ns-current-outage]");
+            const nsSwCount    = connectivityShell.querySelector("[data-ns-switch-count]");
+            const nsLastOutage = connectivityShell.querySelector("[data-ns-last-outage]");
+
+            if (nsActiveDot) nsActiveDot.className = "net-status-active-dot " + (hasUplink ? "is-active" : "is-none");
+            if (nsActiveName) nsActiveName.textContent = _stUplink(activeUplink);
+            if (nsActiveSince) {
+                const dur = uplinkStats.active_duration_seconds;
+                nsActiveSince.textContent = dur !== undefined && activeUplink !== "none"
+                    ? `Active for ${_stFmt(dur)}`
+                    : activeUplink === "none" ? "No active uplink" : "";
+            }
+            // Internet reachability: check eth0/eth1 internet_ok or cellular connected
+            const internetOk = state?.eth0?.internet_ok || state?.eth1?.internet_ok || Boolean(state?.cellular?.connected);
+            if (nsInternet) {
+                nsInternet.textContent = internetOk ? "Available" : "Unavailable";
+                nsInternet.style.color = internetOk ? "var(--success)" : "#f87171";
+            }
+            const outageNow = network.current_down_seconds || 0;
+            if (nsOutageNow) {
+                nsOutageNow.textContent = outageNow > 0 ? _stFmt(outageNow) : "None";
+                nsOutageNow.style.color = outageNow > 0 ? "#f87171" : "";
+            }
+            if (nsSwCount) nsSwCount.textContent = String(uplinkStats.switch_count || 0) + (uplinkStats.switch_count ? " switches" : "");
+            if (nsLastOutage) nsLastOutage.textContent = network.last_down_duration_seconds > 0 ? _stFmt(network.last_down_duration_seconds) : "None";
+
+            // Interface cards
+            const nsIfaceGrid = connectivityShell.querySelector("[data-ns-iface-grid]");
+            if (nsIfaceGrid) {
+                // Ordered: show known interfaces in priority order
+                const ifaceOrder = ["eth0", "eth1", "wifi_client", "cellular"];
+                const allKeys = [...new Set([...ifaceOrder, ...Object.keys(ifaces)])];
+                const cards = allKeys.map((key) => {
+                    const iface  = ifaces[key] || {};
+                    const st     = iface.status || "unknown";
+                    const rslt   = _ifaceRealStatus(key, st, activeUplink, state);
+                    const name   = _stUplink(key);
+                    const isActive = key === activeUplink;
+
+                    // Extra context per interface
+                    let extraLines = "";
+                    const _wifiReason = (r) => ({
+                        scanning: "Scanning for network",
+                        disconnected: "Disconnected",
+                        authenticating: "Authenticating",
+                        associating: "Associating with AP",
+                        waiting_for_ip: "Waiting for IP",
+                        connected_no_internet: "Connected, no internet",
+                        supplicant_inactive: "Supplicant not running",
+                        interface_missing: "Interface not found",
+                        interface_disabled: "Interface disabled",
+                        ssid_missing: "No SSID configured",
+                        disabled: "Wi-Fi disabled",
+                    }[r] || r || "");
+                    if (key === "eth0" || key === "eth1") {
+                        const eth = state?.[key] || {};
+                        if (eth.address)   extraLines += `<div class="ns-iface-extra"><span>IPv4</span><strong>${eth.address}</strong></div>`;
+                        if (eth.internet_ok) extraLines += `<div class="ns-iface-extra"><span>Internet</span><strong style="color:var(--success)">Reachable</strong></div>`;
+                        if (iface.last_ready === false) extraLines += `<div class="ns-iface-extra is-warn"><span>Probe</span><strong>Last probe failed</strong></div>`;
+                    } else if (key === "wifi_client") {
+                        const wc = state?.wifi_client || {};
+                        const diag = wc.diagnostics || {};
+                        if (wc.configured_ssid) extraLines += `<div class="ns-iface-extra"><span>Target SSID</span><strong>${wc.configured_ssid}</strong></div>`;
+                        if (wc.connected_ssid) {
+                            extraLines += `<div class="ns-iface-extra"><span>Connected SSID</span><strong style="color:var(--success)">${wc.connected_ssid}</strong></div>`;
+                        } else if (diag.reason && diag.reason !== "disabled") {
+                            const isWarn = !["connected_internet_ok"].includes(diag.reason);
+                            extraLines += `<div class="ns-iface-extra${isWarn ? " is-warn" : ""}"><span>Reason</span><strong>${_wifiReason(diag.reason)}</strong></div>`;
+                        }
+                        if (wc.address) extraLines += `<div class="ns-iface-extra"><span>IPv4</span><strong>${wc.address}</strong></div>`;
+                        if (diag.supplicant_state && diag.supplicant_state !== "COMPLETED") {
+                            extraLines += `<div class="ns-iface-extra"><span>Supplicant</span><strong>${diag.supplicant_state}</strong></div>`;
+                        }
+                        if (diag.signal_dbm) extraLines += `<div class="ns-iface-extra"><span>Signal</span><strong>${diag.signal_dbm} dBm</strong></div>`;
+                    } else if (key === "cellular") {
+                        const cel = state?.cellular || {};
+                        if (cel.operator) extraLines += `<div class="ns-iface-extra"><span>Operator</span><strong>${cel.operator}</strong></div>`;
+                        if (cel.signal_percent != null) {
+                            const q = cel.signal_percent >= 80 ? "Strong" : cel.signal_percent >= 60 ? "Good" : cel.signal_percent >= 40 ? "Fair" : cel.signal_percent >= 20 ? "Weak" : "Poor";
+                            const dbmStr = cel.signal_dbm != null ? ` · ${cel.signal_dbm} dBm` : "";
+                            extraLines += `<div class="ns-iface-extra"><span>Signal</span><strong>${q} (${cel.signal_percent}%${dbmStr})</strong></div>`;
+                        }
+                        if (cel.access_technology) extraLines += `<div class="ns-iface-extra"><span>Technology</span><strong>${cel.access_technology}</strong></div>`;
+                    }
+                    // Show last_ready / eligible from uplink_stats
+                    if (iface.eligible === false && iface.last_ready === true) {
+                        extraLines += `<div class="ns-iface-extra"><span>Recovery</span><strong>Waiting for threshold</strong></div>`;
+                    }
+
+                    // Stats from uplink_stats — contextual labels to avoid confusion
+                    const downNow  = iface.current_down_seconds || 0;
+                    const totalDn  = iface.total_down_seconds   || 0;
+                    const downEvts = iface.down_events          || 0;
+
+                    // "current_down_seconds" means "not eligible as active route" — not modem/link offline.
+                    // It accumulates while the interface is in "not eligible" state, which for cellular
+                    // includes standby time (modem connected but eth0 is active). So if cellular was
+                    // standby for 2h and then the modem disconnected, the timer shows 2h+5m, not 5m.
+                    // Therefore: never use this timer for cellular. Show modem state explicitly instead.
+                    const celConnected = key === "cellular" && Boolean(state?.cellular?.connected);
+                    const celEnabled   = key === "cellular" && Boolean(state?.cellular?.enabled);
+                    const wifiAssociated = key === "wifi_client" && Boolean(state?.wifi_client?.connected_ssid);
+                    const ethLinkUp    = (key === "eth0" && Boolean(state?.eth0?.link_up))
+                                      || (key === "eth1" && Boolean(state?.eth1?.link_up));
+
+                    let downLine = "";
+                    if (key === "cellular") {
+                        // Never show cumulative timer for cellular (includes standby time, misleading).
+                        // Instead show modem connectivity state as a detail line if offline.
+                        if (!celConnected && celEnabled) {
+                            downLine = `<div class="ns-iface-extra is-warn"><span>Modem</span><strong>Offline / disconnected</strong></div>`;
+                        }
+                        // If connected: no extra line (status badge already says "Standby" or "Active Uplink")
+                    } else if (downNow > 0) {
+                        if (wifiAssociated || (isActive && ethLinkUp)) {
+                            // Genuinely up — don't show
+                        } else if (ethLinkUp && !isActive) {
+                            // Cable plugged in but not the active route
+                            downLine = `<div class="ns-iface-extra"><span>Not routing for</span><strong>${_stFmt(downNow)}</strong></div>`;
+                        } else {
+                            // Truly unavailable: no link / not associated
+                            downLine = `<div class="ns-iface-extra is-warn"><span>Unavailable for</span><strong>${_stFmt(downNow)}</strong></div>`;
+                        }
+                    }
+
+                    const statsLines = [
+                        downLine,
+                        downEvts > 0 ? `<div class="ns-iface-extra"><span>Down events</span><strong>${downEvts}</strong></div>` : "",
+                        totalDn > 0 && !celConnected ? `<div class="ns-iface-extra"><span>Total downtime</span><strong>${_stFmt(totalDn)}</strong></div>` : "",
+                    ].filter(Boolean).join("");
+
+                    const dotCls = rslt.tone === "active" ? "is-active" : rslt.tone === "standby" ? "is-standby" : "is-inactive";
+                    // Short status badge text for the pill
+                    const shortStatus = rslt.label === "Connected · Standby" ? "Standby"
+                                      : rslt.label === "Active Uplink"       ? "Active"
+                                      : rslt.label === "Up (standby)"        ? "Standby"
+                                      : rslt.label;
+                    return `<article class="ns-iface-card ${isActive ? "is-active-uplink" : ""}">
+                        <div class="ns-iface-head">
+                            <div class="ns-iface-head-left">
+                                <span class="ns-iface-dot connectivity-badge ${dotCls}"></span>
+                                <span class="ns-iface-name">${name}</span>
+                            </div>
+                            <div class="ns-iface-head-right">
+                                ${isActive ? `<span class="ns-active-pill">Active</span>` : ""}
+                                <span class="ns-iface-status-badge ns-status-${rslt.tone}">${shortStatus}</span>
+                            </div>
+                        </div>
+                        <div class="ns-iface-details">${extraLines}${statsLines}</div>
+                    </article>`;
+                }).join("");
+                nsIfaceGrid.innerHTML = cards || `<p class="insights-empty-note">No interface data from network monitor yet.</p>`;
+            }
+
+            // Last failover
+            const nsFailover = connectivityShell.querySelector("[data-ns-failover-detail]");
+            if (nsFailover) {
+                const sw = uplinkStats.switch_count || 0;
+                const ls = uplinkStats.last_switch  || {};
+                if (sw > 0 && ls.from) {
+                    nsFailover.innerHTML = `
+                        <div class="ns-stat-grid">
+                            <div class="ns-stat-row"><span>Uplink switches (total)</span><strong>${sw}</strong></div>
+                            <div class="ns-stat-row"><span>From</span><strong>${_stUplink(ls.from)}</strong></div>
+                            <div class="ns-stat-row"><span>To</span><strong>${_stUplink(ls.to)}</strong></div>
+                            ${ls.duration_seconds !== undefined ? `<div class="ns-stat-row"><span>Duration</span><strong>${ls.duration_seconds}s</strong></div>` : ""}
+                            ${ls.completed_timestamp ? `<div class="ns-stat-row"><span>Completed</span><strong>${ls.completed_timestamp.replace("T"," ").slice(0,16)}</strong></div>` : ""}
+                            ${ls.reason ? `<div class="ns-stat-row ns-stat-row-full"><span>Reason</span><strong>${ls.reason.replace(/_/g," ")}</strong></div>` : ""}
+                        </div>`;
+                } else {
+                    nsFailover.innerHTML = `<p class="insights-empty-note">No failover recorded since monitor started.</p>`;
+                }
+            }
+
+            // Network outage
+            const nsOutage = connectivityShell.querySelector("[data-ns-outage-detail]");
+            if (nsOutage) {
+                const lastDn = network.last_down_duration_seconds || 0;
+                const totDn  = network.total_down_seconds || 0;
+                const dnEvts = network.down_events || 0;
+                nsOutage.innerHTML = `
+                    <div class="ns-stat-grid">
+                        <div class="ns-stat-row"><span>Network status</span><strong style="color:${hasUplink?"var(--success)":"#f87171"}">${hasUplink?"Uplink available":"No uplink"}</strong></div>
+                        ${outageNow > 0 ? `<div class="ns-stat-row is-warn"><span>Current outage</span><strong>${_stFmt(outageNow)}</strong></div>` : ""}
+                        <div class="ns-stat-row"><span>Last outage duration</span><strong>${lastDn > 0 ? _stFmt(lastDn) : "None"}</strong></div>
+                        <div class="ns-stat-row"><span>Total downtime</span><strong>${totDn > 0 ? _stFmt(totDn) : "0s"}</strong></div>
+                        <div class="ns-stat-row"><span>Down events</span><strong>${dnEvts}</strong></div>
+                    </div>`;
+            }
+
+            // Tailscale recovery
+            const nsTailscale = connectivityShell.querySelector("[data-ns-tailscale-detail]");
+            if (nsTailscale) {
+                const count = tailscale.count || 0;
+                if (count > 0) {
+                    nsTailscale.innerHTML = `
+                        <div class="ns-stat-grid">
+                            <div class="ns-stat-row"><span>Recovery count</span><strong>${count}</strong></div>
+                            ${tailscale.last_timestamp ? `<div class="ns-stat-row"><span>Last recovery</span><strong>${tailscale.last_timestamp.replace("T"," ").slice(0,16)}</strong></div>` : ""}
+                            ${tailscale.last_reason ? `<div class="ns-stat-row ns-stat-row-full"><span>Reason</span><strong>${tailscale.last_reason}</strong></div>` : ""}
+                        </div>`;
+                } else {
+                    nsTailscale.innerHTML = `<p class="insights-empty-note">No Tailscale recovery events recorded.</p>`;
+                }
+            }
+        };
+
+        const refreshStatusTab = async () => {
+            try {
+                const r = await fetch("/api/network/state");
+                if (!r.ok) return;
+                renderStatusTab(await r.json());
+            } catch (e) {
+                console.warn("[Status] network state fetch failed:", e);
+            }
+        };
+
         const syncWifiSubpanels = (tabId) => {
             wifiSubtabs.forEach((tab) => {
                 const isCurrent = tab.getAttribute("data-wifi-subtab") === tabId;
@@ -409,6 +802,9 @@ document.addEventListener("DOMContentLoaded", () => {
         };
 
         let cellularRefreshTimer = null;
+        let statusRefreshTimer   = null;
+
+        const networkActionRow = connectivityShell.querySelector(".network-action-row");
 
         const syncNetworkPanels = (tabId) => {
             tabs.forEach((tab) => {
@@ -422,6 +818,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 panel.classList.toggle("is-hidden", !visible);
             });
 
+            // Hide save/apply buttons on Status tab (read-only)
+            if (networkActionRow) {
+                networkActionRow.style.display = tabId === "status" ? "none" : "";
+            }
+
             if (tabId === "wifi" && wifiSubtabs.length > 0) {
                 syncWifiSubpanels("client");
             }
@@ -431,6 +832,13 @@ document.addEventListener("DOMContentLoaded", () => {
             if (tabId === "cellular") {
                 refreshCellularStatus();
                 cellularRefreshTimer = setInterval(refreshCellularStatus, 5000);
+            }
+
+            // Auto-refresh status tab
+            clearInterval(statusRefreshTimer);
+            if (tabId === "status") {
+                refreshStatusTab();
+                statusRefreshTimer = setInterval(refreshStatusTab, 5000);
             }
         };
 
@@ -1509,6 +1917,156 @@ document.addEventListener("DOMContentLoaded", () => {
         refreshMonitorHistory();
         window.setInterval(refreshMonitorCurrent, 5000);
         window.setInterval(refreshMonitorHistory, 30000);
+
+        // ── (uplink stats section removed — see Connectivity > Status tab) ──
+        if (false) {
+        if (uplinkSection) {
+            const ifaceGrid      = uplinkSection.querySelector("[data-monitor-iface-grid]");
+            const activeLabel    = uplinkSection.querySelector("[data-monitor-uplink-active-label]");
+            const activeDot      = uplinkSection.querySelector("[data-monitor-uplink-dot]");
+            const failoverDiv    = uplinkSection.querySelector("[data-monitor-failover-detail]");
+            const outageDiv      = uplinkSection.querySelector("[data-monitor-outage-detail]");
+            const tailscaleDiv   = uplinkSection.querySelector("[data-monitor-tailscale-detail]");
+
+            const _statusLabel = (key) =>
+                key === "eth0" ? "Ethernet (eth0)" : key === "eth1" ? "Ethernet (eth1)"
+              : key === "wifi_client" ? "Wi-Fi" : key === "cellular" ? "Cellular"
+              : key === "none" ? "None" : (key || "—");
+
+            const _fmtDurMon = (secs) => {
+                if (!secs && secs !== 0) return "—";
+                secs = Math.round(secs);
+                if (secs < 60) return `${secs}s`;
+                if (secs < 3600) return `${Math.floor(secs / 60)}m ${secs % 60}s`;
+                const h = Math.floor(secs / 3600);
+                const m = Math.floor((secs % 3600) / 60);
+                return h > 0 && m > 0 ? `${h}h ${m}m` : h > 0 ? `${h}h` : `${m}m`;
+            };
+
+            const _ifaceStatus = (key, iface) => {
+                const st = iface?.status || "unknown";
+                return {
+                    up:       { cls: "is-up",      label: "Up" },
+                    down:     { cls: "is-down",    label: "Down" },
+                    disabled: { cls: "is-disabled", label: "Disabled" },
+                    unknown:  { cls: "is-unknown",  label: "Unknown" },
+                }[st] || { cls: "is-unknown", label: st };
+            };
+
+            const renderUplinkStats = (state) => {
+                const uplinkStats  = state?.uplink_stats  || {};
+                const tailscale    = state?.tailscale_recovery || {};
+                const activeUplink = String(state?.active_uplink || "none");
+                const network      = uplinkStats.network   || {};
+                const ifaces       = uplinkStats.interfaces || {};
+                const hasUplink    = Boolean(network.has_uplink);
+
+                // Active label + dot
+                if (activeLabel) activeLabel.textContent = _statusLabel(activeUplink);
+                if (activeDot) {
+                    activeDot.className = "monitor-uplink-active-dot " + (hasUplink ? "is-up" : "is-none");
+                }
+
+                // Per-interface cards
+                if (ifaceGrid) {
+                    const ifaceKeys = Object.keys(ifaces);
+                    if (ifaceKeys.length === 0) {
+                        ifaceGrid.innerHTML = `<p class="insights-empty-note">No interface data available yet.</p>`;
+                    } else {
+                        ifaceGrid.innerHTML = ifaceKeys.map((key) => {
+                            const iface = ifaces[key];
+                            const { cls, label } = _ifaceStatus(key, iface);
+                            const isActive = key === activeUplink;
+                            const downSecs = iface.current_down_seconds || 0;
+                            const totalDown = iface.total_down_seconds || 0;
+                            const downEvts = iface.down_events || 0;
+                            const ifaceName = _statusLabel(key);
+                            return `<article class="monitor-iface-card ${cls}${isActive ? " is-active-uplink" : ""}">
+                                <div class="monitor-iface-card-head">
+                                    <span class="monitor-iface-dot ${cls}"></span>
+                                    <span class="monitor-iface-name">${ifaceName}</span>
+                                    ${isActive ? `<span class="monitor-iface-active-pill">Active</span>` : ""}
+                                    <span class="monitor-iface-status-label">${label}</span>
+                                </div>
+                                <div class="monitor-iface-stats">
+                                    ${downSecs > 0 ? `<div class="monitor-iface-stat is-warn"><span>Down for</span><strong>${_fmtDurMon(downSecs)}</strong></div>` : ""}
+                                    <div class="monitor-iface-stat"><span>Total down</span><strong>${_fmtDurMon(totalDown)}</strong></div>
+                                    <div class="monitor-iface-stat"><span>Down events</span><strong>${downEvts}</strong></div>
+                                    ${iface.last_up_timestamp ? `<div class="monitor-iface-stat"><span>Last up</span><strong>${iface.last_up_timestamp.replace("T"," ").slice(0,16)}</strong></div>` : ""}
+                                    ${iface.last_down_timestamp && downEvts > 0 ? `<div class="monitor-iface-stat"><span>Last down</span><strong>${iface.last_down_timestamp.replace("T"," ").slice(0,16)}</strong></div>` : ""}
+                                </div>
+                            </article>`;
+                        }).join("");
+                    }
+                }
+
+                // Last failover detail
+                if (failoverDiv) {
+                    const sw = uplinkStats.switch_count || 0;
+                    const ls = uplinkStats.last_switch  || {};
+                    if (sw > 0 && ls.from) {
+                        failoverDiv.innerHTML = `
+                            <div class="monitor-failover-grid">
+                                <div class="monitor-stat-row"><span>Switch count</span><strong>${sw}</strong></div>
+                                <div class="monitor-stat-row"><span>From</span><strong>${_statusLabel(ls.from)}</strong></div>
+                                <div class="monitor-stat-row"><span>To</span><strong>${_statusLabel(ls.to)}</strong></div>
+                                ${ls.duration_seconds !== undefined ? `<div class="monitor-stat-row"><span>Duration</span><strong>${ls.duration_seconds}s</strong></div>` : ""}
+                                ${ls.completed_timestamp ? `<div class="monitor-stat-row"><span>Completed</span><strong>${ls.completed_timestamp.replace("T"," ").slice(0,16)}</strong></div>` : ""}
+                                ${ls.reason ? `<div class="monitor-stat-row"><span>Reason</span><strong>${ls.reason.replace(/_/g," ")}</strong></div>` : ""}
+                            </div>`;
+                    } else {
+                        failoverDiv.innerHTML = `<p class="insights-empty-note">No failover recorded since monitor started.</p>`;
+                    }
+                }
+
+                // Network outage detail
+                if (outageDiv) {
+                    const netDown = network.current_down_seconds || 0;
+                    const lastDown = network.last_down_duration_seconds || 0;
+                    const totalDown = network.total_down_seconds || 0;
+                    const downEvts = network.down_events || 0;
+                    outageDiv.innerHTML = `
+                        <div class="monitor-failover-grid">
+                            <div class="monitor-stat-row"><span>Status</span><strong class="${hasUplink ? "is-text-ok" : "is-text-warn"}">${hasUplink ? "Uplink available" : "No uplink"}</strong></div>
+                            ${netDown > 0 ? `<div class="monitor-stat-row is-warn"><span>Current outage</span><strong>${_fmtDurMon(netDown)}</strong></div>` : ""}
+                            <div class="monitor-stat-row"><span>Last outage</span><strong>${lastDown > 0 ? _fmtDurMon(lastDown) : "None"}</strong></div>
+                            <div class="monitor-stat-row"><span>Total down</span><strong>${totalDown > 0 ? _fmtDurMon(totalDown) : "0s"}</strong></div>
+                            <div class="monitor-stat-row"><span>Down events</span><strong>${downEvts}</strong></div>
+                        </div>`;
+                }
+
+                // Tailscale recovery
+                if (tailscaleDiv) {
+                    const count = tailscale.count || 0;
+                    if (count > 0) {
+                        const ts  = tailscale.last_timestamp || "";
+                        const why = tailscale.last_reason    || "";
+                        tailscaleDiv.innerHTML = `
+                            <div class="monitor-failover-grid">
+                                <div class="monitor-stat-row"><span>Recovery count</span><strong>${count}</strong></div>
+                                ${ts ? `<div class="monitor-stat-row"><span>Last recovery</span><strong>${ts.replace("T"," ").slice(0,16)}</strong></div>` : ""}
+                                ${why ? `<div class="monitor-stat-row monitor-stat-row-full"><span>Reason</span><strong>${why}</strong></div>` : ""}
+                            </div>`;
+                    } else {
+                        tailscaleDiv.innerHTML = `<p class="insights-empty-note">No Tailscale recovery events recorded.</p>`;
+                    }
+                }
+            };
+
+            const refreshUplinkStats = async () => {
+                try {
+                    const r = await fetch("/api/network/state");
+                    if (!r.ok) return;
+                    renderUplinkStats(await r.json());
+                } catch (e) {
+                    console.warn("[Monitor] uplink stats fetch failed:", e);
+                }
+            };
+
+            refreshUplinkStats();
+            window.setInterval(refreshUplinkStats, 10000);
+        }
+        } // end if(false)
     }
 
     const interfacesShell = document.querySelector("[data-interfaces-shell]");
@@ -2283,12 +2841,20 @@ document.addEventListener("DOMContentLoaded", () => {
                     const trendEl = row.querySelector("[data-ov-trend]");
 
                     if (!m) {
+                        // Device has an error and this metric has no data at all —
+                        // count it as errored so health doesn't default to 100%
+                        if (live.error || live.status === "error") {
+                            totalCount++;
+                            errorCount++;
+                        }
                         row.classList.remove("is-stale", "is-error");
                         return;
                     }
 
                     totalCount++;
-                    const q = m.quality || "good";
+                    // If value is null/undefined, treat as error regardless of stored quality flag
+                    const valueIsNull = m.value === null || m.value === undefined;
+                    const q = valueIsNull ? "error" : (m.quality || "good");
                     if (q === "good")  goodCount++;
                     if (q === "stale") staleCount++;
                     if (q === "error") errorCount++;
@@ -2345,7 +2911,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
 
                 // ── Health bar ────────────────────────────────────────────
-                const pct      = totalCount > 0 ? Math.round((goodCount / totalCount) * 100) : 100;
+                // If device has an error OR no metrics counted, health is 0 — not 100.
+                const pct = (live.error || live.status === "error")
+                    ? 0
+                    : totalCount > 0 ? Math.round((goodCount / totalCount) * 100) : 0;
                 const hPctEl   = card.querySelector("[data-ov-health-pct]");
                 const hBarEl   = card.querySelector("[data-ov-health-bar]");
                 if (hPctEl)  hPctEl.textContent  = `${pct}% health`;
@@ -2585,11 +3154,17 @@ document.addEventListener("DOMContentLoaded", () => {
                     </span>`;
 
                 const metrics = device.expected_metrics || [];
+                const deviceInError = !!(live?.error || live?.status === "error");
                 svMetricList.innerHTML = metrics.map((m) => {
                     const lm   = (live?.metrics || {})[m.name] || {};
                     const val  = lm.value !== undefined ? fmtVal(lm.value) : "--";
                     const unit = (m.unit || lm.unit || "").trim();
-                    const q    = lm.quality || (live ? "good" : "none");
+                    // Null value or device in error → not good quality
+                    const valueIsNull = lm.value === null || lm.value === undefined;
+                    const q    = deviceInError ? "error"
+                               : valueIsNull   ? "error"
+                               : lm.quality    ? lm.quality
+                               : live          ? "good" : "none";
                     const on   = svGetToggle(svSelectedKey, m.name);
                     const lbl  = displayLabel(m.name);
                     return `
@@ -2637,14 +3212,24 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
 
                 if (!live) return;
+                const liveInError = !!(live.error || live.status === "error");
                 svMetricList.querySelectorAll("[data-sv-row]").forEach((row) => {
                     const mName  = row.getAttribute("data-sv-row");
                     const m      = (live.metrics || {})[mName];
-                    if (!m) return;
-                    const q      = m.quality || "good";
                     const valEl  = row.querySelector(`[data-sv-val="${mName}"]`);
                     const dotEl  = row.querySelector(".sv-quality-dot");
                     const pillEl = row.querySelector(".sv-quality-pill");
+                    if (!m) {
+                        // Metric missing entirely — device is in error
+                        const q = liveInError ? "error" : "none";
+                        if (valEl)  { valEl.textContent = "--"; valEl.className = `sv-metric-val${liveInError ? " is-error" : ""}`; }
+                        if (dotEl)  dotEl.className = `sv-quality-dot${liveInError ? " is-error" : ""}`;
+                        if (pillEl) { pillEl.className = `sv-quality-pill is-${q}`; pillEl.textContent = q; }
+                        return;
+                    }
+                    // Null value = error quality regardless of what Redis says
+                    const valueIsNull = m.value === null || m.value === undefined;
+                    const q = liveInError ? "error" : valueIsNull ? "error" : (m.quality || "good");
                     if (valEl)  { valEl.textContent = fmtVal(m.value); valEl.className = `sv-metric-val${q === "stale" ? " is-stale" : q === "error" ? " is-error" : ""}`; }
                     if (dotEl)  dotEl.className  = `sv-quality-dot${q === "good" ? " is-good" : q === "stale" ? " is-stale" : " is-error"}`;
                     if (pillEl) { pillEl.className = `sv-quality-pill is-${q}`; pillEl.textContent = q; }
@@ -4328,6 +4913,9 @@ document.addEventListener("DOMContentLoaded", () => {
         const fwStatusList  = fwShell.querySelector("[data-fw-status-list]");
         const fwStatusTs    = fwShell.querySelector("[data-fw-status-ts]");
 
+        // Shared map: profile_id → {name, protocol} so buffer panel can show names
+        let fwProfileMeta = {};
+
         const _fwAgo = (secs) => {
             if (secs === null || secs === undefined) return "—";
             if (secs < 2)   return "just now";
@@ -4365,6 +4953,15 @@ document.addEventListener("DOMContentLoaded", () => {
                 const httpsItems = (d.https || []).map((x) => ({...x, _isMqtt: false}));
                 const all = [...mqttItems, ...httpsItems];
 
+                // Build profile name/protocol lookup for buffer panel
+                fwProfileMeta = {};
+                for (const item of all) {
+                    fwProfileMeta[item.profile_id] = {
+                        name:     item.profile_name || item.profile_id,
+                        protocol: item._isMqtt ? "MQTT" : "HTTPS",
+                    };
+                }
+
                 if (all.length === 0) {
                     fwStatusPanel.classList.add("ov-hidden");
                     return;
@@ -4372,22 +4969,131 @@ document.addEventListener("DOMContentLoaded", () => {
                 fwStatusPanel.classList.remove("ov-hidden");
                 if (fwStatusTs) fwStatusTs.textContent = `Updated ${new Date().toLocaleTimeString()}`;
 
+                // ── Pipeline alert banner ────────────────────────────────────
+                const pipelineAlert  = fwShell.querySelector("[data-fw-pipeline-alert]");
+                const totalPending   = all.reduce((s, x) => s + (x.buffer?.pending   ?? 0), 0);
+                const totalReplayed  = all.reduce((s, x) => s + (x.buffer?.replayed  ?? 0), 0);
+                const totalDropped   = all.reduce((s, x) => s + (x.buffer?.dropped   ?? 0), 0);
+
+                // Find profiles with issues for root-cause context
+                const droppingProfiles = all.filter((x) => (x.buffer?.dropped ?? 0) > 0);
+                const bufferingProfiles = all.filter((x) => (x.buffer?.pending ?? 0) > 0);
+
+                if (pipelineAlert) {
+                    const isActive = totalPending > 0 || totalDropped > 0;
+                    pipelineAlert.classList.toggle("ov-hidden", !isActive);
+                    if (isActive) {
+                        const titleEl  = pipelineAlert.querySelector("[data-fw-pa-title]");
+                        const detailEl = pipelineAlert.querySelector("[data-fw-pa-detail]");
+                        const pendEl   = pipelineAlert.querySelector("[data-fw-pa-pending]");
+                        const recEl    = pipelineAlert.querySelector("[data-fw-pa-recovered]");
+                        const dropEl   = pipelineAlert.querySelector("[data-fw-pa-dropped]");
+
+                        // Build a helpful root-cause detail
+                        const rootCauses = droppingProfiles.map((x) => {
+                            const name = x.profile_name || "a profile";
+                            const http = x.last_status_code ? ` (HTTP ${x.last_status_code})` : "";
+                            const err  = x.last_error ? ` — ${x.last_error}` : http;
+                            return `"${name}" is rejecting delivery${err}`;
+                        });
+
+                        if (titleEl) {
+                            titleEl.textContent = totalDropped > 0
+                                ? `${totalDropped} message${totalDropped > 1 ? "s" : ""} permanently lost — delivery rejected after max retries`
+                                : `${totalPending} message${totalPending > 1 ? "s" : ""} saved locally, waiting for delivery`;
+                        }
+                        if (detailEl) {
+                            detailEl.textContent = rootCauses.length > 0
+                                ? rootCauses.join("; ") + ". Check endpoint URL and authentication."
+                                : totalPending > 0
+                                ? `${totalPending} message${totalPending > 1 ? "s" : ""} stored safely in the local buffer — will be sent automatically when the connection recovers.${totalReplayed > 0 ? ` ${totalReplayed} already recovered.` : ""}`
+                                : "Check the profile configuration below.";
+                        }
+                        if (pendEl)  pendEl.textContent  = totalPending.toLocaleString();
+                        if (recEl)   recEl.textContent   = totalReplayed.toLocaleString();
+                        if (dropEl)  dropEl.textContent  = totalDropped.toLocaleString();
+                    }
+                }
+
                 if (fwStatusList) {
                     fwStatusList.innerHTML = all.map((item) => {
-                        const isMqtt = item._isMqtt;
-                        const stCls  = _fwStateCls(item, isMqtt);
-                        const stLbl  = _fwStateLabel(item, isMqtt);
-                        const badge  = isMqtt ? "MQTT" : "HTTPS";
-                        const dest   = isMqtt ? item.broker : item.endpoint;
-                        const tls    = item.tls ? (isMqtt ? " · TLS" : "") : "";
-                        const count  = isMqtt ? item.publish_count : item.post_count;
-                        const lastEv = isMqtt
-                            ? `Last pub: ${_fwAgo(item.last_publish_ago)} · ${count} messages`
-                            : `Last POST: ${_fwAgo(item.last_post_ago)} · ${count} requests${item.last_status_code ? ` · HTTP ${item.last_status_code}` : ""}${item.tunnel_restarts ? ` · ${item.tunnel_restarts} restarts` : ""}`;
-                        const connInfo = isMqtt && item.state === "connected"
-                            ? `<span class="fw-st-meta-chip">Online ${_fwAgo(item.connected_since)}</span>` : "";
+                        const isMqtt   = item._isMqtt;
+                        const stCls    = _fwStateCls(item, isMqtt);
+                        const stLbl    = _fwStateLabel(item, isMqtt);
+                        const badge    = isMqtt ? "MQTT" : "HTTPS";
+                        const dest     = isMqtt ? item.broker : item.endpoint;
+                        const tlsNote  = item.tls ? `<span class="fw-tls-chip">TLS</span>` : "";
+                        const count    = isMqtt ? (item.publish_count ?? 0) : (item.post_count ?? 0);
+                        const pending  = item.buffer?.pending  ?? 0;
+                        const replayed = item.buffer?.replayed ?? 0;
+                        const dropped  = item.buffer?.dropped  ?? 0;
+                        const sucRate  = item.buffer?.success_rate ?? 100;
+
+                        // Session uptime & message rate
+                        const connSecs = item.connected_since ?? 0;
+                        const sessionStr = connSecs > 0 ? _fwAgo(connSecs) : "—";
+                        const ratePerSec = connSecs > 10 && count > 0 ? count / connSecs : 0;
+                        const rateStr = ratePerSec >= 1
+                            ? `${ratePerSec.toFixed(1)}/s`
+                            : ratePerSec > 0 ? `${Math.round(ratePerSec * 60)}/min`
+                            : "—";
+
+                        // Last event line
+                        const lastAgo  = isMqtt ? item.last_publish_ago : item.last_post_ago;
+                        const lastStr  = lastAgo != null ? _fwAgo(lastAgo) : "never";
+                        const httpInfo = !isMqtt && item.last_status_code ? ` · HTTP ${item.last_status_code}` : "";
+                        const restarts = !isMqtt && item.tunnel_restarts  ? ` · ${item.tunnel_restarts} TLS restarts` : "";
+
+                        // Error
                         const errHtml = item.last_error
                             ? `<div class="fw-st-error"><span class="fw-st-error-icon">⚠</span> ${item.last_error}</div>` : "";
+
+                        // Pipeline state — determine what's really happening
+                        const pipeState = dropped > 0 && sucRate === 0 ? "failing"
+                            : dropped > 0 ? "degraded"
+                            : pending > 0 ? "buffering"
+                            : "healthy";
+
+                        // Root cause from error info
+                        const httpCode  = item.last_status_code;
+                        const httpIsErr = httpCode && httpCode >= 400;
+                        const causeHint = httpIsErr
+                            ? `Server is returning HTTP ${httpCode} — check endpoint URL and authentication.`
+                            : item.last_error ? item.last_error : "";
+
+                        // Compose clear explanatory buffer section
+                        const bufLines = [];
+                        if (pipeState === "healthy" && replayed === 0) {
+                            // Only show if there's something to say
+                        } else {
+                            if (pending > 0) {
+                                bufLines.push(`<div class="fw-st-pipe-line is-buffering">
+                                    <span class="fw-st-pipe-dot"></span>
+                                    <span><strong>${pending.toLocaleString()} message${pending > 1 ? "s" : ""}</strong> saved locally — waiting to be delivered when connection recovers</span>
+                                </div>`);
+                            }
+                            if (replayed > 0) {
+                                bufLines.push(`<div class="fw-st-pipe-line is-recovered">
+                                    <span class="fw-st-pipe-dot"></span>
+                                    <span><strong>${replayed.toLocaleString()} message${replayed > 1 ? "s" : ""}</strong> successfully recovered from buffer after a previous outage</span>
+                                </div>`);
+                            }
+                            if (dropped > 0) {
+                                bufLines.push(`<div class="fw-st-pipe-line is-dropped">
+                                    <span class="fw-st-pipe-dot"></span>
+                                    <span><strong>${dropped} message${dropped > 1 ? "s" : ""} evicted from buffer</strong> — buffer was full, oldest messages removed to make room for new data</span>
+                                </div>`);
+                            }
+                            if (causeHint) {
+                                bufLines.push(`<div class="fw-st-pipe-line is-cause">
+                                    <span class="fw-st-pipe-dot-arrow">→</span>
+                                    <span class="fw-st-cause-text">${causeHint}</span>
+                                </div>`);
+                            }
+                        }
+                        const bufHtml = bufLines.length > 0
+                            ? `<div class="fw-st-pipe-explain">${bufLines.join("")}</div>` : "";
+
                         return `
                         <div class="fw-status-card ${stCls}">
                             <div class="fw-st-head">
@@ -4395,8 +5101,26 @@ document.addEventListener("DOMContentLoaded", () => {
                                 <span class="fw-st-name">${item.profile_name || "—"}</span>
                                 <span class="fw-st-state">${stLbl}</span>
                             </div>
-                            <div class="fw-st-dest">${dest}${tls}</div>
-                            <div class="fw-st-meta">${lastEv}${connInfo}</div>
+                            <div class="fw-st-dest">${dest}${tlsNote}</div>
+                            <div class="fw-st-runtime-grid">
+                                <div class="fw-st-runtime-stat">
+                                    <strong>${count.toLocaleString()}</strong>
+                                    <span>${isMqtt ? "Messages sent" : "Requests sent"}</span>
+                                </div>
+                                <div class="fw-st-runtime-stat">
+                                    <strong>${rateStr}</strong>
+                                    <span>Avg rate</span>
+                                </div>
+                                <div class="fw-st-runtime-stat">
+                                    <strong>${sessionStr}</strong>
+                                    <span>Session uptime</span>
+                                </div>
+                                <div class="fw-st-runtime-stat">
+                                    <strong>${lastStr}</strong>
+                                    <span>Last ${isMqtt ? "publish" : "POST"}${httpInfo}${restarts}</span>
+                                </div>
+                            </div>
+                            ${bufHtml}
                             ${errHtml}
                         </div>`;
                     }).join("");
@@ -4406,10 +5130,171 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         };
 
-        // Initial load
+        // ── Buffer stats panel ────────────────────────────────────────────────
+        const fwBufPanel    = fwShell.querySelector("[data-fw-buffer-panel]");
+        const fwBufProfiles = fwShell.querySelector("[data-fw-buffer-profiles]");
+        const fwBufPending  = fwShell.querySelector("[data-fw-buf-pending]");
+        const fwBufReplayed = fwShell.querySelector("[data-fw-buf-replayed]");
+        const fwBufDropped  = fwShell.querySelector("[data-fw-buf-dropped]");
+        const fwBufRate     = fwShell.querySelector("[data-fw-buf-rate]");
+
+        const _fwSparkline = (history, width = 120, height = 32) => {
+            if (!history || history.length < 2) return "";
+            const max = Math.max(...history, 1);
+            const pts = history.map((v, i) => {
+                const x = Math.round((i / (history.length - 1)) * width);
+                const y = Math.round(height - (v / max) * (height - 2) - 1);
+                return `${x},${y}`;
+            }).join(" ");
+            return `<svg width="${width}" height="${height}" class="fw-sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+                <polyline points="${pts}" fill="none" stroke="rgba(57,208,200,0.7)" stroke-width="1.5" stroke-linejoin="round"/>
+            </svg>`;
+        };
+
+        // Name/protocol lookup built directly from config — most reliable source
+        let fwConfigNameMap = {};   // profile_id → {name, protocol}
+
+        const _buildConfigNameMap = async () => {
+            try {
+                const cr = await fetch("/api/forwarding/config");
+                if (!cr.ok) return;
+                const cd = await cr.json();
+                fwConfigNameMap = {};
+                for (const p of (cd.profiles || [])) {
+                    if (p.id) {
+                        fwConfigNameMap[p.id] = {
+                            name:     p.name || "Unnamed Profile",
+                            protocol: (p.protocol || "mqtt").toUpperCase(),
+                        };
+                    }
+                }
+            } catch { /* silent — fallback to fwProfileMeta */ }
+        };
+
+        const fwRefreshBuffer = async () => {
+            if (!fwBufPanel) return;
+            // Build name map from config if not already populated
+            if (Object.keys(fwConfigNameMap).length === 0) {
+                await _buildConfigNameMap();
+            }
+            try {
+                const r = await fetch("/api/forwarding/buffer-stats");
+                if (!r.ok) return;
+                const d = await r.json();
+                if (!d.ok) return;
+
+                // Always show the buffer panel so users can see pipeline health
+                fwBufPanel.classList.remove("ov-hidden");
+
+                const totalPending  = d.total_pending  ?? 0;
+                const totalReplayed = d.total_replayed ?? 0;
+                const totalDropped  = d.total_dropped  ?? 0;
+                const successRate   = d.success_rate   ?? 100;
+                const allHealthy    = totalPending === 0 && totalDropped === 0;
+
+                // Storage info in header
+                const storageInfoEl = fwBufPanel.querySelector("[data-fw-storage-info]");
+                if (storageInfoEl && d.storage) {
+                    const s = d.storage;
+                    const usedMb = s.db_size_mb ?? 0;
+                    const capMb  = s.estimated_capacity_mb ?? 0;
+                    const maxMsg = (s.max_per_profile ?? 0).toLocaleString();
+                    storageInfoEl.textContent = usedMb > 0
+                        ? `SQLite on disk · ${usedMb} MB used · capacity: ~${capMb} MB (${maxMsg} msgs/profile) · survives restarts`
+                        : `SQLite on disk · capacity: ~${capMb} MB per profile (${maxMsg} msgs) · survives restarts`;
+                }
+
+                if (fwBufPending)  fwBufPending.textContent  = totalPending.toLocaleString();
+                if (fwBufReplayed) fwBufReplayed.textContent = totalReplayed.toLocaleString();
+                if (fwBufDropped)  fwBufDropped.textContent  = totalDropped.toLocaleString();
+                if (fwBufRate) {
+                    fwBufRate.textContent = allHealthy ? "100%" : `${successRate}%`;
+                    fwBufRate.style.color = allHealthy ? "var(--success)" : successRate < 90 ? "#f87171" : "var(--accent)";
+                }
+
+                if (fwBufProfiles) {
+                    const profiles = d.profiles || [];
+                    if (profiles.length === 0) {
+                        fwBufProfiles.innerHTML = `<p class="insights-empty-note">No forwarding profiles configured.</p>`;
+                    } else {
+                        fwBufProfiles.innerHTML = profiles.map((p) => {
+                            // Resolve name: config (most reliable) → status map → fallback
+                            const meta      = fwConfigNameMap[p.profile_id]
+                                           || fwProfileMeta[p.profile_id]
+                                           || {};
+                            const name      = meta.name     || "Unnamed Profile";
+                            const protocol  = meta.protocol || "";
+                            const pending   = p.pending  ?? 0;
+                            const replayed  = p.replayed ?? 0;
+                            const dropped   = p.dropped  ?? 0;
+                            const rate      = p.success_rate ?? 100;
+                            const healthy   = pending === 0 && dropped === 0;
+                            const ageText   = pending > 0 && p.oldest_pending_age_s != null
+                                ? (p.oldest_pending_age_s >= 60
+                                    ? `Oldest queued: ${Math.round(p.oldest_pending_age_s / 60)}m ago`
+                                    : `Oldest queued: ${p.oldest_pending_age_s}s ago`)
+                                : "";
+                            const spark     = _fwSparkline(p.level_history);
+                            const statusCls = pending > 0 ? "is-warn" : dropped > 0 ? "is-err" : "is-ok";
+
+                            // Build plain-language status lines for this profile
+                            const cooling  = p.cooling_down   ?? 0;
+                            const ready    = p.ready_to_retry ?? pending;
+                            const bufStateLines = [];
+                            if (healthy) {
+                                bufStateLines.push(`<span class="fw-buf-state-line is-ok">✓ All messages delivered — buffer empty</span>`);
+                            } else {
+                                if (pending > 0) {
+                                    const detail = cooling > 0
+                                        ? ` (${ready} ready · ${cooling} in retry backoff)`
+                                        : ageText ? ` · ${ageText}` : "";
+                                    bufStateLines.push(`<span class="fw-buf-state-line is-warn">
+                                        ${pending} message${pending > 1 ? "s" : ""} saved locally, waiting to deliver${detail}
+                                    </span>`);
+                                }
+                                if (replayed > 0) bufStateLines.push(`<span class="fw-buf-state-line is-ok">
+                                    ${replayed} message${replayed > 1 ? "s" : ""} successfully sent from buffer after a previous outage
+                                </span>`);
+                                if (dropped > 0) bufStateLines.push(`<span class="fw-buf-state-line is-err">
+                                    ${dropped} message${dropped > 1 ? "s" : ""} evicted — buffer was full (${dropped > 1 ? "oldest messages removed" : "oldest message removed"} to make room)
+                                </span>`);
+                                if (rate < 100) bufStateLines.push(`<span class="fw-buf-state-line is-muted">
+                                    ${rate}% delivery success rate this session
+                                </span>`);
+                            }
+
+                            return `
+                            <div class="fw-buf-profile-card ${statusCls}">
+                                <div class="fw-buf-profile-head">
+                                    <div class="fw-buf-profile-identity">
+                                        ${protocol ? `<span class="fw-proto-badge is-${protocol.toLowerCase()}" style="font-size:.62rem;padding:.1rem .4rem">${protocol}</span>` : ""}
+                                        <span class="fw-buf-profile-name">${name}</span>
+                                    </div>
+                                    ${healthy
+                                        ? `<span class="fw-buf-badge is-ok">✓ Healthy</span>`
+                                        : dropped > 0
+                                        ? `<span class="fw-buf-badge is-err">⚠ Messages lost</span>`
+                                        : `<span class="fw-buf-badge is-warn">⬆ ${pending} waiting</span>`}
+                                </div>
+                                <div class="fw-buf-state-lines">${bufStateLines.join("")}</div>
+                                ${spark ? `<div class="fw-sparkline-wrap" title="Buffer fill level over last 5 minutes">${spark}</div>` : ""}
+                            </div>`;
+                        }).join("");
+                    }
+                }
+            } catch (e) {
+                console.warn("[Forwarding] buffer stats fetch failed:", e);
+            }
+        };
+
+        // Initial load — build config name map first, then status, then buffer
         fwLoad();
-        fwRefreshStatus();
+        _buildConfigNameMap().then(() => {
+            fwRefreshStatus();
+            fwRefreshBuffer();
+        });
         window.setInterval(fwRefreshStatus, 6000);
+        window.setInterval(fwRefreshBuffer, 8000);
     }
 
 

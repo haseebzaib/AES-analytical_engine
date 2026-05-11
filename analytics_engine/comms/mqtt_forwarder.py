@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from analytics_engine.sensor_store import SensorStore
     from analytics_engine.analytical_store import AnalyticalStore
     from analytics_engine.interfaces.forwarding_config_store import ForwardingConfigStore
+    from analytics_engine.forwarding_buffer_store import ForwardingBufferStore
 
 logger = logging.getLogger(__name__)
 
@@ -81,11 +82,13 @@ class MqttForwarder:
         analytical_store:         "AnalyticalStore | None",
         forwarding_config_store:  "ForwardingConfigStore",
         gateway_id:               str,
+        buffer_store:             "ForwardingBufferStore | None" = None,
     ) -> None:
         self._sensor_store            = sensor_store
         self._analytical_store        = analytical_store
         self._forwarding_config_store = forwarding_config_store
         self._gateway_id              = gateway_id
+        self._buffer_store            = buffer_store
 
         # profile_id → MqttProfileClient
         self._clients: dict[str, MqttProfileClient] = {}
@@ -97,7 +100,8 @@ class MqttForwarder:
         self._prev_device_status: dict[str, str] = {}
 
         self._log = logging.getLogger("comms.mqtt_forwarder")
-        self._log.info("MqttForwarder initialised  gateway_id=%s", gateway_id)
+        self._log.info("MqttForwarder initialised  gateway_id=%s  buffer=%s",
+                       gateway_id, "enabled" if buffer_store else "disabled")
 
     # ── Entry point ───────────────────────────────────────────────────────────
 
@@ -114,7 +118,40 @@ class MqttForwarder:
 
     def get_status(self) -> list[dict]:
         """Return status snapshot for all active MQTT clients (used by /api/forwarding/status)."""
-        return [client.get_status() for client in self._clients.values()]
+        statuses = []
+        for pid, client in self._clients.items():
+            s = client.get_status()
+            if self._buffer_store:
+                s["buffer"] = self._buffer_store.get_stats(pid)
+            statuses.append(s)
+        return statuses
+
+    def _drain_buffer(self, client: MqttProfileClient, profile: dict) -> None:
+        """Drain buffered messages for a profile before publishing new data."""
+        if not self._buffer_store or not client.is_connected:
+            return
+        pid = profile["id"]
+        batch = self._buffer_store.drain_batch(pid)
+        if not batch:
+            return
+        qos    = profile["mqtt"].get("qos", 1)
+        retain = profile["mqtt"].get("retain", False)
+        drained = 0
+        for msg in batch:
+            try:
+                ok = client.publish(msg["path"], msg["payload_json"], qos=qos, retain=retain)
+                if ok:
+                    self._buffer_store.mark_sent(msg["id"], pid)
+                    drained += 1
+                else:
+                    self._buffer_store.mark_failed(msg["id"], pid)
+            except Exception as exc:
+                self._log.debug("Buffer drain error for profile '%s': %s", profile.get("name"), exc)
+        if drained:
+            self._log.info(
+                "Buffer: drained %d message(s) for profile '%s'  remaining=%d",
+                drained, profile.get("name"), self._buffer_store.pending_count(pid),
+            )
 
     def stop(self) -> None:
         """Disconnect all active clients cleanly. Called on AES shutdown."""
@@ -229,6 +266,13 @@ class MqttForwarder:
                 )
                 continue
 
+            # Drain backlog before sending new data (backlog has priority)
+            self._drain_buffer(client, profile)
+
+            # Snapshot buffer level for sparkline history
+            if self._buffer_store:
+                self._buffer_store.snapshot_level(pid)
+
             self._publish_all(client, profile, devices)
 
     # ── Publish all data for all in-scope devices ─────────────────────────────
@@ -237,6 +281,7 @@ class MqttForwarder:
         scope  = profile.get("scope", "all")
         qos    = profile["mqtt"].get("qos", 1)
         retain = profile["mqtt"].get("retain", False)
+        pid    = profile.get("id", "")
 
         published = 0
         for device in devices:
@@ -247,8 +292,8 @@ class MqttForwarder:
             if not src or not did:
                 continue
 
-            self._pub_sensor_data(client, device, src, did, qos, retain)
-            self._pub_analytics(client, src, did, qos)
+            self._pub_sensor_data(client, device, src, did, qos, retain, pid)
+            self._pub_analytics(client, src, did, qos, pid)
             self._check_status_events(client, profile, [device])
             published += 1
 
@@ -263,6 +308,7 @@ class MqttForwarder:
     def _pub_sensor_data(
         self, client: MqttProfileClient,
         device: dict, src: str, did: str, qos: int, retain: bool,
+        profile_id: str = "",
     ) -> None:
         readings: dict = {}
         for mname, m in (device.get("metrics") or {}).items():
@@ -283,13 +329,14 @@ class MqttForwarder:
             "readings":   readings,
         }
         topic = f"{self._gateway_id}/{src}/{did}/sensor_data"
-        self._safe_publish(client, topic, payload, qos, retain)
+        self._safe_publish(client, topic, payload, qos, retain, profile_id)
 
     # ── analytics ─────────────────────────────────────────────────────────────
 
     def _pub_analytics(
         self, client: MqttProfileClient,
         src: str, did: str, qos: int,
+        profile_id: str = "",
     ) -> None:
         if self._analytical_store is None:
             return
@@ -362,7 +409,7 @@ class MqttForwarder:
             return
 
         topic = f"{self._gateway_id}/{src}/{did}/analytics"
-        self._safe_publish(client, topic, payload, qos, retain=False)
+        self._safe_publish(client, topic, payload, qos, retain=False, profile_id=profile_id)
 
     # ── events (status changes) ───────────────────────────────────────────────
 
@@ -439,6 +486,7 @@ class MqttForwarder:
         payload: dict,
         qos: int,
         retain: bool,
+        profile_id: str = "",
     ) -> None:
         try:
             body = json.dumps(payload, ensure_ascii=False, indent=2)
@@ -449,6 +497,12 @@ class MqttForwarder:
                     topic, qos, retain, len(body),
                 )
                 self._log.debug("PAYLOAD  %s\n%s", topic, body)
+            elif self._buffer_store and profile_id:
+                # Not connected or publish queue full — buffer for later
+                self._buffer_store.enqueue(
+                    profile_id, "mqtt", topic, body, qos=qos, retain=retain,
+                )
+                self._log.debug("Buffered topic=%s for profile '%s'", topic, profile_id)
         except (TypeError, ValueError) as exc:
             self._log.error("JSON serialisation error for topic %s: %s", topic, exc)
         except Exception as exc:

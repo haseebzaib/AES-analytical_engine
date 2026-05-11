@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from analytics_engine.sensor_store import SensorStore
     from analytics_engine.analytical_store import AnalyticalStore
     from analytics_engine.interfaces.forwarding_config_store import ForwardingConfigStore
+    from analytics_engine.forwarding_buffer_store import ForwardingBufferStore
 
 logger = logging.getLogger(__name__)
 
@@ -84,11 +85,13 @@ class HttpsForwarder:
         analytical_store:        "AnalyticalStore | None",
         forwarding_config_store: "ForwardingConfigStore",
         gateway_id:              str,
+        buffer_store:            "ForwardingBufferStore | None" = None,
     ) -> None:
         self._sensor_store            = sensor_store
         self._analytical_store        = analytical_store
         self._forwarding_config_store = forwarding_config_store
         self._gateway_id              = gateway_id
+        self._buffer_store            = buffer_store
 
         # profile_id → HttpsProfileClient
         self._clients: dict[str, HttpsProfileClient] = {}
@@ -117,7 +120,40 @@ class HttpsForwarder:
 
     def get_status(self) -> list[dict]:
         """Return status snapshot for all active HTTPS clients (used by /api/forwarding/status)."""
-        return [client.get_status() for client in self._clients.values()]
+        statuses = []
+        for pid, client in self._clients.items():
+            s = client.get_status()
+            if self._buffer_store:
+                s["buffer"] = self._buffer_store.get_stats(pid)
+            statuses.append(s)
+        return statuses
+
+    def _drain_buffer(self, client: HttpsProfileClient, profile: dict) -> None:
+        """Drain buffered POST payloads before sending new data."""
+        if not self._buffer_store:
+            return
+        pid = profile["id"]
+        batch = self._buffer_store.drain_batch(pid)
+        if not batch:
+            return
+        drained = 0
+        for msg in batch:
+            try:
+                import json as _json
+                payload = _json.loads(msg["payload_json"])
+                ok = client.post(msg["path"], payload)
+                if ok:
+                    self._buffer_store.mark_sent(msg["id"], pid)
+                    drained += 1
+                else:
+                    self._buffer_store.mark_failed(msg["id"], pid)
+            except Exception as exc:
+                self._log.debug("Buffer drain error for profile '%s': %s", profile.get("name"), exc)
+        if drained:
+            self._log.info(
+                "Buffer: drained %d POST(s) for profile '%s'  remaining=%d",
+                drained, profile.get("name"), self._buffer_store.pending_count(pid),
+            )
 
     def stop(self) -> None:
         """Stop all active HTTPS clients (terminates openssl tunnel processes)."""
@@ -216,6 +252,14 @@ class HttpsForwarder:
                 continue
 
             self._last_publish[pid] = now
+
+            # Drain backlog before sending new data
+            self._drain_buffer(client, profile)
+
+            # Snapshot buffer level for sparkline
+            if self._buffer_store:
+                self._buffer_store.snapshot_level(pid)
+
             self._post_sensor_batch(client, profile, devices)
             self._post_analytics_batch(client, profile, devices)
 
@@ -266,7 +310,7 @@ class HttpsForwarder:
             "ts":         _now_ms(),
             "devices":    device_payloads,
         }
-        self._safe_post(client, sensor_path, payload, "sensor")
+        self._safe_post(client, sensor_path, payload, "sensor", profile.get("id", ""))
 
     # ── Analytics batch ───────────────────────────────────────────────────────
 
@@ -358,7 +402,7 @@ class HttpsForwarder:
             "ts":         _now_ms(),
             "devices":    device_analytics,
         }
-        self._safe_post(client, analytics_path, payload, "analytics")
+        self._safe_post(client, analytics_path, payload, "analytics", profile.get("id", ""))
 
     # ── Events (status changes) ───────────────────────────────────────────────
 
@@ -415,22 +459,26 @@ class HttpsForwarder:
                     "message":  err_msg,
                 },
             }
-            self._safe_post(client, events_path, payload, "event")
+            self._safe_post(client, events_path, payload, "event", profile.get("id", ""))
 
     # ── Safe post wrapper ─────────────────────────────────────────────────────
 
     def _safe_post(
         self,
-        client:  HttpsProfileClient,
-        path:    str,
-        payload: dict,
-        label:   str,
+        client:     HttpsProfileClient,
+        path:       str,
+        payload:    dict,
+        label:      str,
+        profile_id: str = "",
     ) -> None:
         try:
             body_str = json.dumps(payload, ensure_ascii=False, indent=2)
             ok = client.post(path, payload)
             if ok:
                 self._log.debug("POST %s [%s]  bytes=%d\n%s", path, label, len(body_str), body_str)
+            elif self._buffer_store and profile_id:
+                self._buffer_store.enqueue(profile_id, "https", path, body_str)
+                self._log.debug("Buffered POST %s [%s] for profile '%s'", path, label, profile_id)
         except (TypeError, ValueError) as exc:
             self._log.error("JSON serialisation error for %s [%s]: %s", path, label, exc)
         except Exception as exc:

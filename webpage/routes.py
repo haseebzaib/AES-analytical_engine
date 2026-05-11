@@ -584,10 +584,11 @@ async def connectivity_page(request: Request) -> HTMLResponse:
             "page_title": "Connectivity",
             "primary_sections": _primary_sections("Connectivity"),
             "connectivity_tabs": [
-                {"id": "ethernet", "label": "Ethernet", "active": True, "disabled": False},
-                {"id": "wifi", "label": "Wi-Fi", "active": False, "disabled": False},
-                {"id": "cellular", "label": "Cellular", "active": False, "disabled": False},
-                {"id": "policy", "label": "Uplink Policy", "active": False, "disabled": False},
+                {"id": "status",   "label": "Status",      "active": True,  "disabled": False},
+                {"id": "ethernet", "label": "Ethernet",    "active": False, "disabled": False},
+                {"id": "wifi",     "label": "Wi-Fi",       "active": False, "disabled": False},
+                {"id": "cellular", "label": "Cellular",    "active": False, "disabled": False},
+                {"id": "policy",   "label": "Uplink Policy","active": False, "disabled": False},
             ],
             "network_settings": network_settings,
             "network_state": network_state,
@@ -951,7 +952,7 @@ async def cellular_refresh_state(request: Request) -> JSONResponse:
 
 @router.get("/api/forwarding/status")
 async def get_forwarding_status(request: Request) -> JSONResponse:
-    """Return live MQTT and HTTPS forwarding status for all active profiles."""
+    """Return live MQTT and HTTPS forwarding status (includes buffer stats per profile)."""
     if not _is_authenticated(request):
         return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
     mqtt_fwd  = getattr(request.app.state, "mqtt_forwarder",  None)
@@ -960,6 +961,43 @@ async def get_forwarding_status(request: Request) -> JSONResponse:
         "ok":    True,
         "mqtt":  mqtt_fwd.get_status()  if mqtt_fwd  else [],
         "https": https_fwd.get_status() if https_fwd else [],
+    })
+
+
+@router.get("/api/forwarding/buffer-stats")
+async def get_forwarding_buffer_stats(request: Request) -> JSONResponse:
+    """Return buffer stats aggregated across all profiles."""
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+    buf = getattr(request.app.state, "forwarding_buffer_store", None)
+    if buf is None:
+        return JSONResponse({"ok": True, "total_pending": 0, "total_replayed": 0,
+                             "total_dropped": 0, "success_rate": 100.0, "profiles": []})
+
+    mqtt_fwd  = getattr(request.app.state, "mqtt_forwarder",  None)
+    https_fwd = getattr(request.app.state, "https_forwarder", None)
+    all_pids  = []
+    if mqtt_fwd:
+        all_pids += list(mqtt_fwd._clients.keys())
+    if https_fwd:
+        all_pids += list(https_fwd._clients.keys())
+
+    profiles_stats = buf.get_all_stats(all_pids)
+    total_pending  = sum(s["pending"]  for s in profiles_stats.values())
+    total_replayed = sum(s["replayed"] for s in profiles_stats.values())
+    total_dropped  = sum(s["dropped"]  for s in profiles_stats.values())
+    total          = total_replayed + total_dropped
+    success_rate   = round(100 * total_replayed / total, 1) if total else 100.0
+    storage_info   = buf.get_storage_info()
+
+    return JSONResponse({
+        "ok":            True,
+        "total_pending":  total_pending,
+        "total_replayed": total_replayed,
+        "total_dropped":  total_dropped,
+        "success_rate":   success_rate,
+        "storage":        storage_info,
+        "profiles":       list(profiles_stats.values()),
     })
 
 

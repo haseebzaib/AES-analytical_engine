@@ -71,8 +71,87 @@
         </div>
     </article>
 
+    {# ── Status tab — live network overview (outside form, read-only) ──── #}
+    <section class="system-panel system-panel-wide net-status-panel" data-network-panel="status">
+
+        {# Active uplink summary #}
+        <div class="net-status-hero" data-ns-active-uplink-card>
+            <div class="net-status-hero-left">
+                <p class="hero-band-eyebrow">Active Uplink</p>
+                <div class="net-status-active-row">
+                    <span class="net-status-active-dot" data-ns-active-dot></span>
+                    <h2 class="net-status-active-name" data-ns-active-name>Loading…</h2>
+                </div>
+                <p class="net-status-active-since" data-ns-active-since></p>
+            </div>
+            <div class="net-status-hero-kpis">
+                <div class="net-status-hero-kpi">
+                    <span>Internet</span>
+                    <strong data-ns-internet>—</strong>
+                </div>
+                <div class="net-status-hero-kpi">
+                    <span>Outage now</span>
+                    <strong data-ns-current-outage>—</strong>
+                </div>
+                <div class="net-status-hero-kpi">
+                    <span>Uplink switches</span>
+                    <strong data-ns-switch-count>—</strong>
+                </div>
+                <div class="net-status-hero-kpi">
+                    <span>Last outage</span>
+                    <strong data-ns-last-outage>—</strong>
+                </div>
+            </div>
+        </div>
+
+        {# Per-interface status cards (uplink summary, from JS) #}
+        <div class="net-status-iface-grid" data-ns-iface-grid>
+            <p class="insights-empty-note">Loading interface status…</p>
+        </div>
+
+        {# wlan0 detailed live card #}
+        <div class="eth-iface-card" id="eth-card-wlan0" style="max-width:100%">
+            <div class="eth-iface-head">
+                <span class="eth-link-dot" id="wlan0-dot"></span>
+                <span class="eth-iface-name">wlan0 — Wireless Interface</span>
+                <span class="eth-iface-state" id="wlan0-state">Loading…</span>
+                <span class="eth-active-pill" id="wlan0-mode-pill" style="display:none"></span>
+            </div>
+            <div class="eth-detail-table" id="wlan0-body">
+                <div class="eth-detail-row"><span class="eth-detail-label">MAC Address</span><code class="eth-detail-val" id="wlan0-mac">—</code></div>
+                <div class="eth-detail-row" id="wlan0-ssid-row"><span class="eth-detail-label">SSID</span><code class="eth-detail-val" id="wlan0-ssid">—</code></div>
+                <div class="eth-detail-row" id="wlan0-bssid-row"><span class="eth-detail-label">AP (BSSID)</span><code class="eth-detail-val" id="wlan0-bssid">—</code></div>
+                <div class="eth-detail-row"><span class="eth-detail-label">IPv4 Address</span><code class="eth-detail-val" id="wlan0-ipv4">—</code></div>
+                <div class="eth-detail-row" id="wlan0-ipv6-row"><span class="eth-detail-label">IPv6 Addresses</span><div class="eth-ipv6-list" id="wlan0-ipv6">—</div></div>
+                <div class="eth-detail-row eth-detail-row-meta">
+                    <span class="eth-meta-chip"><span>Channel</span><code id="wlan0-channel">—</code></span>
+                    <span class="eth-meta-chip"><span>Frequency</span><code id="wlan0-freq">—</code></span>
+                    <span class="eth-meta-chip"><span>Signal</span><code id="wlan0-signal">—</code></span>
+                    <span class="eth-meta-chip"><span>RX rate</span><code id="wlan0-rxrate">—</code></span>
+                    <span class="eth-meta-chip"><span>TX rate</span><code id="wlan0-txrate">—</code></span>
+                </div>
+            </div>
+        </div>
+
+        {# Failover + outage + tailscale #}
+        <div class="net-status-detail-row">
+            <article class="net-status-detail-card">
+                <h4 class="net-status-detail-title">Last Failover</h4>
+                <div data-ns-failover-detail><p class="insights-empty-note">No failover recorded</p></div>
+            </article>
+            <article class="net-status-detail-card">
+                <h4 class="net-status-detail-title">Network Outage History</h4>
+                <div data-ns-outage-detail><p class="insights-empty-note">Loading…</p></div>
+            </article>
+            <article class="net-status-detail-card">
+                <h4 class="net-status-detail-title">Tailscale Recovery</h4>
+                <div data-ns-tailscale-detail><p class="insights-empty-note">Loading…</p></div>
+            </article>
+        </div>
+    </section>
+
     <form class="network-form" data-network-form>
-        <section class="system-panel system-panel-wide" data-network-panel="ethernet">
+        <section class="system-panel system-panel-wide is-hidden" data-network-panel="ethernet">
             <div class="system-panel-head">
                 <div>
                     <p class="hero-band-eyebrow">Ethernet</p>
@@ -134,36 +213,6 @@
                         </div>
                     </div>
 
-                </div>
-
-                {# wlan0 live info card #}
-                <div class="settings-section" style="margin-top:1.4rem">
-                    <div class="settings-section-head" style="margin-bottom:.8rem">
-                        <span class="hero-band-eyebrow" style="font-size:.7rem">Live Status</span>
-                        <h3 style="margin:0;font-size:1rem">Wireless Interface (wlan0)</h3>
-                    </div>
-                    <div class="eth-iface-card" id="eth-card-wlan0" style="max-width:100%">
-                        <div class="eth-iface-head">
-                            <span class="eth-link-dot" id="wlan0-dot"></span>
-                            <span class="eth-iface-name">wlan0</span>
-                            <span class="eth-iface-state" id="wlan0-state">Loading…</span>
-                            <span class="eth-active-pill" id="wlan0-mode-pill" style="display:none"></span>
-                        </div>
-                        <div class="eth-detail-table" id="wlan0-body">
-                            <div class="eth-detail-row"><span class="eth-detail-label">MAC Address</span><code class="eth-detail-val" id="wlan0-mac">—</code></div>
-                            <div class="eth-detail-row" id="wlan0-ssid-row"><span class="eth-detail-label">SSID</span><code class="eth-detail-val" id="wlan0-ssid">—</code></div>
-                            <div class="eth-detail-row" id="wlan0-bssid-row"><span class="eth-detail-label">AP (BSSID)</span><code class="eth-detail-val" id="wlan0-bssid">—</code></div>
-                            <div class="eth-detail-row"><span class="eth-detail-label">IPv4 Address</span><code class="eth-detail-val" id="wlan0-ipv4">—</code></div>
-                            <div class="eth-detail-row" id="wlan0-ipv6-row"><span class="eth-detail-label">IPv6 Addresses</span><div class="eth-ipv6-list" id="wlan0-ipv6">—</div></div>
-                            <div class="eth-detail-row eth-detail-row-meta">
-                                <span class="eth-meta-chip"><span>Channel</span><code id="wlan0-channel">—</code></span>
-                                <span class="eth-meta-chip"><span>Frequency</span><code id="wlan0-freq">—</code></span>
-                                <span class="eth-meta-chip"><span>Signal</span><code id="wlan0-signal">—</code></span>
-                                <span class="eth-meta-chip"><span>RX rate</span><code id="wlan0-rxrate">—</code></span>
-                                <span class="eth-meta-chip"><span>TX rate</span><code id="wlan0-txrate">—</code></span>
-                            </div>
-                        </div>
-                    </div>
                 </div>
 
                 <p class="eth-refresh-note" id="eth-refresh-note"></p>
