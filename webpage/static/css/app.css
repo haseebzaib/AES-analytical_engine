@@ -4723,6 +4723,37 @@ a.ov-feature-card:hover .ov-feature-eyebrow { color: var(--accent-cool); }
     align-content: start;
 }
 
+/* ── Forwarding tab bar ──────────────────────────────────────── */
+.fw-tab-bar {
+    margin-bottom: -0.4rem;
+}
+
+/* ── Tab panel ───────────────────────────────────────────────── */
+[data-fw-panel] {
+    display: grid;
+    gap: 1.2rem;
+    align-content: start;
+}
+[data-fw-panel].is-hidden { display: none; }
+
+/* ── Status-no-profiles hint ─────────────────────────────────── */
+.fw-status-no-profiles {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+.fw-inline-tab-link {
+    background: none;
+    border: none;
+    color: var(--accent-cool);
+    cursor: pointer;
+    font-size: inherit;
+    padding: 0;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
 /* ── Add / Edit form card ────────────────────────────────────── */
 .fw-form-card {
     border-radius: 1.35rem;
@@ -5656,7 +5687,95 @@ a.ov-feature-card:hover .ov-feature-eyebrow { color: var(--accent-cool); }
     border-radius: 4px;
     padding: 0.3rem 0.5rem;
 }
+.fw-st-error-minor {
+    margin-top: 0.25rem;
+    font-size: 0.7rem;
+    color: rgba(220,100,100,0.6);
+    padding: 0.15rem 0;
+    font-family: var(--mono);
+}
 .fw-st-error-icon { margin-right: 0.3rem; }
+
+/* ── Forwarding downtime banner ─────────────────────────────── */
+.fw-st-downtime {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.45rem 0.65rem;
+    margin: 0.35rem 0;
+    border-radius: 6px;
+    background: rgba(220,80,80,0.09);
+    border-left: 3px solid rgba(220,80,80,0.45);
+}
+.fw-status-card.is-warn .fw-st-downtime {
+    background: rgba(240,166,75,0.09);
+    border-left-color: rgba(240,166,75,0.45);
+}
+.fw-st-dt-label {
+    font-size: 0.72rem;
+    color: rgba(220,100,100,0.8);
+    font-weight: 600;
+}
+.fw-status-card.is-warn .fw-st-dt-label { color: rgba(240,166,75,0.9); }
+.fw-st-dt-dur {
+    font-size: 0.85rem;
+    font-weight: 700;
+    font-family: var(--font-display);
+    color: rgba(220,80,80,0.95);
+}
+.fw-status-card.is-warn .fw-st-dt-dur { color: rgba(240,166,75,1); }
+
+/* ── Error / failure reason row (MQTT + HTTPS) ───────────────── */
+.fw-st-err-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+    padding: 0.45rem 0.65rem;
+    margin: 0.2rem 0;
+    border-radius: 6px;
+    background: rgba(220,80,80,0.07);
+    border-left: 3px solid rgba(220,80,80,0.4);
+}
+.fw-status-card.is-warn .fw-st-err-row {
+    background: rgba(240,166,75,0.07);
+    border-left-color: rgba(240,166,75,0.4);
+}
+/* When connection is actually "ok" but last error exists (e.g. HTTP 4xx while "connected") */
+.fw-status-card.is-ok .fw-st-err-row {
+    background: rgba(240,166,75,0.06);
+    border-left-color: rgba(240,166,75,0.35);
+}
+.fw-st-err-icon {
+    flex: 0 0 auto;
+    font-size: 0.8rem;
+    margin-top: 0.15rem;
+    color: rgba(220,80,80,0.8);
+}
+.fw-status-card.is-warn .fw-st-err-icon,
+.fw-status-card.is-ok  .fw-st-err-icon { color: rgba(240,166,75,0.8); }
+.fw-st-err-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+}
+.fw-st-err-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(220,80,80,0.65);
+}
+.fw-status-card.is-warn .fw-st-err-label,
+.fw-status-card.is-ok  .fw-st-err-label { color: rgba(240,166,75,0.65); }
+.fw-st-err-msg {
+    font-size: 0.78rem;
+    color: rgba(220,100,100,0.9);
+    line-height: 1.4;
+    word-break: break-word;
+}
+.fw-status-card.is-warn .fw-st-err-msg,
+.fw-status-card.is-ok  .fw-st-err-msg { color: rgba(240,166,75,0.95); }
 
 /* ── Forwarding runtime stats grid (inside status card) ─────── */
 .fw-st-runtime-grid {
@@ -5724,6 +5843,95 @@ a.ov-feature-card:hover .ov-feature-eyebrow { color: var(--accent-cool); }
 .fw-st-buf-chip.is-buffering { background: rgba(240,166,75,0.12); border-color: rgba(240,166,75,0.3); color: var(--accent); }
 .fw-st-buf-chip.is-recovered { background: rgba(57,208,200,0.1);  border-color: rgba(57,208,200,0.25); color: var(--accent-cool); }
 .fw-st-buf-chip.is-dropped   { background: rgba(220,80,80,0.1);   border-color: rgba(220,80,80,0.25);  color: #f87171; }
+
+/* ── Buffer section (inside combined profile card) ───────────── */
+.fw-st-buf-section {
+    margin-top: 0.65rem;
+    padding: 0.6rem 0.75rem 0.65rem;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    display: grid;
+    gap: 0.5rem;
+}
+.fw-st-buf-section.is-buffering {
+    background: rgba(240,166,75,0.05);
+    border-color: rgba(240,166,75,0.2);
+}
+.fw-st-buf-section.is-evicting {
+    background: rgba(220,80,80,0.05);
+    border-color: rgba(220,80,80,0.2);
+}
+.fw-st-buf-section.is-recovered {
+    background: rgba(57,208,200,0.04);
+    border-color: rgba(57,208,200,0.15);
+}
+
+/* Header row */
+.fw-st-buf-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+.fw-st-buf-title {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: rgba(157,179,187,0.5);
+}
+
+/* Status badge (Healthy / X waiting / X evicted) */
+.fw-st-buf-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    color: var(--muted);
+}
+.fw-st-buf-badge.is-ok   { background: rgba(98,211,158,0.12);  color: rgba(98,211,158,0.9); }
+.fw-st-buf-badge.is-warn { background: rgba(240,166,75,0.12);  color: rgba(240,166,75,1); }
+.fw-st-buf-badge.is-err  { background: rgba(220,80,80,0.12);   color: rgba(248,113,113,1); }
+
+/* 4-stat grid: Waiting | Oldest | In backoff | Recovered */
+.fw-st-buf-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.4rem;
+}
+.fw-st-buf-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+.fw-st-buf-stat strong {
+    font-size: 1.1rem;
+    font-weight: 700;
+    font-family: var(--font-display);
+    line-height: 1.1;
+    color: var(--text);
+}
+.fw-st-buf-section.is-buffering .fw-st-buf-stat:first-child strong { color: rgba(240,166,75,1); }
+.fw-st-buf-section.is-evicting  .fw-st-buf-stat:first-child strong { color: rgba(248,113,113,1); }
+.fw-st-buf-stat span {
+    font-size: 0.65rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    line-height: 1.2;
+}
+
+/* Explanation line */
+.fw-st-buf-explain {
+    font-size: 0.78rem;
+    color: rgba(157,179,187,0.6);
+    line-height: 1.45;
+    margin: 0;
+}
+.fw-st-buf-section.is-buffering .fw-st-buf-explain { color: rgba(240,166,75,0.75); }
+.fw-st-buf-section.is-evicting  .fw-st-buf-explain { color: rgba(248,113,113,0.75); }
 
 /* ── Pipeline explanation block (inside status card) ────────── */
 .fw-st-pipe-explain {
@@ -6715,20 +6923,26 @@ a.ov-feature-card:hover .ov-feature-eyebrow { color: var(--accent-cool); }
     margin-bottom: 0.75rem;
 }
 
+.ns-iface-head {
+    gap: 0.4rem;
+}
+
 .ns-iface-head-left {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.45rem;
+    flex: 1;
     min-width: 0;
 }
 
 .ns-iface-head-right {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.35rem;
     flex: 0 0 auto;
     flex-wrap: wrap;
     justify-content: flex-end;
+    max-width: 55%;
 }
 
 .ns-iface-dot {
@@ -6738,19 +6952,20 @@ a.ov-feature-card:hover .ov-feature-eyebrow { color: var(--accent-cool); }
 .ns-iface-name {
     font-size: 0.88rem;
     font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
+    /* Allow name to be visible — don't truncate */
+    white-space: normal;
+    word-break: break-word;
+    line-height: 1.2;
 }
 
 .ns-iface-status-badge {
-    font-size: 0.72rem;
+    font-size: 0.68rem;
     font-weight: 600;
-    padding: 0.15rem 0.55rem;
+    padding: 0.12rem 0.45rem;
     border-radius: 999px;
     white-space: nowrap;
     border: 1px solid transparent;
+    max-width: 100%;
 }
 
 .ns-status-active {

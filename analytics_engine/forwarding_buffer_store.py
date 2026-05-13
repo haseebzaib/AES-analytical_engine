@@ -274,7 +274,7 @@ class ForwardingBufferStore:
         replayed = self._session_replayed.get(profile_id, 0)
         evicted  = self._session_evicted.get(profile_id, 0)   # only ring-buffer evictions
         total    = replayed + evicted
-        rate     = round(100 * replayed / total, 1) if total else 100.0
+        rate     = round(100 * replayed / total, 1) if total else None  # None = no history yet
         oldest   = self.oldest_pending_ms(profile_id)
         now_ms   = int(time.time() * 1000)
 

@@ -972,7 +972,7 @@ async def get_forwarding_buffer_stats(request: Request) -> JSONResponse:
     buf = getattr(request.app.state, "forwarding_buffer_store", None)
     if buf is None:
         return JSONResponse({"ok": True, "total_pending": 0, "total_replayed": 0,
-                             "total_dropped": 0, "success_rate": 100.0, "profiles": []})
+                             "total_dropped": 0, "success_rate": None, "profiles": []})
 
     mqtt_fwd  = getattr(request.app.state, "mqtt_forwarder",  None)
     https_fwd = getattr(request.app.state, "https_forwarder", None)
@@ -987,7 +987,7 @@ async def get_forwarding_buffer_stats(request: Request) -> JSONResponse:
     total_replayed = sum(s["replayed"] for s in profiles_stats.values())
     total_dropped  = sum(s["dropped"]  for s in profiles_stats.values())
     total          = total_replayed + total_dropped
-    success_rate   = round(100 * total_replayed / total, 1) if total else 100.0
+    success_rate   = round(100 * total_replayed / total, 1) if total else None  # None = no history
     storage_info   = buf.get_storage_info()
 
     return JSONResponse({

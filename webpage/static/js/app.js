@@ -320,6 +320,19 @@ document.addEventListener("DOMContentLoaded", () => {
                 const httpsItems = d.https || [];
                 const allItems   = [...mqttItems, ...httpsItems];
 
+                // Build a quick name map from config (always current after saves)
+                const ovNameMap = {};
+                try {
+                    const cr = await fetch("/api/forwarding/config");
+                    if (cr.ok) {
+                        const cd = await cr.json();
+                        for (const p of (cd.profiles || [])) {
+                            if (p.id) ovNameMap[p.id] = p.name || "Unnamed";
+                        }
+                    }
+                } catch (_) {}
+                const _fwdName = (x) => (x.profile_id && ovNameMap[x.profile_id]) || x.profile_name || "Profile";
+
                 // ── Update Data Forwarding domain card (always) ───────────────
                 if (fwdOverviewItem) {
                     if (allItems.length === 0) {
@@ -343,7 +356,7 @@ document.addEventListener("DOMContentLoaded", () => {
                                        : okCount === allItems.length ? "Active"
                                        : okCount > 0 ? `${okCount}/${allItems.length} active` : "Error";
                         const fwdDetail = allItems.map((x) => {
-                            const name = x.profile_name || "profile";
+                            const name = _fwdName(x);
                             const ok   = ("broker" in x) ? x.state === "connected" : x.tunnel_alive;
                             return `${name}: ${ok ? "✓" : "✗"}`;
                         }).join("  ·  ");
@@ -534,6 +547,13 @@ document.addEventListener("DOMContentLoaded", () => {
             const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60);
             return `${h}h ${m}m`;
         };
+        // Short display name for interface cards
+        const _stIfaceName = (key) =>
+            key === "eth0" ? "Ethernet 0" : key === "eth1" ? "Ethernet 1"
+          : key === "wifi_client" ? "Wi-Fi" : key === "cellular" ? "Cellular"
+          : key === "none" ? "Offline" : (key || "—");
+
+        // Full name for hero/failover labels
         const _stUplink = (key) =>
             key === "eth0" ? "Ethernet (eth0)" : key === "eth1" ? "Ethernet (eth1)"
           : key === "wifi_client" ? "Wi-Fi (wlan0)" : key === "cellular" ? "Cellular"
@@ -541,19 +561,26 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // Determine real interface status by cross-referencing uplink_stats + network_state
         const _ifaceRealStatus = (key, uplinkStatus, activeUplink, state) => {
-            if (key === activeUplink && uplinkStatus === "up") return { label: "Active Uplink", cls: "is-active", tone: "active" };
-            if (uplinkStatus === "up")  return { label: "Up (standby)", cls: "is-up", tone: "standby" };
-            if (uplinkStatus === "disabled") return { label: "Disabled", cls: "is-disabled", tone: "inactive" };
-            // "down" — need to cross-ref for real meaning
-            if (key === "eth0")  { const l = state?.eth0?.link_up;        return l ? { label: "Link up (not routing)", cls: "is-standby", tone: "standby" } : { label: "No link", cls: "is-down", tone: "inactive" }; }
-            if (key === "eth1")  { const l = state?.eth1?.link_up;        return l ? { label: "Link up (not routing)", cls: "is-standby", tone: "standby" } : { label: "No link", cls: "is-down", tone: "inactive" }; }
-            if (key === "wifi_client") { const s = state?.wifi_client?.connected_ssid; return s ? { label: `Connected (standby)`, cls: "is-standby", tone: "standby" } : { label: "Not associated", cls: "is-down", tone: "inactive" }; }
+            if (key === activeUplink && uplinkStatus === "up") return { label: "Active",   cls: "is-active",   tone: "active" };
+            if (uplinkStatus === "up")                         return { label: "Standby",  cls: "is-up",       tone: "standby" };
+            if (uplinkStatus === "disabled")                   return { label: "Disabled", cls: "is-disabled", tone: "inactive" };
+            // "down" — cross-reference actual link/connection state
+            if (key === "eth0" || key === "eth1") {
+                const l = key === "eth0" ? state?.eth0?.link_up : state?.eth1?.link_up;
+                return l ? { label: "Up",      cls: "is-standby", tone: "standby" }
+                         : { label: "No link", cls: "is-down",    tone: "inactive" };
+            }
+            if (key === "wifi_client") {
+                const s = state?.wifi_client?.connected_ssid;
+                return s ? { label: "Standby",      cls: "is-standby", tone: "standby" }
+                         : { label: "Not connected", cls: "is-down",   tone: "inactive" };
+            }
             if (key === "cellular") {
                 const c = state?.cellular?.connected;
                 const e = state?.cellular?.enabled;
-                if (!e) return { label: "Disabled", cls: "is-disabled", tone: "inactive" };
-                return c ? { label: "Connected · Standby", cls: "is-standby", tone: "standby" }
-                         : { label: "Modem offline", cls: "is-down", tone: "inactive" };
+                if (!e) return { label: "Off",     cls: "is-disabled", tone: "inactive" };
+                return c ? { label: "Standby",     cls: "is-standby",  tone: "standby" }
+                         : { label: "Offline",     cls: "is-down",     tone: "inactive" };
             }
             return { label: "Unknown", cls: "is-unknown", tone: "inactive" };
         };
@@ -565,6 +592,13 @@ document.addEventListener("DOMContentLoaded", () => {
             const network      = uplinkStats.network   || {};
             const ifaces       = uplinkStats.interfaces || {};
             const hasUplink    = Boolean(network.has_uplink);
+
+            // Detect if network monitor hasn't written data yet
+            const monitorHasData = uplinkStats && (
+                uplinkStats.started_epoch > 0 ||
+                Object.keys(ifaces).length > 0 ||
+                uplinkStats.switch_count !== undefined
+            );
 
             // Hero — active uplink
             const nsActiveDot  = connectivityShell.querySelector("[data-ns-active-dot]");
@@ -579,15 +613,30 @@ document.addEventListener("DOMContentLoaded", () => {
             if (nsActiveName) nsActiveName.textContent = _stUplink(activeUplink);
             if (nsActiveSince) {
                 const dur = uplinkStats.active_duration_seconds;
-                nsActiveSince.textContent = dur !== undefined && activeUplink !== "none"
-                    ? `Active for ${_stFmt(dur)}`
-                    : activeUplink === "none" ? "No active uplink" : "";
+                if (!monitorHasData) {
+                    nsActiveSince.textContent = "Network monitor not running — check systemctl status gateway-network-monitor";
+                    nsActiveSince.style.color = "var(--accent)";
+                } else {
+                    nsActiveSince.style.color = "";
+                    nsActiveSince.textContent = dur !== undefined && activeUplink !== "none"
+                        ? `Active for ${_stFmt(dur)}`
+                        : activeUplink === "none" ? "No active uplink detected" : "";
+                }
             }
-            // Internet reachability: check eth0/eth1 internet_ok or cellular connected
-            const internetOk = state?.eth0?.internet_ok || state?.eth1?.internet_ok || Boolean(state?.cellular?.connected);
+            // Internet reachability — only show "Unavailable" if monitor explicitly tested and failed.
+            // If internet_ok is missing from state.json entirely, the monitor hasn't run → show "—".
+            const eth0 = state?.eth0 ?? {};
+            const eth1 = state?.eth1 ?? {};
+            const monitorTestedInternet = "internet_ok" in eth0 || "internet_ok" in eth1;
+            const internetOk = eth0.internet_ok || eth1.internet_ok || Boolean(state?.cellular?.connected);
             if (nsInternet) {
-                nsInternet.textContent = internetOk ? "Available" : "Unavailable";
-                nsInternet.style.color = internetOk ? "var(--success)" : "#f87171";
+                if (!monitorTestedInternet && !state?.cellular?.connected) {
+                    nsInternet.textContent = "Not checked";
+                    nsInternet.style.color = "var(--muted)";
+                } else {
+                    nsInternet.textContent = internetOk ? "Available" : "Unavailable";
+                    nsInternet.style.color = internetOk ? "var(--success)" : "#f87171";
+                }
             }
             const outageNow = network.current_down_seconds || 0;
             if (nsOutageNow) {
@@ -702,27 +751,25 @@ document.addEventListener("DOMContentLoaded", () => {
                         totalDn > 0 && !celConnected ? `<div class="ns-iface-extra"><span>Total downtime</span><strong>${_stFmt(totalDn)}</strong></div>` : "",
                     ].filter(Boolean).join("");
 
-                    const dotCls = rslt.tone === "active" ? "is-active" : rslt.tone === "standby" ? "is-standby" : "is-inactive";
-                    // Short status badge text for the pill
-                    const shortStatus = rslt.label === "Connected · Standby" ? "Standby"
-                                      : rslt.label === "Active Uplink"       ? "Active"
-                                      : rslt.label === "Up (standby)"        ? "Standby"
-                                      : rslt.label;
+                    const dotCls   = rslt.tone === "active" ? "is-active" : rslt.tone === "standby" ? "is-standby" : "is-inactive";
+                    const cardName = _stIfaceName(key);   // short: "Ethernet 0", "Wi-Fi", etc.
                     return `<article class="ns-iface-card ${isActive ? "is-active-uplink" : ""}">
                         <div class="ns-iface-head">
                             <div class="ns-iface-head-left">
                                 <span class="ns-iface-dot connectivity-badge ${dotCls}"></span>
-                                <span class="ns-iface-name">${name}</span>
+                                <span class="ns-iface-name">${cardName}</span>
                             </div>
                             <div class="ns-iface-head-right">
                                 ${isActive ? `<span class="ns-active-pill">Active</span>` : ""}
-                                <span class="ns-iface-status-badge ns-status-${rslt.tone}">${shortStatus}</span>
+                                <span class="ns-iface-status-badge ns-status-${rslt.tone}">${rslt.label}</span>
                             </div>
                         </div>
                         <div class="ns-iface-details">${extraLines}${statsLines}</div>
                     </article>`;
                 }).join("");
-                nsIfaceGrid.innerHTML = cards || `<p class="insights-empty-note">No interface data from network monitor yet.</p>`;
+                nsIfaceGrid.innerHTML = cards || (monitorHasData
+                    ? `<p class="insights-empty-note">No interface data available yet.</p>`
+                    : `<p class="insights-empty-note" style="color:var(--accent)">Network monitor has not written data yet. Run: <code>systemctl status gateway-network-monitor</code></p>`);
             }
 
             // Last failover
@@ -4667,6 +4714,13 @@ document.addEventListener("DOMContentLoaded", () => {
                     if (fwSaveMsg) fwSaveMsg.textContent = "Saved.";
                     fwHideForm();
                     await fwLoad();
+                    // Rebuild name map so Live Status + Buffer show new name immediately
+                    await _buildConfigNameMap();
+                    fwConfigNameMap = { ...fwConfigNameMap }; // force re-render trigger
+                    fwRefreshStatus();
+                    fwRefreshBuffer();
+                    // Switch to Profiles tab so user sees the updated profile list
+                    syncFwTabs("profiles");
                 } else {
                     if (fwSaveMsg) { fwSaveMsg.textContent = d.message || "Save failed."; fwSaveMsg.className = "fw-save-msg is-error"; }
                 }
@@ -4921,15 +4975,26 @@ document.addEventListener("DOMContentLoaded", () => {
             if (secs < 2)   return "just now";
             if (secs < 60)  return `${secs}s ago`;
             if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
-            return `${Math.floor(secs / 3600)}h ago`;
+            const h = Math.floor(secs / 3600);
+            const m = Math.floor((secs % 3600) / 60);
+            return m > 0 ? `${h}h ${m}m ago` : `${h}h ago`;
+        };
+
+        const _fwDur = (secs) => {
+            if (!secs) return "—";
+            if (secs < 60)  return `${secs}s`;
+            if (secs < 3600) return `${Math.floor(secs / 60)}m ${secs % 60}s`;
+            const h = Math.floor(secs / 3600);
+            const m = Math.floor((secs % 3600) / 60);
+            return m > 0 ? `${h}h ${m}m` : `${h}h`;
         };
 
         const _fwStateLabel = (item, isMqtt) => {
             if (isMqtt) {
-                const map = { connected: "Connected", connecting: "Connecting…", error: "Error", stopped: "Stopped" };
+                const map = { connected: "Connected", connecting: "Reconnecting…", error: "Connection error", stopped: "Stopped" };
                 return map[item.state] || item.state;
             }
-            return item.tunnel_alive ? "Tunnel alive" : "Tunnel down";
+            return item.tunnel_alive ? "Connected" : "Connection down";
         };
 
         const _fwStateCls = (item, isMqtt) => {
@@ -4962,10 +5027,13 @@ document.addEventListener("DOMContentLoaded", () => {
                     };
                 }
 
+                const fwNoProfilesHint = fwShell.querySelector("[data-fw-status-no-profiles]");
                 if (all.length === 0) {
                     fwStatusPanel.classList.add("ov-hidden");
+                    if (fwNoProfilesHint) fwNoProfilesHint.classList.remove("ov-hidden");
                     return;
                 }
+                if (fwNoProfilesHint) fwNoProfilesHint.classList.add("ov-hidden");
                 fwStatusPanel.classList.remove("ov-hidden");
                 if (fwStatusTs) fwStatusTs.textContent = `Updated ${new Date().toLocaleTimeString()}`;
 
@@ -4999,14 +5067,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
                         if (titleEl) {
                             titleEl.textContent = totalDropped > 0
-                                ? `${totalDropped} message${totalDropped > 1 ? "s" : ""} permanently lost — delivery rejected after max retries`
+                                ? `${totalDropped} message${totalDropped > 1 ? "s" : ""} evicted from buffer — local buffer was full`
                                 : `${totalPending} message${totalPending > 1 ? "s" : ""} saved locally, waiting for delivery`;
                         }
                         if (detailEl) {
-                            detailEl.textContent = rootCauses.length > 0
-                                ? rootCauses.join("; ") + ". Check endpoint URL and authentication."
+                            detailEl.textContent = totalDropped > 0
+                                ? `The local buffer reached capacity and oldest messages were removed to make room for new data. Connection issues may be preventing delivery — check profile status below.`
                                 : totalPending > 0
-                                ? `${totalPending} message${totalPending > 1 ? "s" : ""} stored safely in the local buffer — will be sent automatically when the connection recovers.${totalReplayed > 0 ? ` ${totalReplayed} already recovered.` : ""}`
+                                ? `Messages are stored safely in the local buffer and will be sent automatically when the connection recovers.${totalReplayed > 0 ? ` ${totalReplayed} already recovered and delivered.` : ""}`
                                 : "Check the profile configuration below.";
                         }
                         if (pendEl)  pendEl.textContent  = totalPending.toLocaleString();
@@ -5023,15 +5091,22 @@ document.addEventListener("DOMContentLoaded", () => {
                         const badge    = isMqtt ? "MQTT" : "HTTPS";
                         const dest     = isMqtt ? item.broker : item.endpoint;
                         const tlsNote  = item.tls ? `<span class="fw-tls-chip">TLS</span>` : "";
+                        // Resolve name from config map (always up-to-date after save)
+                        const profileName = (item.profile_id && fwConfigNameMap[item.profile_id]?.name)
+                            || item.profile_name || "Unnamed Profile";
                         const count    = isMqtt ? (item.publish_count ?? 0) : (item.post_count ?? 0);
                         const pending  = item.buffer?.pending  ?? 0;
                         const replayed = item.buffer?.replayed ?? 0;
                         const dropped  = item.buffer?.dropped  ?? 0;
                         const sucRate  = item.buffer?.success_rate ?? 100;
 
+                        // Connection downtime (when not connected)
+                        const downSecs = isMqtt ? item.not_connected_since : item.down_since_ago;
+                        const isDown   = isMqtt ? (item.state !== "connected") : (!item.tunnel_alive);
+
                         // Session uptime & message rate
-                        const connSecs = item.connected_since ?? 0;
-                        const sessionStr = connSecs > 0 ? _fwAgo(connSecs) : "—";
+                        const connSecs   = item.connected_since ?? 0;
+                        const sessionStr = connSecs > 0 ? _fwDur(connSecs) : "—";
                         const ratePerSec = connSecs > 10 && count > 0 ? count / connSecs : 0;
                         const rateStr = ratePerSec >= 1
                             ? `${ratePerSec.toFixed(1)}/s`
@@ -5042,86 +5117,124 @@ document.addEventListener("DOMContentLoaded", () => {
                         const lastAgo  = isMqtt ? item.last_publish_ago : item.last_post_ago;
                         const lastStr  = lastAgo != null ? _fwAgo(lastAgo) : "never";
                         const httpInfo = !isMqtt && item.last_status_code ? ` · HTTP ${item.last_status_code}` : "";
-                        const restarts = !isMqtt && item.tunnel_restarts  ? ` · ${item.tunnel_restarts} TLS restarts` : "";
+                        const restarts = !isMqtt && item.tunnel_restarts > 5 ? ` · ${item.tunnel_restarts} reconnects` : "";
 
-                        // Error
-                        const errHtml = item.last_error
-                            ? `<div class="fw-st-error"><span class="fw-st-error-icon">⚠</span> ${item.last_error}</div>` : "";
+                        // Downtime banner (when connection is down)
+                        const downLabel = isMqtt
+                            ? (item.state === "connecting" ? "Reconnecting…" : "Connection error —")
+                            : "Connection down —";
+                        const downHtml = isDown && downSecs != null
+                            ? `<div class="fw-st-downtime">
+                                <span class="fw-st-dt-label">${downLabel}</span>
+                                <span class="fw-st-dt-dur">down for ${_fwDur(downSecs)}</span>
+                               </div>` : "";
 
-                        // Pipeline state — determine what's really happening
-                        const pipeState = dropped > 0 && sucRate === 0 ? "failing"
-                            : dropped > 0 ? "degraded"
-                            : pending > 0 ? "buffering"
-                            : "healthy";
-
-                        // Root cause from error info
-                        const httpCode  = item.last_status_code;
-                        const httpIsErr = httpCode && httpCode >= 400;
-                        const causeHint = httpIsErr
-                            ? `Server is returning HTTP ${httpCode} — check endpoint URL and authentication.`
-                            : item.last_error ? item.last_error : "";
-
-                        // Compose clear explanatory buffer section
-                        const bufLines = [];
-                        if (pipeState === "healthy" && replayed === 0) {
-                            // Only show if there's something to say
-                        } else {
-                            if (pending > 0) {
-                                bufLines.push(`<div class="fw-st-pipe-line is-buffering">
-                                    <span class="fw-st-pipe-dot"></span>
-                                    <span><strong>${pending.toLocaleString()} message${pending > 1 ? "s" : ""}</strong> saved locally — waiting to be delivered when connection recovers</span>
-                                </div>`);
-                            }
-                            if (replayed > 0) {
-                                bufLines.push(`<div class="fw-st-pipe-line is-recovered">
-                                    <span class="fw-st-pipe-dot"></span>
-                                    <span><strong>${replayed.toLocaleString()} message${replayed > 1 ? "s" : ""}</strong> successfully recovered from buffer after a previous outage</span>
-                                </div>`);
-                            }
-                            if (dropped > 0) {
-                                bufLines.push(`<div class="fw-st-pipe-line is-dropped">
-                                    <span class="fw-st-pipe-dot"></span>
-                                    <span><strong>${dropped} message${dropped > 1 ? "s" : ""} evicted from buffer</strong> — buffer was full, oldest messages removed to make room for new data</span>
-                                </div>`);
-                            }
-                            if (causeHint) {
-                                bufLines.push(`<div class="fw-st-pipe-line is-cause">
-                                    <span class="fw-st-pipe-dot-arrow">→</span>
-                                    <span class="fw-st-cause-text">${causeHint}</span>
-                                </div>`);
-                            }
+                        // ── Error/failure reason row (shown for BOTH MQTT and HTTPS) ──
+                        const httpCode    = item.last_status_code;
+                        const httpIsErr   = httpCode && httpCode >= 400;
+                        // Build the human-readable failure reason
+                        let failReason = "";
+                        if (httpIsErr) {
+                            failReason = `Server rejected with HTTP ${httpCode} — check endpoint URL and authentication.`;
+                        } else if (item.last_error) {
+                            failReason = item.last_error;
                         }
-                        const bufHtml = bufLines.length > 0
-                            ? `<div class="fw-st-pipe-explain">${bufLines.join("")}</div>` : "";
+                        // Show the error row whenever there's a reason — always, not just when down
+                        const errRowHtml = failReason
+                            ? `<div class="fw-st-err-row">
+                                <span class="fw-st-err-icon">⚠</span>
+                                <div class="fw-st-err-body">
+                                    <span class="fw-st-err-label">${isDown ? "Failure reason" : "Last error"}</span>
+                                    <span class="fw-st-err-msg">${failReason}</span>
+                                </div>
+                               </div>` : "";
+
+                        // Root cause for buffer explain (only when no dedicated error row covers it)
+                        const causeHint = httpIsErr && !failReason ? `HTTP ${httpCode}` : "";
+
+                        // ── Buffer section data ───────────────────────────────
+                        const oldestAge = item.buffer?.oldest_pending_age_s;
+                        const cooling   = item.buffer?.cooling_down ?? 0;
+                        const bufHealthy = pending === 0 && dropped === 0;
+
+                        // Buffer section visual state
+                        const bufSectionCls = dropped > 0 ? "is-evicting"
+                            : pending > 0 ? "is-buffering"
+                            : replayed > 0 ? "is-recovered"
+                            : "is-healthy";
+
+                        // Buffer status badge
+                        const bufBadge = dropped > 0
+                            ? `<span class="fw-st-buf-badge is-err">⚠ ${dropped.toLocaleString()} evicted</span>`
+                            : pending > 0
+                            ? `<span class="fw-st-buf-badge is-warn">⬆ ${pending.toLocaleString()} waiting</span>`
+                            : replayed > 0
+                            ? `<span class="fw-st-buf-badge is-ok">✓ ${replayed.toLocaleString()} recovered</span>`
+                            : `<span class="fw-st-buf-badge is-ok">✓ Healthy</span>`;
+
+                        // Plain-language explanation line
+                        let bufExplain = "";
+                        if (pending > 0) {
+                            bufExplain = `Saved locally — will send automatically when connection recovers.`;
+                        } else if (replayed > 0 && pending === 0) {
+                            bufExplain = `${replayed.toLocaleString()} message${replayed !== 1 ? "s" : ""} recovered and delivered from buffer this session.`;
+                        } else if (dropped > 0) {
+                            bufExplain = `Buffer was full — oldest messages removed to make room for new data.`;
+                        }
 
                         return `
                         <div class="fw-status-card ${stCls}">
                             <div class="fw-st-head">
                                 <span class="fw-proto-badge is-${badge.toLowerCase()}">${badge}</span>
-                                <span class="fw-st-name">${item.profile_name || "—"}</span>
+                                <span class="fw-st-name">${profileName}</span>
                                 <span class="fw-st-state">${stLbl}</span>
                             </div>
                             <div class="fw-st-dest">${dest}${tlsNote}</div>
+                            ${downHtml}
+                            ${errRowHtml}
                             <div class="fw-st-runtime-grid">
                                 <div class="fw-st-runtime-stat">
                                     <strong>${count.toLocaleString()}</strong>
-                                    <span>${isMqtt ? "Messages sent" : "Requests sent"}</span>
+                                    <span>${isMqtt ? "Published" : "Sent"}</span>
                                 </div>
                                 <div class="fw-st-runtime-stat">
                                     <strong>${rateStr}</strong>
                                     <span>Avg rate</span>
                                 </div>
                                 <div class="fw-st-runtime-stat">
-                                    <strong>${sessionStr}</strong>
-                                    <span>Session uptime</span>
+                                    <strong>${isDown ? "—" : sessionStr}</strong>
+                                    <span>${isDown ? "Not connected" : "Up for"}</span>
                                 </div>
                                 <div class="fw-st-runtime-stat">
                                     <strong>${lastStr}</strong>
-                                    <span>Last ${isMqtt ? "publish" : "POST"}${httpInfo}${restarts}</span>
+                                    <span>Last message${httpInfo}${restarts}</span>
                                 </div>
                             </div>
-                            ${bufHtml}
-                            ${errHtml}
+                            <div class="fw-st-buf-section ${bufSectionCls}">
+                                <div class="fw-st-buf-header">
+                                    <span class="fw-st-buf-title">Message Buffer</span>
+                                    ${bufBadge}
+                                </div>
+                                <div class="fw-st-buf-stat-grid">
+                                    <div class="fw-st-buf-stat">
+                                        <strong>${pending.toLocaleString()}</strong>
+                                        <span>Waiting to send</span>
+                                    </div>
+                                    <div class="fw-st-buf-stat">
+                                        <strong>${oldestAge != null ? _fwAgo(oldestAge) : "—"}</strong>
+                                        <span>Oldest message</span>
+                                    </div>
+                                    <div class="fw-st-buf-stat">
+                                        <strong>${cooling > 0 ? cooling.toLocaleString() : "—"}</strong>
+                                        <span>In retry backoff</span>
+                                    </div>
+                                    <div class="fw-st-buf-stat">
+                                        <strong>${replayed > 0 ? replayed.toLocaleString() : "—"}</strong>
+                                        <span>Recovered</span>
+                                    </div>
+                                </div>
+                                ${bufExplain ? `<p class="fw-st-buf-explain">${bufExplain}</p>` : ""}
+                            </div>
                         </div>`;
                     }).join("");
                 }
@@ -5132,7 +5245,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // ── Buffer stats panel ────────────────────────────────────────────────
         const fwBufPanel    = fwShell.querySelector("[data-fw-buffer-panel]");
-        const fwBufProfiles = fwShell.querySelector("[data-fw-buffer-profiles]");
         const fwBufPending  = fwShell.querySelector("[data-fw-buf-pending]");
         const fwBufReplayed = fwShell.querySelector("[data-fw-buf-replayed]");
         const fwBufDropped  = fwShell.querySelector("[data-fw-buf-dropped]");
@@ -5173,17 +5285,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const fwRefreshBuffer = async () => {
             if (!fwBufPanel) return;
-            // Build name map from config if not already populated
-            if (Object.keys(fwConfigNameMap).length === 0) {
-                await _buildConfigNameMap();
-            }
             try {
                 const r = await fetch("/api/forwarding/buffer-stats");
                 if (!r.ok) return;
                 const d = await r.json();
                 if (!d.ok) return;
 
-                // Always show the buffer panel so users can see pipeline health
                 fwBufPanel.classList.remove("ov-hidden");
 
                 const totalPending  = d.total_pending  ?? 0;
@@ -5191,6 +5298,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 const totalDropped  = d.total_dropped  ?? 0;
                 const successRate   = d.success_rate   ?? 100;
                 const allHealthy    = totalPending === 0 && totalDropped === 0;
+                // "Delivery rate" = recovered / (recovered + evicted).
+                // Only meaningful once some messages have left the buffer.
+                // Show "—" when there's no history yet to avoid misleading 100%.
+                const hasRateHistory = (totalReplayed + totalDropped) > 0;
 
                 // Storage info in header
                 const storageInfoEl = fwBufPanel.querySelector("[data-fw-storage-info]");
@@ -5208,78 +5319,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (fwBufReplayed) fwBufReplayed.textContent = totalReplayed.toLocaleString();
                 if (fwBufDropped)  fwBufDropped.textContent  = totalDropped.toLocaleString();
                 if (fwBufRate) {
-                    fwBufRate.textContent = allHealthy ? "100%" : `${successRate}%`;
-                    fwBufRate.style.color = allHealthy ? "var(--success)" : successRate < 90 ? "#f87171" : "var(--accent)";
-                }
-
-                if (fwBufProfiles) {
-                    const profiles = d.profiles || [];
-                    if (profiles.length === 0) {
-                        fwBufProfiles.innerHTML = `<p class="insights-empty-note">No forwarding profiles configured.</p>`;
+                    if (!hasRateHistory) {
+                        fwBufRate.textContent = "—";
+                        fwBufRate.style.color = "var(--muted)";
                     } else {
-                        fwBufProfiles.innerHTML = profiles.map((p) => {
-                            // Resolve name: config (most reliable) → status map → fallback
-                            const meta      = fwConfigNameMap[p.profile_id]
-                                           || fwProfileMeta[p.profile_id]
-                                           || {};
-                            const name      = meta.name     || "Unnamed Profile";
-                            const protocol  = meta.protocol || "";
-                            const pending   = p.pending  ?? 0;
-                            const replayed  = p.replayed ?? 0;
-                            const dropped   = p.dropped  ?? 0;
-                            const rate      = p.success_rate ?? 100;
-                            const healthy   = pending === 0 && dropped === 0;
-                            const ageText   = pending > 0 && p.oldest_pending_age_s != null
-                                ? (p.oldest_pending_age_s >= 60
-                                    ? `Oldest queued: ${Math.round(p.oldest_pending_age_s / 60)}m ago`
-                                    : `Oldest queued: ${p.oldest_pending_age_s}s ago`)
-                                : "";
-                            const spark     = _fwSparkline(p.level_history);
-                            const statusCls = pending > 0 ? "is-warn" : dropped > 0 ? "is-err" : "is-ok";
-
-                            // Build plain-language status lines for this profile
-                            const cooling  = p.cooling_down   ?? 0;
-                            const ready    = p.ready_to_retry ?? pending;
-                            const bufStateLines = [];
-                            if (healthy) {
-                                bufStateLines.push(`<span class="fw-buf-state-line is-ok">✓ All messages delivered — buffer empty</span>`);
-                            } else {
-                                if (pending > 0) {
-                                    const detail = cooling > 0
-                                        ? ` (${ready} ready · ${cooling} in retry backoff)`
-                                        : ageText ? ` · ${ageText}` : "";
-                                    bufStateLines.push(`<span class="fw-buf-state-line is-warn">
-                                        ${pending} message${pending > 1 ? "s" : ""} saved locally, waiting to deliver${detail}
-                                    </span>`);
-                                }
-                                if (replayed > 0) bufStateLines.push(`<span class="fw-buf-state-line is-ok">
-                                    ${replayed} message${replayed > 1 ? "s" : ""} successfully sent from buffer after a previous outage
-                                </span>`);
-                                if (dropped > 0) bufStateLines.push(`<span class="fw-buf-state-line is-err">
-                                    ${dropped} message${dropped > 1 ? "s" : ""} evicted — buffer was full (${dropped > 1 ? "oldest messages removed" : "oldest message removed"} to make room)
-                                </span>`);
-                                if (rate < 100) bufStateLines.push(`<span class="fw-buf-state-line is-muted">
-                                    ${rate}% delivery success rate this session
-                                </span>`);
-                            }
-
-                            return `
-                            <div class="fw-buf-profile-card ${statusCls}">
-                                <div class="fw-buf-profile-head">
-                                    <div class="fw-buf-profile-identity">
-                                        ${protocol ? `<span class="fw-proto-badge is-${protocol.toLowerCase()}" style="font-size:.62rem;padding:.1rem .4rem">${protocol}</span>` : ""}
-                                        <span class="fw-buf-profile-name">${name}</span>
-                                    </div>
-                                    ${healthy
-                                        ? `<span class="fw-buf-badge is-ok">✓ Healthy</span>`
-                                        : dropped > 0
-                                        ? `<span class="fw-buf-badge is-err">⚠ Messages lost</span>`
-                                        : `<span class="fw-buf-badge is-warn">⬆ ${pending} waiting</span>`}
-                                </div>
-                                <div class="fw-buf-state-lines">${bufStateLines.join("")}</div>
-                                ${spark ? `<div class="fw-sparkline-wrap" title="Buffer fill level over last 5 minutes">${spark}</div>` : ""}
-                            </div>`;
-                        }).join("");
+                        fwBufRate.textContent = `${successRate}%`;
+                        fwBufRate.style.color = successRate >= 100 ? "var(--success)" : successRate < 90 ? "#f87171" : "var(--accent)";
                     }
                 }
             } catch (e) {
@@ -5287,7 +5332,34 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         };
 
-        // Initial load — build config name map first, then status, then buffer
+        // ── Tab switching ────────────────────────────────────────────────────
+        const fwTabBtns  = Array.from(fwShell.querySelectorAll("[data-fw-tab]"));
+        const fwPanels   = Array.from(fwShell.querySelectorAll("[data-fw-panel]"));
+
+        const syncFwTabs = (tabId) => {
+            fwTabBtns.forEach((btn) => {
+                const isCurrent = btn.getAttribute("data-fw-tab") === tabId;
+                btn.classList.toggle("is-current", isCurrent);
+                btn.setAttribute("aria-selected", isCurrent ? "true" : "false");
+            });
+            fwPanels.forEach((panel) => {
+                panel.classList.toggle("is-hidden", panel.getAttribute("data-fw-panel") !== tabId);
+            });
+        };
+
+        fwTabBtns.forEach((btn) => btn.addEventListener("click", () => syncFwTabs(btn.getAttribute("data-fw-tab"))));
+        syncFwTabs("status");
+
+        // Switch to profiles tab when form opens for a new profile
+        fwShell.querySelectorAll("[data-fw-add]").forEach((btn) => {
+            btn.addEventListener("click", () => syncFwTabs("profiles"), true);
+        });
+
+        // Inline "Profiles tab" link inside no-profiles hint
+        fwShell.querySelectorAll("[data-fw-tab-goto]").forEach((btn) => {
+            btn.addEventListener("click", () => syncFwTabs(btn.getAttribute("data-fw-tab-goto")));
+        });
+
         fwLoad();
         _buildConfigNameMap().then(() => {
             fwRefreshStatus();

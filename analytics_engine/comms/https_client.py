@@ -38,6 +38,7 @@ class HttpsProfileClient:
     def __init__(self, profile: dict, gateway_id: str) -> None:
         cfg              = profile.get("https") or {}
         self._name       = profile.get("name", "?")
+        self._profile_id = profile.get("id", "")
         self._host       = cfg.get("host", "")
         self._port       = int(cfg.get("port", 443))
         self._tls        = bool(cfg.get("tls", True))
@@ -62,15 +63,19 @@ class HttpsProfileClient:
         self._last_post_at:   float | None = None   # monotonic
         self._last_status_code: int | None = None
         self._tunnel_restarts: int       = 0
+        self._down_at:        float | None = None   # monotonic; set on first failure, cleared on success
 
         self._log = logging.getLogger("comms.https_client")
 
     def get_status(self) -> dict:
         """Return a snapshot of connection/post status for the UI."""
         now    = time.monotonic()
-        alive  = self._proc is not None and self._proc.poll() is None if self._tls else True
+        # TLS: alive = subprocess is running
+        # Plain HTTP: alive = no consecutive delivery failures (down_at is None)
+        alive  = (self._proc is not None and self._proc.poll() is None) if self._tls else (self._down_at is None)
         scheme = "https" if self._tls else "http"
         return {
+            "profile_id":       self._profile_id,
             "profile_name":     self._name,
             "endpoint":         f"{scheme}://{self._host}:{self._port}",
             "tls":              self._tls,
@@ -80,6 +85,7 @@ class HttpsProfileClient:
             "last_status_code": self._last_status_code,
             "last_post_ago":    round(now - self._last_post_at) if self._last_post_at else None,
             "post_count":       self._post_count,
+            "down_since_ago":   round(now - self._down_at) if self._down_at else None,
         }
 
     # ── Public lifecycle ──────────────────────────────────────────────────────
@@ -120,12 +126,15 @@ class HttpsProfileClient:
         if not self._host or not path:
             return False
         try:
-            if self._tls:
-                return self._post_tls(path, payload)
-            return self._post_plain(path, payload)
+            ok = self._post_tls(path, payload) if self._tls else self._post_plain(path, payload)
         except Exception as exc:
             self._log.error("[%s] POST %s unexpected: %s", self._name, path, exc)
-            return False
+            ok = False
+        if ok:
+            self._down_at = None
+        elif self._down_at is None:
+            self._down_at = time.monotonic()
+        return ok
 
     # ── TLS path ──────────────────────────────────────────────────────────────
 

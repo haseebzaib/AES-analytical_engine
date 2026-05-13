@@ -686,72 +686,98 @@ Content-Length: &lt;n&gt;
         </footer>
     </div>
 
-    {# ── Pipeline alert — shown when messages are queued ─────────────────── #}
-    <div class="fw-pipeline-alert ov-hidden" data-fw-pipeline-alert>
-        <div class="fw-pa-icon">⬆</div>
-        <div class="fw-pa-body">
-            <strong data-fw-pa-title>Messages queued in buffer</strong>
-            <p data-fw-pa-detail>Messages are held locally and will be sent automatically when connection restores.</p>
-        </div>
-        <div class="fw-pa-stats">
-            <div class="fw-pa-stat"><strong data-fw-pa-pending>—</strong><span>Waiting to send</span></div>
-            <div class="fw-pa-stat"><strong data-fw-pa-recovered>—</strong><span>Successfully recovered</span></div>
-            <div class="fw-pa-stat"><strong data-fw-pa-dropped>—</strong><span>Permanently lost</span></div>
+    {# ── Tab bar ──────────────────────────────────────────────────────────── #}
+    <div class="fw-tab-bar">
+        <div class="system-tabs" role="tablist" aria-label="Data Forwarding sections">
+            <button type="button" class="system-tab is-current" data-fw-tab="status" role="tab" aria-selected="true">Live Status</button>
+            <button type="button" class="system-tab" data-fw-tab="profiles" role="tab" aria-selected="false">Profiles</button>
         </div>
     </div>
 
-    {# ── Live status overview ─────────────────────────────────────────────── #}
-    <div class="fw-status-panel ov-hidden" data-fw-status-panel>
-        <div class="fw-status-header">
-            <span class="fw-status-title">Live Status</span>
-            <span class="fw-status-ts" data-fw-status-ts></span>
-        </div>
-        <div class="fw-status-list" data-fw-status-list></div>
-    </div>
+    {# ════════════════════════════════════════════════════════════════════════ #}
+    {# TAB 1 — Live Status                                                      #}
+    {# ════════════════════════════════════════════════════════════════════════ #}
+    <div data-fw-panel="status">
 
-    {# ── Message Buffer — always shown, per-profile health ───────────────── #}
-    <div class="fw-buffer-panel ov-hidden" data-fw-buffer-panel>
-        <div class="fw-status-header">
-            <span class="fw-status-title">Message Buffer</span>
-            <span class="fw-buffer-hint">Oldest messages delivered first when recovering · <span data-fw-storage-info>SQLite on disk — survives restarts</span></span>
-        </div>
-        <div class="fw-buffer-summary" data-fw-buffer-summary>
-            <div class="fw-buffer-stat">
-                <span class="fw-buffer-stat-val" data-fw-buf-pending>0</span>
-                <span class="fw-buffer-stat-label">Pending</span>
+        {# ── Pipeline alert — shown when messages are queued ─────────────── #}
+        <div class="fw-pipeline-alert ov-hidden" data-fw-pipeline-alert>
+            <div class="fw-pa-icon">⬆</div>
+            <div class="fw-pa-body">
+                <strong data-fw-pa-title>Messages queued in buffer</strong>
+                <p data-fw-pa-detail>Messages are held locally and will be sent automatically when connection restores.</p>
             </div>
-            <div class="fw-buffer-stat">
-                <span class="fw-buffer-stat-val" data-fw-buf-replayed>0</span>
-                <span class="fw-buffer-stat-label">Recovered</span>
-            </div>
-            <div class="fw-buffer-stat">
-                <span class="fw-buffer-stat-val" data-fw-buf-dropped>0</span>
-                <span class="fw-buffer-stat-label">Dropped</span>
-            </div>
-            <div class="fw-buffer-stat">
-                <span class="fw-buffer-stat-val" data-fw-buf-rate style="color:var(--success)">100%</span>
-                <span class="fw-buffer-stat-label">Delivery Rate</span>
+            <div class="fw-pa-stats">
+                <div class="fw-pa-stat"><strong data-fw-pa-pending>—</strong><span>Waiting to send</span></div>
+                <div class="fw-pa-stat"><strong data-fw-pa-recovered>—</strong><span>Recovered &amp; sent</span></div>
+                <div class="fw-pa-stat"><strong data-fw-pa-dropped>—</strong><span>Buffer evictions</span></div>
             </div>
         </div>
-        <div class="fw-buffer-profiles" data-fw-buffer-profiles></div>
-    </div>
 
-    {# ── Profile list ─────────────────────────────────────────────────────── #}
-    <div class="fw-profile-list" data-fw-profile-list></div>
+        {# ── Live connection status — one card per profile ────────────────── #}
+        <div class="fw-status-panel ov-hidden" data-fw-status-panel>
+            <div class="fw-status-header">
+                <span class="fw-status-title">Live Status</span>
+                <span class="fw-status-ts" data-fw-status-ts></span>
+            </div>
+            <div class="fw-status-list" data-fw-status-list></div>
+        </div>
 
-    {# ── Empty state ──────────────────────────────────────────────────────── #}
-    <div class="fw-empty ov-hidden" data-fw-empty>
-        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" style="opacity:.3">
-            <path d="M8 16h32M8 24h20M8 32h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            <circle cx="38" cy="32" r="8" stroke="currentColor" stroke-width="2"/>
-            <path d="M38 29v3.5l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-        </svg>
-        <h3 class="fw-empty-title">No forwarding profiles</h3>
-        <p class="fw-empty-desc">
-            Add a profile to start sending sensor data via MQTT or HTTPS.
-        </p>
-        <button class="fw-empty-action" data-fw-add>+ Add your first profile</button>
-    </div>
+        {# ── Message Buffer — aggregate totals only (per-profile detail is in each status card) #}
+        <div class="fw-buffer-panel ov-hidden" data-fw-buffer-panel>
+            <div class="fw-status-header">
+                <span class="fw-status-title">Message Buffer</span>
+                <span class="fw-buffer-hint"><span data-fw-storage-info>SQLite on disk — survives restarts</span></span>
+            </div>
+            <div class="fw-buffer-summary" data-fw-buffer-summary>
+                <div class="fw-buffer-stat">
+                    <span class="fw-buffer-stat-val" data-fw-buf-pending>0</span>
+                    <span class="fw-buffer-stat-label">Pending (all profiles)</span>
+                </div>
+                <div class="fw-buffer-stat">
+                    <span class="fw-buffer-stat-val" data-fw-buf-replayed>0</span>
+                    <span class="fw-buffer-stat-label">Recovered this session</span>
+                </div>
+                <div class="fw-buffer-stat">
+                    <span class="fw-buffer-stat-val" data-fw-buf-dropped>0</span>
+                    <span class="fw-buffer-stat-label">Buffer evictions</span>
+                </div>
+                <div class="fw-buffer-stat">
+                    <span class="fw-buffer-stat-val" data-fw-buf-rate style="color:var(--muted)">—</span>
+                    <span class="fw-buffer-stat-label">Recovery rate</span>
+                </div>
+            </div>
+        </div>
+
+        {# ── Empty hint when no profiles exist yet ───────────────────────── #}
+        <div class="fw-status-no-profiles ov-hidden" data-fw-status-no-profiles>
+            <p>No forwarding profiles configured yet. Go to the <button class="fw-inline-tab-link" data-fw-tab-goto="profiles">Profiles tab</button> to add one.</p>
+        </div>
+
+    </div>{# end status panel #}
+
+    {# ════════════════════════════════════════════════════════════════════════ #}
+    {# TAB 2 — Profiles                                                         #}
+    {# ════════════════════════════════════════════════════════════════════════ #}
+    <div data-fw-panel="profiles" class="is-hidden">
+
+        {# ── Profile list ─────────────────────────────────────────────────── #}
+        <div class="fw-profile-list" data-fw-profile-list></div>
+
+        {# ── Empty state ──────────────────────────────────────────────────── #}
+        <div class="fw-empty ov-hidden" data-fw-empty>
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" style="opacity:.3">
+                <path d="M8 16h32M8 24h20M8 32h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <circle cx="38" cy="32" r="8" stroke="currentColor" stroke-width="2"/>
+                <path d="M38 29v3.5l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            <h3 class="fw-empty-title">No forwarding profiles</h3>
+            <p class="fw-empty-desc">
+                Add a profile to start sending sensor data via MQTT or HTTPS.
+            </p>
+            <button class="fw-empty-action" data-fw-add>+ Add your first profile</button>
+        </div>
+
+    </div>{# end profiles panel #}
 
 </section>
 {% endblock %}

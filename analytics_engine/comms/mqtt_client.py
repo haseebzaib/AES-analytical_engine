@@ -38,17 +38,19 @@ class MqttProfileClient:
         self._gateway_id = gateway_id
         self._cfg        = profile.get("mqtt", {})
         self._name       = profile.get("name", "unnamed")
-        self._pid        = profile.get("id", "?")[:8]
+        self._profile_id = profile.get("id", "")      # full UUID, used for buffer/name lookups
+        self._pid        = self._profile_id[:8] or "?"  # short form for logs only
 
         self._connected  = False
         self._client: mqtt.Client | None = None
 
         # Status tracking (read by get_status())
-        self._state:           str        = "stopped"   # stopped|connecting|connected|error
-        self._last_error:      str        = ""
-        self._connected_at:    float | None = None      # monotonic
-        self._last_publish_at: float | None = None      # monotonic
-        self._publish_count:   int        = 0
+        self._state:                str        = "stopped"   # stopped|connecting|connected|error
+        self._last_error:           str        = ""
+        self._connected_at:         float | None = None      # monotonic
+        self._last_publish_at:      float | None = None      # monotonic
+        self._publish_count:        int        = 0
+        self._not_connected_since:  float | None = None      # monotonic; set when not connected, cleared on success
 
         self._log = logging.getLogger(f"comms.mqtt[{self._name}]")
 
@@ -82,6 +84,8 @@ class MqttProfileClient:
                 " (TLS)" if self._cfg.get("tls") else "",
             )
             self._state = "connecting"
+            if self._not_connected_since is None:
+                self._not_connected_since = time.monotonic()
             self._client.connect_async(host, port, keepalive=60)
             self._client.loop_start()
         except Exception as exc:
@@ -136,15 +140,16 @@ class MqttProfileClient:
         """Return a snapshot of connection status for the UI."""
         now = time.monotonic()
         return {
-            "profile_id":      self._pid,
-            "profile_name":    self._name,
-            "state":           self._state,
-            "broker":          f"{self._cfg.get('host','?')}:{self._cfg.get('port',1883)}",
-            "tls":             bool(self._cfg.get("tls")),
-            "last_error":      self._last_error,
-            "connected_since": round(now - self._connected_at)  if self._connected_at  else None,
-            "last_publish_ago": round(now - self._last_publish_at) if self._last_publish_at else None,
-            "publish_count":   self._publish_count,
+            "profile_id":          self._profile_id,
+            "profile_name":        self._name,
+            "state":               self._state,
+            "broker":              f"{self._cfg.get('host','?')}:{self._cfg.get('port',1883)}",
+            "tls":                 bool(self._cfg.get("tls")),
+            "last_error":          self._last_error,
+            "connected_since":     round(now - self._connected_at)  if self._connected_at  else None,
+            "last_publish_ago":    round(now - self._last_publish_at) if self._last_publish_at else None,
+            "publish_count":       self._publish_count,
+            "not_connected_since": round(now - self._not_connected_since) if (self._state != "connected" and self._not_connected_since) else None,
         }
 
     # ── Client construction ───────────────────────────────────────────────────
@@ -233,15 +238,18 @@ class MqttProfileClient:
             self._state        = "error"
             self._last_error   = str(reason_code)
             self._connected_at = None
+            if self._not_connected_since is None:
+                self._not_connected_since = time.monotonic()
             self._log.error(
                 "Broker refused connection for profile '%s': %s  (will retry in %d–%d s)",
                 self._name, reason_code, _RECONNECT_MIN, _RECONNECT_MAX,
             )
         else:
-            self._connected    = True
-            self._state        = "connected"
-            self._last_error   = ""
-            self._connected_at = time.monotonic()
+            self._connected           = True
+            self._state               = "connected"
+            self._last_error          = ""
+            self._connected_at        = time.monotonic()
+            self._not_connected_since = None
             self._log.info(
                 "Connected to %s:%d  profile='%s'  QoS=%d  retain=%s",
                 self._cfg.get("host", "?"),
@@ -262,6 +270,8 @@ class MqttProfileClient:
         if failed:
             self._state      = "connecting"   # paho will retry
             self._last_error = str(reason_code)
+            if self._not_connected_since is None:
+                self._not_connected_since = time.monotonic()
             self._log.warning(
                 "Disconnected unexpectedly from %s:%d  profile='%s'  reason=%s  "
                 "— paho will reconnect automatically (backoff %d–%d s)",
