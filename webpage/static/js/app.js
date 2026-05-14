@@ -66,6 +66,12 @@ document.addEventListener("DOMContentLoaded", () => {
         const fwdOverviewItem = document.querySelector('[data-overview-item="data-forwarding"]');
         const cellLink        = overviewShell.querySelector("[data-overview-cell-link]");
         const cellPort        = overviewShell.querySelector("[data-overview-cell-port]");
+        const gatewayIfaceBoxes = {
+            eth0: overviewShell.querySelector('[data-gateway-iface="eth0"]'),
+            eth1: overviewShell.querySelector('[data-gateway-iface="eth1"]'),
+            wifi: overviewShell.querySelector('[data-gateway-iface="wifi"]'),
+            cellular: overviewShell.querySelector('[data-gateway-iface="cellular"]'),
+        };
 
         const _fmtDur = (secs) => {
             if (!secs && secs !== 0) return "—";
@@ -76,6 +82,18 @@ document.addEventListener("DOMContentLoaded", () => {
             const m = Math.floor((secs % 3600) / 60);
             return `${h}h ${m}m`;
         };
+        const _fmtDurMs = (ms) => (ms || ms === 0) ? _fmtDur(Math.round(ms / 1000)) : "—";
+        const _fmtDateTime = (ms) => {
+            if (!ms) return "—";
+            try {
+                return new Date(Number(ms)).toLocaleString([], {
+                    year: "numeric", month: "2-digit", day: "2-digit",
+                    hour: "2-digit", minute: "2-digit", second: "2-digit",
+                });
+            } catch (_) {
+                return "—";
+            }
+        };
         const _uplinkName = (key) =>
             key === "eth0"        ? "Ethernet (eth0)"
           : key === "eth1"        ? "Ethernet (eth1)"
@@ -84,12 +102,24 @@ document.addEventListener("DOMContentLoaded", () => {
           : key === "none"        ? "Offline"
           : (key || "—");
 
+        const updateGatewayIface = (key, state, detail, tone) => {
+            const box = gatewayIfaceBoxes[key];
+            if (!box) return;
+            box.classList.remove("is-active", "is-standby", "is-inactive");
+            box.classList.add(`is-${tone}`);
+            const stateEl = box.querySelector("[data-gateway-iface-state]");
+            const detailEl = box.querySelector("[data-gateway-iface-detail]");
+            if (stateEl) stateEl.textContent = state;
+            if (detailEl) detailEl.textContent = detail;
+        };
+
         const applyOverviewState = (networkState) => {
             const eth0       = networkState?.eth0        || {};
             const eth1       = networkState?.eth1        || {};
             const wifiClient = networkState?.wifi_client || {};
             const wifiAp     = networkState?.wifi_ap     || {};
             const cellular   = networkState?.cellular    || {};
+            const audit      = networkState?._audit || {};
             const activeUplink = String(networkState?.active_uplink || "none");
 
             const eth0Connected     = Boolean(eth0.link_up) && Boolean(eth0.address);
@@ -121,6 +151,19 @@ document.addEventListener("DOMContentLoaded", () => {
             if (ethPort)  ethPort.classList.toggle("is-active",   ethernetConnected || ["eth0","eth1"].includes(activeUplink));
             if (wifiPort) wifiPort.classList.toggle("is-active",  wifiConnected || wifiApEnabled || activeUplink === "wifi_client");
             if (cellPort) cellPort.classList.toggle("is-active",  celConnected || activeUplink === "cellular");
+
+            updateGatewayIface(
+                "eth0",
+                activeUplink === "eth0" ? "Active" : eth0Connected ? "Ready" : "Down",
+                eth0.address || (eth0.link_up ? "Waiting for IP" : "No link"),
+                activeUplink === "eth0" ? "active" : eth0Connected ? "standby" : "inactive",
+            );
+            updateGatewayIface(
+                "eth1",
+                activeUplink === "eth1" ? "Active" : eth1Connected ? "Ready" : "Down",
+                eth1.address || (eth1.link_up ? "Waiting for IP" : "No link"),
+                activeUplink === "eth1" ? "active" : eth1Connected ? "standby" : "inactive",
+            );
 
             const ethAddress = eth0.address || eth1.address || "";
             const ethDetail  = ethAddress
@@ -163,6 +206,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 wifiConnected ? (wifiClient.connected_ssid || "Wireless uplink active")
                               : wifiStandbyDetail,
                 wifiConnected ? "active" : wifiApEnabled || wifiPresent ? "standby" : "inactive");
+            updateGatewayIface(
+                "wifi",
+                activeUplink === "wifi_client" ? "Active" : wifiConnected ? "Ready" : wifiApEnabled ? "AP" : wifiPresent ? "Standby" : "Down",
+                wifiConnected ? (wifiClient.connected_ssid || "Connected") : wifiApEnabled ? `${wifiAp.clients ?? 0} client(s)` : wifiStandbyDetail,
+                activeUplink === "wifi_client" ? "active" : wifiConnected || wifiApEnabled || wifiPresent ? "standby" : "inactive",
+            );
 
             // Cellular item
             const simStatus = String(cellular.sim_status || "");
@@ -189,9 +238,14 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             updateItem(cellularItem, celState, celDetail, celTone);
             if (chipCellular) chipCellular.textContent = celState;
+            updateGatewayIface(
+                "cellular",
+                activeUplink === "cellular" ? "Active" : celState,
+                celDetail,
+                activeUplink === "cellular" ? "active" : celTone === "active" || celTone === "standby" ? "standby" : "inactive",
+            );
 
             // ── Active uplink banner (connectivity summary card) ─────────────
-            const uplinkStats = networkState?.uplink_stats || {};
             const uplinkBadgeEl = document.querySelector("[data-ov-uplink-badge]");
             const uplinkSinceEl = document.querySelector("[data-ov-uplink-since]");
             const failoverSumEl = document.querySelector("[data-ov-failover-summary]");
@@ -202,19 +256,42 @@ document.addEventListener("DOMContentLoaded", () => {
                     + (activeUplink === "none" ? " is-none" : anyOnline ? " is-active" : " is-none");
             }
             if (uplinkSinceEl) {
-                const dur = uplinkStats.active_duration_seconds;
-                uplinkSinceEl.textContent = dur !== undefined && activeUplink !== "none"
-                    ? `Active for ${_fmtDur(dur)}`
-                    : activeUplink === "none" ? "No active uplink" : "";
+                uplinkSinceEl.textContent = audit.active_duration_ms !== undefined && activeUplink !== "none"
+                    ? `Active since ${_fmtDateTime(audit.active_uplink_since_ms)} (${_fmtDurMs(audit.active_duration_ms)})`
+                    : activeUplink === "none" ? "No active uplink" : "Waiting for AES audit sample";
+            }
+            const outageAlert = document.querySelector("[data-ov-outage-alert]");
+            const outageTitle = document.querySelector("[data-ov-outage-title]");
+            const outageTime = document.querySelector("[data-ov-outage-time]");
+            const outageReason = document.querySelector("[data-ov-outage-reason]");
+            const openOutage = audit.open_outage || null;
+            const lastOutage = audit.last_outage || null;
+            if (outageAlert) {
+                outageAlert.hidden = false;
+                outageAlert.classList.toggle("is-active", Boolean(openOutage));
+                if (openOutage) {
+                    if (outageTitle) outageTitle.textContent = `Outage now · ${_fmtDurMs(openOutage.duration_ms || 0)}`;
+                    if (outageTime) outageTime.textContent = `Started ${_fmtDateTime(openOutage.started_at_ms)}`;
+                    if (outageReason) outageReason.textContent = openOutage.reason || "No active uplink";
+                } else if (lastOutage) {
+                    if (outageTitle) outageTitle.textContent = `Last outage · ${_fmtDurMs(lastOutage.duration_ms)}`;
+                    if (outageTime) outageTime.textContent = `${_fmtDateTime(lastOutage.started_at_ms)} → ${_fmtDateTime(lastOutage.ended_at_ms)}`;
+                    if (outageReason) outageReason.textContent = lastOutage.reason || "Recovered";
+                } else {
+                    if (outageTitle) outageTitle.textContent = "No outage recorded";
+                    if (outageTime) outageTime.textContent = "monitoring";
+                    if (outageReason) outageReason.textContent = "Events will appear after first outage or failover.";
+                }
             }
             if (failoverSumEl) {
-                const sw  = uplinkStats.switch_count || 0;
-                const ls  = uplinkStats.last_switch  || {};
-                if (sw > 0 && ls.from) {
-                    const durStr = ls.duration_seconds ? ` · took ${ls.duration_seconds}s` : "";
-                    failoverSumEl.textContent = `${sw} total failover${sw > 1 ? "s" : ""} since boot · last: ${_uplinkName(ls.from)} → ${_uplinkName(ls.to)}${durStr}`;
+                const sw = audit.uplink_switch_count ?? audit.counts?.uplink_switches ?? 0;
+                const ls = audit.last_switch || null;
+                if (ls) {
+                    failoverSumEl.textContent = `${sw} switch${sw === 1 ? "" : "es"} · last ${_fmtDateTime(ls.timestamp_ms)} · ${_uplinkName(ls.previous_uplink)} → ${_uplinkName(ls.active_uplink)}`;
                 } else {
-                    failoverSumEl.textContent = "No failover recorded since boot";
+                    failoverSumEl.textContent = openOutage
+                        ? `Open outage started ${_fmtDateTime(openOutage.started_at_ms)}`
+                        : "No failover/outage recorded by AES";
                 }
             }
         };
@@ -547,6 +624,21 @@ document.addEventListener("DOMContentLoaded", () => {
             const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60);
             return `${h}h ${m}m`;
         };
+        const _stFmtMs = (ms) => (ms || ms === 0) ? _stFmt(Math.round(ms / 1000)) : "—";
+        const _stDateTime = (ms) => {
+            if (!ms) return "—";
+            try {
+                return new Date(Number(ms)).toLocaleString([], {
+                    year: "numeric", month: "2-digit", day: "2-digit",
+                    hour: "2-digit", minute: "2-digit", second: "2-digit",
+                });
+            } catch (_) {
+                return "—";
+            }
+        };
+        const _stEsc = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+            "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+        }[ch]));
         // Short display name for interface cards
         const _stIfaceName = (key) =>
             key === "eth0" ? "Ethernet 0" : key === "eth1" ? "Ethernet 1"
@@ -588,10 +680,15 @@ document.addEventListener("DOMContentLoaded", () => {
         const renderStatusTab = (state) => {
             const uplinkStats  = state?.uplink_stats  || {};
             const tailscale    = state?.tailscale_recovery || {};
+            const audit        = state?._audit || {};
+            const auditStatus  = audit.status || {};
+            const hasAudit     = Boolean(audit.status);
             const activeUplink = String(state?.active_uplink || "none");
             const network      = uplinkStats.network   || {};
             const ifaces       = uplinkStats.interfaces || {};
-            const hasUplink    = Boolean(network.has_uplink);
+            const hasUplink    = auditStatus.has_uplink !== undefined
+                ? Boolean(auditStatus.has_uplink)
+                : network.has_uplink !== undefined ? Boolean(network.has_uplink) : activeUplink !== "none";
 
             // Detect if network monitor hasn't written data yet
             const monitorHasData = uplinkStats && (
@@ -612,14 +709,14 @@ document.addEventListener("DOMContentLoaded", () => {
             if (nsActiveDot) nsActiveDot.className = "net-status-active-dot " + (hasUplink ? "is-active" : "is-none");
             if (nsActiveName) nsActiveName.textContent = _stUplink(activeUplink);
             if (nsActiveSince) {
-                const dur = uplinkStats.active_duration_seconds;
                 if (!monitorHasData) {
                     nsActiveSince.textContent = "Network monitor not running — check systemctl status gateway-network-monitor";
                     nsActiveSince.style.color = "var(--accent)";
                 } else {
                     nsActiveSince.style.color = "";
-                    nsActiveSince.textContent = dur !== undefined && activeUplink !== "none"
-                        ? `Active for ${_stFmt(dur)}`
+                    nsActiveSince.textContent = hasAudit && audit.active_duration_ms !== undefined && activeUplink !== "none"
+                        ? `Active since ${_stDateTime(audit.active_uplink_since_ms)} (${_stFmtMs(audit.active_duration_ms)})`
+                        : !hasAudit ? "Waiting for AES audit sample"
                         : activeUplink === "none" ? "No active uplink detected" : "";
                 }
             }
@@ -646,13 +743,21 @@ document.addEventListener("DOMContentLoaded", () => {
                     nsInternet.style.color = internetOk ? "var(--success)" : "#f87171";
                 }
             }
-            const outageNow = network.current_down_seconds || 0;
+            const auditOpenOutage = audit.open_outage || null;
+            const outageNow = auditOpenOutage ? Math.round((auditOpenOutage.duration_ms || 0) / 1000) : 0;
             if (nsOutageNow) {
                 nsOutageNow.textContent = outageNow > 0 ? _stFmt(outageNow) : "None";
                 nsOutageNow.style.color = outageNow > 0 ? "#f87171" : "";
             }
-            if (nsSwCount) nsSwCount.textContent = String(uplinkStats.switch_count || 0) + (uplinkStats.switch_count ? " switches" : "");
-            if (nsLastOutage) nsLastOutage.textContent = network.last_down_duration_seconds > 0 ? _stFmt(network.last_down_duration_seconds) : "None";
+            const auditSwitches = audit.uplink_switch_count ?? audit.counts?.uplink_switches;
+            if (nsSwCount) {
+                const swCount = auditSwitches ?? uplinkStats.switch_count ?? 0;
+                nsSwCount.textContent = String(swCount) + (swCount ? " switches" : "");
+            }
+            if (nsLastOutage) {
+                const lastMs = audit.last_outage?.duration_ms;
+                nsLastOutage.textContent = lastMs ? _stFmtMs(lastMs) : "None";
+            }
 
             // Interface cards
             const nsIfaceGrid = connectivityShell.querySelector("[data-ns-iface-grid]");
@@ -783,9 +888,19 @@ document.addEventListener("DOMContentLoaded", () => {
             // Last failover
             const nsFailover = connectivityShell.querySelector("[data-ns-failover-detail]");
             if (nsFailover) {
-                const sw = uplinkStats.switch_count || 0;
+                const sw = auditSwitches ?? uplinkStats.switch_count ?? 0;
+                const auditSwitch = audit.last_switch || null;
                 const ls = uplinkStats.last_switch  || {};
-                if (sw > 0 && ls.from) {
+                if (auditSwitch) {
+                    nsFailover.innerHTML = `
+                        <div class="ns-stat-grid">
+                            <div class="ns-stat-row"><span>Uplink switches (total)</span><strong>${sw}</strong></div>
+                            <div class="ns-stat-row"><span>From</span><strong>${_stUplink(auditSwitch.previous_uplink)}</strong></div>
+                            <div class="ns-stat-row"><span>To</span><strong>${_stUplink(auditSwitch.active_uplink)}</strong></div>
+                            <div class="ns-stat-row"><span>Completed</span><strong>${_stDateTime(auditSwitch.timestamp_ms)}</strong></div>
+                            ${auditSwitch.reason ? `<div class="ns-stat-row ns-stat-row-full"><span>Reason</span><strong>${_stEsc(auditSwitch.reason).replace(/_/g," ")}</strong></div>` : ""}
+                        </div>`;
+                } else if (!hasAudit && sw > 0 && ls.from) {
                     nsFailover.innerHTML = `
                         <div class="ns-stat-grid">
                             <div class="ns-stat-row"><span>Uplink switches (total)</span><strong>${sw}</strong></div>
@@ -803,15 +918,17 @@ document.addEventListener("DOMContentLoaded", () => {
             // Network outage
             const nsOutage = connectivityShell.querySelector("[data-ns-outage-detail]");
             if (nsOutage) {
-                const lastDn = network.last_down_duration_seconds || 0;
-                const totDn  = network.total_down_seconds || 0;
-                const dnEvts = network.down_events || 0;
+                const lastDnMs = audit.last_outage?.duration_ms;
+                const totDnMs  = audit.total_downtime_ms;
+                const dnEvts = audit.counts?.outage_starts ?? 0;
                 nsOutage.innerHTML = `
                     <div class="ns-stat-grid">
                         <div class="ns-stat-row"><span>Network status</span><strong style="color:${hasUplink?"var(--success)":"#f87171"}">${hasUplink?"Uplink available":"No uplink"}</strong></div>
                         ${outageNow > 0 ? `<div class="ns-stat-row is-warn"><span>Current outage</span><strong>${_stFmt(outageNow)}</strong></div>` : ""}
-                        <div class="ns-stat-row"><span>Last outage duration</span><strong>${lastDn > 0 ? _stFmt(lastDn) : "None"}</strong></div>
-                        <div class="ns-stat-row"><span>Total downtime</span><strong>${totDn > 0 ? _stFmt(totDn) : "0s"}</strong></div>
+                        ${audit.last_outage?.started_at_ms ? `<div class="ns-stat-row"><span>Last outage started</span><strong>${_stDateTime(audit.last_outage.started_at_ms)}</strong></div>` : ""}
+                        ${audit.last_outage?.ended_at_ms ? `<div class="ns-stat-row"><span>Last outage recovered</span><strong>${_stDateTime(audit.last_outage.ended_at_ms)}</strong></div>` : ""}
+                        <div class="ns-stat-row"><span>Last outage duration</span><strong>${lastDnMs ? _stFmtMs(lastDnMs) : "None"}</strong></div>
+                        <div class="ns-stat-row"><span>Total downtime</span><strong>${totDnMs ? _stFmtMs(totDnMs) : "0s"}</strong></div>
                         <div class="ns-stat-row"><span>Down events</span><strong>${dnEvts}</strong></div>
                     </div>`;
             }
@@ -819,8 +936,16 @@ document.addEventListener("DOMContentLoaded", () => {
             // Tailscale recovery
             const nsTailscale = connectivityShell.querySelector("[data-ns-tailscale-detail]");
             if (nsTailscale) {
-                const count = tailscale.count || 0;
-                if (count > 0) {
+                const count = audit.counts?.recovery_actions ?? tailscale.count ?? 0;
+                const lastRecovery = audit.last_recovery || null;
+                if (lastRecovery) {
+                    nsTailscale.innerHTML = `
+                        <div class="ns-stat-grid">
+                            <div class="ns-stat-row"><span>Recovery count</span><strong>${count}</strong></div>
+                            <div class="ns-stat-row"><span>Last recovery</span><strong>${_stDateTime(lastRecovery.timestamp_ms)}</strong></div>
+                            ${lastRecovery.reason ? `<div class="ns-stat-row ns-stat-row-full"><span>Reason</span><strong>${_stEsc(lastRecovery.reason)}</strong></div>` : ""}
+                        </div>`;
+                } else if (!hasAudit && count > 0) {
                     nsTailscale.innerHTML = `
                         <div class="ns-stat-grid">
                             <div class="ns-stat-row"><span>Recovery count</span><strong>${count}</strong></div>
@@ -833,11 +958,91 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         };
 
+        const renderNetworkAudit = (payload) => {
+            const summaryEl = connectivityShell.querySelector("[data-net-audit-summary]");
+            const listEl = connectivityShell.querySelector("[data-net-audit-list]");
+            if (!summaryEl && !listEl) return;
+
+            const summary = payload?.summary || {};
+            const counts = summary.counts || {};
+            const events = Array.isArray(payload?.events) ? payload.events : [];
+            const open = summary.open_outage || null;
+            const totalMs = (summary.total_downtime_ms || 0) + (open?.duration_ms || 0);
+
+            if (summaryEl) {
+                summaryEl.innerHTML = `
+                    <div class="fw-audit-stat"><strong>${counts.outage_starts || 0}</strong><span>Gateway outages</span></div>
+                    <div class="fw-audit-stat"><strong>${counts.interface_issues || 0}</strong><span>Interface issues</span></div>
+                    <div class="fw-audit-stat"><strong>${counts.uplink_switches || 0}</strong><span>Uplink switches</span></div>
+                    <div class="fw-audit-stat"><strong>${_stFmtMs(totalMs)}</strong><span>Total downtime</span></div>
+                `;
+            }
+
+            if (!listEl) return;
+            if (!events.length) {
+                listEl.innerHTML = `<p class="fw-audit-empty">No connectivity audit events in selected window.</p>`;
+                return;
+            }
+
+            const label = (type) => ({
+                outage_started: "Outage started",
+                outage_recovered: "Outage recovered",
+                uplink_switch: "Uplink switch",
+                recovery_action: "Recovery action",
+                tailscale_recovery: "Tailscale recovery",
+                interface_issue_started: "Interface issue started",
+                interface_issue_changed: "Interface issue changed",
+                interface_recovered: "Interface recovered",
+            }[type] || String(type || "Event").replace(/_/g, " "));
+
+            listEl.innerHTML = events.map((event) => {
+                const sev = String(event.severity || "info").toLowerCase();
+                const rowCls = sev === "error" || sev === "critical" ? "is-err" : sev === "warning" ? "is-warn" : "";
+                const when = event.timestamp_utc || _stDateTime(event.timestamp_ms);
+                const type = label(event.event_type);
+                const uplinkBits = [];
+                if (event.previous_uplink) uplinkBits.push(`from ${_stUplink(event.previous_uplink)}`);
+                if (event.active_uplink) uplinkBits.push(`to ${_stUplink(event.active_uplink)}`);
+                const meta = uplinkBits.join(" ");
+                const duration = event.duration || (event.duration_ms ? _stFmtMs(event.duration_ms) : "");
+                return `<article class="fw-audit-row ${rowCls}">
+                    <div class="fw-audit-time">
+                        <strong>${_stEsc(when)}</strong>
+                        <span>${event.started_at_utc ? `Start ${_stEsc(event.started_at_utc)}` : ""}</span>
+                    </div>
+                    <div class="fw-audit-main">
+                        <div class="fw-audit-head">
+                            <span class="fw-audit-type">${_stEsc(type)}</span>
+                            ${meta ? `<span class="fw-audit-profile">${_stEsc(meta)}</span>` : ""}
+                            <span class="fw-audit-sev">${_stEsc(sev)}</span>
+                        </div>
+                        ${event.reason ? `<p class="fw-audit-reason">${_stEsc(event.reason)}</p>` : ""}
+                        ${duration ? `<span class="fw-audit-duration">Duration ${_stEsc(duration)}</span>` : ""}
+                        ${event.message ? `<span class="fw-audit-meta">${_stEsc(event.message)}</span>` : ""}
+                    </div>
+                </article>`;
+            }).join("");
+        };
+
+        const refreshNetworkAudit = async () => {
+            const win = connectivityShell.querySelector("[data-net-audit-window]")?.value || "7d";
+            const exportLink = connectivityShell.querySelector("[data-net-audit-export]");
+            if (exportLink) exportLink.href = `/api/network/events/export/csv?window=${encodeURIComponent(win)}`;
+            try {
+                const r = await fetch(`/api/network/events?window=${encodeURIComponent(win)}&limit=100`);
+                if (!r.ok) return;
+                renderNetworkAudit(await r.json());
+            } catch (e) {
+                console.warn("[Status] network audit fetch failed:", e);
+            }
+        };
+
         const refreshStatusTab = async () => {
             try {
                 const r = await fetch("/api/network/state");
                 if (!r.ok) return;
                 renderStatusTab(await r.json());
+                refreshNetworkAudit();
             } catch (e) {
                 console.warn("[Status] network state fetch failed:", e);
             }
@@ -903,6 +1108,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             tab.addEventListener("click", () => syncNetworkPanels(tab.getAttribute("data-network-tab")));
         });
+        connectivityShell.querySelector("[data-net-audit-window]")?.addEventListener("change", refreshNetworkAudit);
 
         const initialTab = tabs.find((tab) => tab.classList.contains("is-current") && !tab.hasAttribute("disabled"))
             || tabs.find((tab) => !tab.hasAttribute("disabled"));
@@ -4992,9 +5198,64 @@ document.addEventListener("DOMContentLoaded", () => {
             if (!secs) return "—";
             if (secs < 60)  return `${secs}s`;
             if (secs < 3600) return `${Math.floor(secs / 60)}m ${secs % 60}s`;
-            const h = Math.floor(secs / 3600);
-            const m = Math.floor((secs % 3600) / 60);
-            return m > 0 ? `${h}h ${m}m` : `${h}h`;
+            if (secs < 86400) {
+                const h = Math.floor(secs / 3600);
+                const m = Math.floor((secs % 3600) / 60);
+                return m > 0 ? `${h}h ${m}m` : `${h}h`;
+            }
+            const d = Math.floor(secs / 86400);
+            const h = Math.floor((secs % 86400) / 3600);
+            return h > 0 ? `${d}d ${h}h` : `${d}d`;
+        };
+
+        const _fwDurMs = (ms) => (ms || ms === 0) ? _fwDur(Math.round(ms / 1000)) : "—";
+
+        const _fwDateTime = (ms) => {
+            if (!ms) return "—";
+            return new Date(ms).toLocaleString(undefined, {
+                year: "numeric",
+                month: "short",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+            });
+        };
+
+        const _fwEsc = (v) => String(v ?? "").replace(/[&<>"']/g, (ch) => ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;",
+        }[ch]));
+
+        const _fwEventLabel = (type) => ({
+            outage_started: "Outage started",
+            outage_recovered: "Recovered",
+            buffer_eviction: "Buffer eviction",
+        }[type] || String(type || "event").replaceAll("_", " "));
+
+        const _fwSeverityClass = (sev) => {
+            if (sev === "error" || sev === "critical") return "is-err";
+            if (sev === "warning") return "is-warn";
+            return "is-ok";
+        };
+
+        const _fwEventReason = (event) => {
+            if (event.reason) return event.reason;
+            if (event.message) return event.message;
+            return "No reason recorded.";
+        };
+
+        const _fwBuildAuditUrl = (csv = false) => {
+            const win = fwShell.querySelector("[data-fw-audit-window]")?.value || (csv ? "30d" : "7d");
+            return `/api/forwarding/events${csv ? "/export/csv" : ""}?window=${encodeURIComponent(win)}`;
+        };
+
+        const _fwRefreshAuditExport = () => {
+            const exportLink = fwShell.querySelector("[data-fw-audit-export]");
+            if (exportLink) exportLink.href = _fwBuildAuditUrl(true);
         };
 
         const _fwStateLabel = (item, isMqtt) => {
@@ -5111,6 +5372,10 @@ document.addEventListener("DOMContentLoaded", () => {
                         // Connection downtime (when not connected)
                         const downSecs = isMqtt ? item.not_connected_since : item.down_since_ago;
                         const isDown   = isMqtt ? (item.state !== "connected") : (!item.tunnel_alive);
+                        const openOutage = item.open_outage || null;
+                        const downStartedMs = openOutage?.started_at_ms || (isMqtt ? item.not_connected_since_ms : item.down_since_ms);
+                        const lastMsgMs = isMqtt ? item.last_publish_at_ms : item.last_post_at_ms;
+                        const lastErrMs = item.last_error_at_ms;
 
                         // Session uptime & message rate
                         const connSecs   = item.connected_since ?? 0;
@@ -5135,6 +5400,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             ? `<div class="fw-st-downtime">
                                 <span class="fw-st-dt-label">${downLabel}</span>
                                 <span class="fw-st-dt-dur">down for ${_fwDur(downSecs)}</span>
+                                <span class="fw-st-dt-since">since ${_fwEsc(_fwDateTime(downStartedMs))}</span>
                                </div>` : "";
 
                         // ── Error/failure reason row (shown for BOTH MQTT and HTTPS) ──
@@ -5153,9 +5419,17 @@ document.addEventListener("DOMContentLoaded", () => {
                                 <span class="fw-st-err-icon">⚠</span>
                                 <div class="fw-st-err-body">
                                     <span class="fw-st-err-label">${isDown ? "Failure reason" : "Last error"}</span>
-                                    <span class="fw-st-err-msg">${failReason}</span>
+                                    <span class="fw-st-err-msg">${_fwEsc(failReason)}</span>
+                                    ${lastErrMs ? `<span class="fw-st-err-time">${_fwEsc(_fwDateTime(lastErrMs))}</span>` : ""}
                                 </div>
                                </div>` : "";
+
+                        const exactTimeHtml = `
+                            <div class="fw-st-time-grid">
+                                <div><span>Outage started</span><strong>${_fwEsc(_fwDateTime(downStartedMs))}</strong></div>
+                                <div><span>Last message</span><strong>${_fwEsc(_fwDateTime(lastMsgMs))}</strong></div>
+                                <div><span>Last error</span><strong>${_fwEsc(_fwDateTime(lastErrMs))}</strong></div>
+                            </div>`;
 
                         // Root cause for buffer explain (only when no dedicated error row covers it)
                         const causeHint = httpIsErr && !failReason ? `HTTP ${httpCode}` : "";
@@ -5194,12 +5468,13 @@ document.addEventListener("DOMContentLoaded", () => {
                         <div class="fw-status-card ${stCls}">
                             <div class="fw-st-head">
                                 <span class="fw-proto-badge is-${badge.toLowerCase()}">${badge}</span>
-                                <span class="fw-st-name">${profileName}</span>
-                                <span class="fw-st-state">${stLbl}</span>
+                                <span class="fw-st-name">${_fwEsc(profileName)}</span>
+                                <span class="fw-st-state">${_fwEsc(stLbl)}</span>
                             </div>
-                            <div class="fw-st-dest">${dest}${tlsNote}</div>
+                            <div class="fw-st-dest">${_fwEsc(dest)}${tlsNote}</div>
                             ${downHtml}
                             ${errRowHtml}
+                            ${exactTimeHtml}
                             <div class="fw-st-runtime-grid">
                                 <div class="fw-st-runtime-stat">
                                     <strong>${count.toLocaleString()}</strong>
@@ -5230,7 +5505,7 @@ document.addEventListener("DOMContentLoaded", () => {
                                     </div>
                                     <div class="fw-st-buf-stat">
                                         <strong>${oldestAge != null ? _fwAgo(oldestAge) : "—"}</strong>
-                                        <span>Oldest message</span>
+                                        <span>${item.buffer?.oldest_pending_ms ? _fwDateTime(item.buffer.oldest_pending_ms) : "Oldest message"}</span>
                                     </div>
                                     <div class="fw-st-buf-stat">
                                         <strong>${cooling > 0 ? cooling.toLocaleString() : "—"}</strong>
@@ -5340,6 +5615,83 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         };
 
+        // ── Durable outage/error audit panel ─────────────────────────────────
+        const fwAuditPanel = fwShell.querySelector("[data-fw-audit-panel]");
+        const fwAuditList = fwShell.querySelector("[data-fw-audit-list]");
+        const fwAuditEmpty = fwShell.querySelector("[data-fw-audit-empty]");
+        const fwAuditWindow = fwShell.querySelector("[data-fw-audit-window]");
+
+        const fwRefreshAudit = async () => {
+            if (!fwAuditPanel || !fwAuditList) return;
+            _fwRefreshAuditExport();
+            try {
+                const r = await fetch(_fwBuildAuditUrl(false));
+                if (!r.ok) return;
+                const d = await r.json();
+                if (!d.ok) return;
+                const events = d.events || [];
+
+                const outageStarts = events.filter((e) => e.event_type === "outage_started").length;
+                const recovered = events.filter((e) => e.event_type === "outage_recovered").length;
+                const errors = events.filter((e) => e.severity === "error" || e.severity === "critical").length;
+                const longestMs = events.reduce((max, e) => Math.max(max, e.duration_ms || 0), 0);
+
+                const setText = (attr, value) => {
+                    const el = fwShell.querySelector(`[${attr}]`);
+                    if (el) el.textContent = value;
+                };
+                setText("data-fw-audit-outages", outageStarts.toLocaleString());
+                setText("data-fw-audit-recovered", recovered.toLocaleString());
+                setText("data-fw-audit-errors", errors.toLocaleString());
+                setText("data-fw-audit-longest", longestMs ? _fwDurMs(longestMs) : "—");
+
+                fwAuditEmpty?.classList.toggle("ov-hidden", events.length > 0);
+                if (!events.length) {
+                    fwAuditList.innerHTML = "";
+                    return;
+                }
+
+                fwAuditList.innerHTML = events.slice(0, 80).map((event) => {
+                    const cls = _fwSeverityClass(event.severity);
+                    const profile = event.profile_name || event.profile_id || "Unknown profile";
+                    const reason = _fwEventReason(event);
+                    const duration = event.duration_ms != null ? _fwDurMs(event.duration_ms) : "";
+                    const recoveryLine = event.event_type === "outage_recovered"
+                        ? `<div class="fw-audit-duration">Outage: ${_fwEsc(_fwDateTime(event.started_at_ms))} → ${_fwEsc(_fwDateTime(event.ended_at_ms))} · ${_fwEsc(duration)}</div>`
+                        : event.started_at_ms
+                        ? `<div class="fw-audit-duration">Started: ${_fwEsc(_fwDateTime(event.started_at_ms))}</div>`
+                        : "";
+                    const http = event.http_status ? `HTTP ${event.http_status}` : "";
+                    const pending = event.pending_count != null ? `${event.pending_count} pending` : "";
+                    const metaBits = [event.protocol?.toUpperCase(), event.destination, http, pending].filter(Boolean);
+                    return `
+                        <div class="fw-audit-row ${cls}">
+                            <div class="fw-audit-time">
+                                <strong>${_fwEsc(_fwDateTime(event.timestamp_ms))}</strong>
+                                <span>${_fwEsc(event.timestamp_utc || "")}</span>
+                            </div>
+                            <div class="fw-audit-main">
+                                <div class="fw-audit-head">
+                                    <span class="fw-audit-type">${_fwEsc(_fwEventLabel(event.event_type))}</span>
+                                    <span class="fw-audit-profile">${_fwEsc(profile)}</span>
+                                    <span class="fw-audit-sev">${_fwEsc(event.severity || "info")}</span>
+                                </div>
+                                <p class="fw-audit-reason">${_fwEsc(reason)}</p>
+                                ${recoveryLine}
+                                <div class="fw-audit-meta">${_fwEsc(metaBits.join(" · "))}</div>
+                            </div>
+                        </div>`;
+                }).join("");
+            } catch (e) {
+                console.warn("[Forwarding] audit fetch failed:", e);
+            }
+        };
+
+        fwAuditWindow?.addEventListener("change", () => {
+            _fwRefreshAuditExport();
+            fwRefreshAudit();
+        });
+
         // ── Tab switching ────────────────────────────────────────────────────
         const fwTabBtns  = Array.from(fwShell.querySelectorAll("[data-fw-tab]"));
         const fwPanels   = Array.from(fwShell.querySelectorAll("[data-fw-panel]"));
@@ -5372,9 +5724,11 @@ document.addEventListener("DOMContentLoaded", () => {
         _buildConfigNameMap().then(() => {
             fwRefreshStatus();
             fwRefreshBuffer();
+            fwRefreshAudit();
         });
         window.setInterval(fwRefreshStatus, 6000);
         window.setInterval(fwRefreshBuffer, 8000);
+        window.setInterval(fwRefreshAudit, 15000);
     }
 
 

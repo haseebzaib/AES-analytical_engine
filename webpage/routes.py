@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import time as _time
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -38,6 +39,9 @@ def _settings_store(request: Request):
 
 def _network_settings_store(request: Request):
     return request.app.state.network_settings_store
+
+def _network_event_store(request: Request):
+    return getattr(request.app.state, "network_event_store", None)
 
 def _system_metrics_store(request: Request):
     return request.app.state.system_metrics_store
@@ -759,7 +763,104 @@ async def get_network_state(request: Request) -> JSONResponse:
         except Exception:
             pass
 
+    event_store = _network_event_store(request)
+    if event_store is not None:
+        state["_audit"] = event_store.summary()
+
     return JSONResponse(state)
+
+
+@router.get("/api/network/events")
+async def get_network_events(request: Request) -> JSONResponse:
+    """Return durable connectivity outage/failover audit timeline."""
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+    event_store = _network_event_store(request)
+    if event_store is None:
+        return JSONResponse({"ok": True, "events": [], "summary": {}})
+
+    try:
+        limit = max(1, min(500, int(request.query_params.get("limit", "100"))))
+    except ValueError:
+        limit = 100
+    window_key = request.query_params.get("window", "7d")
+    window_h = _FORWARDING_EVENTS_WINDOW_MAP.get(window_key, 168)
+    since_ms = int((_time.time() - window_h * 3600) * 1000)
+    severity = (request.query_params.get("severity") or "").lower() or None
+
+    events = event_store.get_events(severity=severity, since_ms=since_ms, limit=limit)
+    for event in events:
+        event["timestamp_utc"] = _fmt_utc_ms(event.get("timestamp_ms"))
+        event["started_at_utc"] = _fmt_utc_ms(event.get("started_at_ms"))
+        event["ended_at_utc"] = _fmt_utc_ms(event.get("ended_at_ms"))
+        event["duration"] = _fmt_duration_ms(event.get("duration_ms"))
+    return JSONResponse({"ok": True, "events": events, "summary": event_store.summary(), "window": window_key})
+
+
+@router.get("/api/network/events/export/csv")
+async def export_network_events_csv(request: Request):
+    """Download connectivity outage/failover audit trail as CSV."""
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+    event_store = _network_event_store(request)
+    if event_store is None:
+        return JSONResponse({"ok": False, "message": "Network audit unavailable."}, status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    window_key = request.query_params.get("window", "30d")
+    window_h = _FORWARDING_EVENTS_WINDOW_MAP.get(window_key, 720)
+    since_ms = int((_time.time() - window_h * 3600) * 1000)
+    severity = (request.query_params.get("severity") or "").lower() or None
+    events = event_store.get_events(severity=severity, since_ms=since_ms, limit=1000)
+
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow([
+        "event_id",
+        "event_time_utc",
+        "event_type",
+        "severity",
+        "previous_uplink",
+        "active_uplink",
+        "interface",
+        "status",
+        "outage_started_utc",
+        "outage_recovered_utc",
+        "duration",
+        "duration_seconds",
+        "internet_ok",
+        "reason",
+        "message",
+    ])
+    for event in reversed(events):
+        duration_ms = event.get("duration_ms")
+        writer.writerow([
+            event.get("id", ""),
+            _fmt_utc_ms(event.get("timestamp_ms")),
+            event.get("event_type", ""),
+            event.get("severity", ""),
+            event.get("previous_uplink", ""),
+            event.get("active_uplink", ""),
+            event.get("interface", ""),
+            event.get("status", ""),
+            _fmt_utc_ms(event.get("started_at_ms")),
+            _fmt_utc_ms(event.get("ended_at_ms")),
+            _fmt_duration_ms(duration_ms),
+            round(duration_ms / 1000) if duration_ms is not None else "",
+            event.get("internet_ok", ""),
+            event.get("reason", ""),
+            event.get("message", ""),
+        ])
+
+    from fastapi.responses import Response
+    csv_bytes = out.getvalue().encode("utf-8")
+    date_str = datetime.now(UTC).strftime("%Y-%m-%d")
+    filename = f"network_audit_{window_key}_{date_str}.csv"
+    logger.info("CSV export  user=%s  network_events=%d  window=%s", _session_user(request), len(events), window_key)
+    return Response(
+        content=csv_bytes,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/api/network/apply-result")
@@ -999,6 +1100,156 @@ async def get_forwarding_buffer_stats(request: Request) -> JSONResponse:
         "storage":        storage_info,
         "profiles":       list(profiles_stats.values()),
     })
+
+
+_FORWARDING_EVENTS_WINDOW_MAP: dict[str, int] = {
+    "1h": 1,
+    "6h": 6,
+    "24h": 24,
+    "7d": 168,
+    "30d": 720,
+}
+
+
+def _fmt_utc_ms(ts_ms: int | None) -> str:
+    if not ts_ms:
+        return ""
+    return datetime.fromtimestamp(ts_ms / 1000, UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
+def _fmt_duration_ms(duration_ms: int | None) -> str:
+    if duration_ms is None:
+        return ""
+    seconds = max(0, int(duration_ms // 1000))
+    days, rem = divmod(seconds, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, seconds = divmod(rem, 60)
+    parts = []
+    if days:
+        parts.append(f"{days}d")
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes:
+        parts.append(f"{minutes}m")
+    if seconds or not parts:
+        parts.append(f"{seconds}s")
+    return " ".join(parts)
+
+
+@router.get("/api/forwarding/events")
+async def get_forwarding_events(request: Request) -> JSONResponse:
+    """Return durable forwarding audit timeline."""
+    if not _is_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Authentication required."}, status_code=status.HTTP_401_UNAUTHORIZED)
+    buf = getattr(request.app.state, "forwarding_buffer_store", None)
+    if buf is None:
+        return JSONResponse({"ok": True, "events": []})
+
+    try:
+        limit = max(1, min(500, int(request.query_params.get("limit", "100"))))
+    except ValueError:
+        limit = 100
+    window_key = request.query_params.get("window", "7d")
+    window_h = _FORWARDING_EVENTS_WINDOW_MAP.get(window_key, 168)
+    since_ms = int((_time.time() - window_h * 3600) * 1000)
+    profile_id = request.query_params.get("profile_id") or None
+    severity = (request.query_params.get("severity") or "").lower() or None
+
+    events = buf.get_events(
+        profile_id=profile_id,
+        severity=severity,
+        since_ms=since_ms,
+        limit=limit,
+    )
+    for event in events:
+        event["timestamp_utc"] = _fmt_utc_ms(event.get("timestamp_ms"))
+        event["started_at_utc"] = _fmt_utc_ms(event.get("started_at_ms"))
+        event["ended_at_utc"] = _fmt_utc_ms(event.get("ended_at_ms"))
+        event["duration"] = _fmt_duration_ms(event.get("duration_ms"))
+    return JSONResponse({"ok": True, "events": events, "window": window_key})
+
+
+@router.get("/api/forwarding/events/export/csv")
+async def export_forwarding_events_csv(request: Request):
+    """Download forwarding outage/error audit trail as CSV."""
+    if not _is_authenticated(request):
+        return JSONResponse(
+            {"ok": False, "message": "Authentication required."},
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+    buf = getattr(request.app.state, "forwarding_buffer_store", None)
+    if buf is None:
+        return JSONResponse({"ok": False, "message": "Forwarding buffer unavailable."}, status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    window_key = request.query_params.get("window", "30d")
+    window_h = _FORWARDING_EVENTS_WINDOW_MAP.get(window_key, 720)
+    since_ms = int((_time.time() - window_h * 3600) * 1000)
+    profile_id = request.query_params.get("profile_id") or None
+    severity = (request.query_params.get("severity") or "").lower() or None
+    events = buf.get_events(
+        profile_id=profile_id,
+        severity=severity,
+        since_ms=since_ms,
+        limit=1000,
+    )
+
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow([
+        "event_id",
+        "event_time_utc",
+        "profile_name",
+        "profile_id",
+        "protocol",
+        "destination",
+        "event_type",
+        "severity",
+        "status",
+        "outage_started_utc",
+        "outage_recovered_utc",
+        "duration",
+        "duration_seconds",
+        "http_status",
+        "pending_count",
+        "reason",
+        "message",
+    ])
+    for event in reversed(events):
+        duration_ms = event.get("duration_ms")
+        writer.writerow([
+            event.get("id", ""),
+            _fmt_utc_ms(event.get("timestamp_ms")),
+            event.get("profile_name", ""),
+            event.get("profile_id", ""),
+            event.get("protocol", ""),
+            event.get("destination", ""),
+            event.get("event_type", ""),
+            event.get("severity", ""),
+            event.get("status", ""),
+            _fmt_utc_ms(event.get("started_at_ms")),
+            _fmt_utc_ms(event.get("ended_at_ms")),
+            _fmt_duration_ms(duration_ms),
+            round(duration_ms / 1000) if duration_ms is not None else "",
+            event.get("http_status", ""),
+            event.get("pending_count", ""),
+            event.get("reason", ""),
+            event.get("message", ""),
+        ])
+
+    csv_bytes = out.getvalue().encode("utf-8")
+    date_str = datetime.now(UTC).strftime("%Y-%m-%d")
+    filename = f"forwarding_audit_{window_key}_{date_str}.csv"
+    logger.info(
+        "CSV export  user=%s  forwarding_events=%d  window=%s",
+        _session_user(request), len(events), window_key,
+    )
+
+    from fastapi.responses import Response
+    return Response(
+        content=csv_bytes,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/api/system/metrics")

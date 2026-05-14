@@ -112,6 +112,7 @@ from analytics_engine.analytics.trends import TrendsEngine
 from analytics_engine.comms.mqtt_forwarder import MqttForwarder
 from analytics_engine.comms.https_forwarder import HttpsForwarder
 from analytics_engine.forwarding_buffer_store import ForwardingBufferStore
+from analytics_engine.network_event_store import NetworkAuditJob, NetworkEventStore
 from utils.redis_client import RedisClient as RedisNotifier
 from analytics_engine.runtime import AnalyticsRuntime
 from analytics_engine.settings_store import SettingsStore
@@ -127,6 +128,7 @@ rs485_config_store      = Rs485ConfigStore(storage_root=storage_root)
 modbus_tcp_config_store   = ModbusTcpConfigStore(storage_root=storage_root)
 forwarding_config_store   = ForwardingConfigStore(storage_root=storage_root)
 forwarding_buffer_store   = ForwardingBufferStore(storage_root / "AES" / "forwarding_buffer.db")
+network_event_store       = NetworkEventStore(storage_root / "AES" / "network_events.db")
 redis_notifier          = RedisNotifier()
 sensor_store            = SensorStore(redis_notifier, db_path=pes_db_path)
 analytical_store        = AnalyticalStore(analytical_db_path)
@@ -165,6 +167,9 @@ _https_forwarder = HttpsForwarder(
     buffer_store            = forwarding_buffer_store,
 )
 runtime.register_worker("https-forwarder", interval_seconds=1.0, tick_fn=_https_forwarder.tick)
+
+_network_audit_job = NetworkAuditJob(network_settings_store, network_event_store)
+runtime.register_worker("network-audit", interval_seconds=5.0, tick_fn=_network_audit_job.tick)
 
 
 def _file_size_str(path: Path) -> str:
@@ -244,6 +249,7 @@ async def lifespan(app: FastAPI):
     app.state.mqtt_forwarder          = _mqtt_forwarder
     app.state.https_forwarder         = _https_forwarder
     app.state.forwarding_buffer_store = forwarding_buffer_store
+    app.state.network_event_store     = network_event_store
     app.state.redis_notifier          = redis_notifier
     app.state.sensor_store            = sensor_store
     app.state.analytical_store        = analytical_store

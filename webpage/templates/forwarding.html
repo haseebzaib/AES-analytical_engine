@@ -748,6 +748,31 @@ Content-Length: &lt;n&gt;
             </div>
         </div>
 
+        {# ── Forwarding audit — durable outage/error history #}
+        <div class="fw-audit-panel" data-fw-audit-panel>
+            <div class="fw-status-header">
+                <span class="fw-status-title">Outage &amp; Error Audit</span>
+                <div class="fw-audit-actions">
+                    <select class="fw-select fw-audit-window" data-fw-audit-window>
+                        <option value="1h">Last 1 hour</option>
+                        <option value="6h">Last 6 hours</option>
+                        <option value="24h">Last 24 hours</option>
+                        <option value="7d" selected>Last 7 days</option>
+                        <option value="30d">Last 30 days</option>
+                    </select>
+                    <a class="fw-action-btn fw-audit-export" data-fw-audit-export href="/api/forwarding/events/export/csv?window=30d">Export CSV</a>
+                </div>
+            </div>
+            <div class="fw-audit-summary" data-fw-audit-summary>
+                <div class="fw-audit-stat"><strong data-fw-audit-outages>0</strong><span>Outages</span></div>
+                <div class="fw-audit-stat"><strong data-fw-audit-recovered>0</strong><span>Recovered</span></div>
+                <div class="fw-audit-stat"><strong data-fw-audit-errors>0</strong><span>Errors</span></div>
+                <div class="fw-audit-stat"><strong data-fw-audit-longest>—</strong><span>Longest outage</span></div>
+            </div>
+            <div class="fw-audit-list" data-fw-audit-list></div>
+            <p class="fw-audit-empty ov-hidden" data-fw-audit-empty>No forwarding outages or errors recorded in this window.</p>
+        </div>
+
         {# ── Empty hint when no profiles exist yet ───────────────────────── #}
         <div class="fw-status-no-profiles ov-hidden" data-fw-status-no-profiles>
             <p>No forwarding profiles configured yet. Go to the <button class="fw-inline-tab-link" data-fw-tab-goto="profiles">Profiles tab</button> to add one.</p>

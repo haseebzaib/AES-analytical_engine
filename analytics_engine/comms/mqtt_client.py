@@ -51,6 +51,10 @@ class MqttProfileClient:
         self._last_publish_at:      float | None = None      # monotonic
         self._publish_count:        int        = 0
         self._not_connected_since:  float | None = None      # monotonic; set when not connected, cleared on success
+        self._connected_at_ms:       int | None  = None
+        self._last_publish_at_ms:    int | None  = None
+        self._not_connected_since_ms:int | None  = None
+        self._last_error_at_ms:      int | None  = None
 
         self._log = logging.getLogger(f"comms.mqtt[{self._name}]")
 
@@ -66,6 +70,7 @@ class MqttProfileClient:
             self._log.error("%s — skipping", msg)
             self._state = "error"
             self._last_error = msg
+            self._last_error_at_ms = int(time.time() * 1000)
             return
 
         try:
@@ -75,6 +80,7 @@ class MqttProfileClient:
             self._client = None
             self._state = "error"
             self._last_error = str(exc)
+            self._last_error_at_ms = int(time.time() * 1000)
             return
 
         try:
@@ -86,6 +92,7 @@ class MqttProfileClient:
             self._state = "connecting"
             if self._not_connected_since is None:
                 self._not_connected_since = time.monotonic()
+                self._not_connected_since_ms = int(time.time() * 1000)
             self._client.connect_async(host, port, keepalive=60)
             self._client.loop_start()
         except Exception as exc:
@@ -93,6 +100,7 @@ class MqttProfileClient:
             self._client = None
             self._state = "error"
             self._last_error = str(exc)
+            self._last_error_at_ms = int(time.time() * 1000)
 
     def stop(self) -> None:
         """Disconnect and shut down the paho loop thread."""
@@ -127,6 +135,7 @@ class MqttProfileClient:
             self._log.debug("→ %s  %d bytes  QoS=%d", topic, len(payload), qos)
             self._publish_count   += 1
             self._last_publish_at  = time.monotonic()
+            self._last_publish_at_ms = int(time.time() * 1000)
             return True
         except Exception as exc:
             self._log.error("Unexpected publish error on '%s': %s", topic, exc)
@@ -146,10 +155,14 @@ class MqttProfileClient:
             "broker":              f"{self._cfg.get('host','?')}:{self._cfg.get('port',1883)}",
             "tls":                 bool(self._cfg.get("tls")),
             "last_error":          self._last_error,
+            "last_error_at_ms":    self._last_error_at_ms,
             "connected_since":     round(now - self._connected_at)  if self._connected_at  else None,
+            "connected_at_ms":     self._connected_at_ms,
             "last_publish_ago":    round(now - self._last_publish_at) if self._last_publish_at else None,
+            "last_publish_at_ms":  self._last_publish_at_ms,
             "publish_count":       self._publish_count,
             "not_connected_since": round(now - self._not_connected_since) if (self._state != "connected" and self._not_connected_since) else None,
+            "not_connected_since_ms": self._not_connected_since_ms if self._state != "connected" else None,
         }
 
     # ── Client construction ───────────────────────────────────────────────────
@@ -237,9 +250,12 @@ class MqttProfileClient:
             self._connected    = False
             self._state        = "error"
             self._last_error   = str(reason_code)
+            self._last_error_at_ms = int(time.time() * 1000)
             self._connected_at = None
+            self._connected_at_ms = None
             if self._not_connected_since is None:
                 self._not_connected_since = time.monotonic()
+                self._not_connected_since_ms = int(time.time() * 1000)
             self._log.error(
                 "Broker refused connection for profile '%s': %s  (will retry in %d–%d s)",
                 self._name, reason_code, _RECONNECT_MIN, _RECONNECT_MAX,
@@ -249,7 +265,9 @@ class MqttProfileClient:
             self._state               = "connected"
             self._last_error          = ""
             self._connected_at        = time.monotonic()
+            self._connected_at_ms     = int(time.time() * 1000)
             self._not_connected_since = None
+            self._not_connected_since_ms = None
             self._log.info(
                 "Connected to %s:%d  profile='%s'  QoS=%d  retain=%s",
                 self._cfg.get("host", "?"),
@@ -262,6 +280,7 @@ class MqttProfileClient:
     def _on_disconnect(self, client, userdata, disconnect_flags, reason_code, properties) -> None:
         self._connected    = False
         self._connected_at = None
+        self._connected_at_ms = None
         try:
             failed = reason_code.is_failure
         except AttributeError:
@@ -270,8 +289,10 @@ class MqttProfileClient:
         if failed:
             self._state      = "connecting"   # paho will retry
             self._last_error = str(reason_code)
+            self._last_error_at_ms = int(time.time() * 1000)
             if self._not_connected_since is None:
                 self._not_connected_since = time.monotonic()
+                self._not_connected_since_ms = int(time.time() * 1000)
             self._log.warning(
                 "Disconnected unexpectedly from %s:%d  profile='%s'  reason=%s  "
                 "— paho will reconnect automatically (backoff %d–%d s)",

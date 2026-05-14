@@ -13,30 +13,35 @@
                 <p class="hero-band-eyebrow">Gateway</p>
             </div>
 
-            <div class="status-chip-row">
-                {% for chip in status_chips %}
-                <div class="overview-chip">
-                    <span>{{ chip.label }}</span>
-                    <strong data-overview-chip="{{ chip.label|lower|replace(' ', '-') }}">{{ chip.value }}</strong>
-                </div>
-                {% endfor %}
-            </div>
-
-            <div class="gateway-stage-visual" aria-hidden="true">
+            <div class="gateway-stage-visual">
                 <div class="gateway-halo"></div>
                 <div class="gateway-unit">
                     <span class="gateway-led{% if not overview_visual.gateway_online %} is-offline{% endif %}" data-overview-led></span>
-                    <span class="gateway-slot"></span>
-                    <span class="gateway-slot"></span>
-                    <span class="gateway-slot"></span>
-                    <span class="gateway-slot is-wide"></span>
+                    <div class="gateway-iface-box" data-gateway-iface="eth0">
+                        <span class="gateway-iface-led" data-gateway-iface-led></span>
+                        <span class="gateway-iface-name">ETH0</span>
+                        <strong data-gateway-iface-state>—</strong>
+                        <small data-gateway-iface-detail>Waiting</small>
+                    </div>
+                    <div class="gateway-iface-box" data-gateway-iface="eth1">
+                        <span class="gateway-iface-led" data-gateway-iface-led></span>
+                        <span class="gateway-iface-name">ETH1</span>
+                        <strong data-gateway-iface-state>—</strong>
+                        <small data-gateway-iface-detail>Waiting</small>
+                    </div>
+                    <div class="gateway-iface-box" data-gateway-iface="wifi">
+                        <span class="gateway-iface-led" data-gateway-iface-led></span>
+                        <span class="gateway-iface-name">WIFI</span>
+                        <strong data-gateway-iface-state>—</strong>
+                        <small data-gateway-iface-detail>Waiting</small>
+                    </div>
+                    <div class="gateway-iface-box" data-gateway-iface="cellular">
+                        <span class="gateway-iface-led" data-gateway-iface-led></span>
+                        <span class="gateway-iface-name">CELL</span>
+                        <strong data-gateway-iface-state>—</strong>
+                        <small data-gateway-iface-detail>Waiting</small>
+                    </div>
                 </div>
-                <div class="gateway-link gateway-link-left{% if not overview_visual.ethernet_active %} is-inactive{% endif %}" data-overview-eth-link></div>
-                <div class="gateway-link gateway-link-right{% if not overview_visual.wifi_active %} is-inactive{% endif %}" data-overview-wifi-link></div>
-                <div class="gateway-link gateway-link-bottom{% if not overview_visual.cellular_active %} is-inactive{% endif %}" data-overview-cell-link></div>
-                <div class="gateway-port port-ethernet{% if overview_visual.ethernet_active %} is-active{% endif %}" data-overview-eth-port>ETH</div>
-                <div class="gateway-port port-wifi{% if overview_visual.wifi_active %} is-active{% endif %}" data-overview-wifi-port>WIFI</div>
-                <div class="gateway-port port-cell{% if overview_visual.cellular_active %} is-active{% endif %}" data-overview-cell-port>CELL</div>
             </div>
 
             <div class="gw-identity-strip">
@@ -64,6 +69,13 @@
                 <span class="ov-uplink-badge" data-ov-uplink-badge>—</span>
             </div>
             <p class="ov-uplink-since" data-ov-uplink-since></p>
+            <div class="ov-outage-alert" data-ov-outage-alert hidden>
+                <div>
+                    <strong data-ov-outage-title>No outage now</strong>
+                    <span data-ov-outage-time>—</span>
+                </div>
+                <p data-ov-outage-reason></p>
+            </div>
 
             {# Interface rows: ETH / Wi-Fi / Cellular #}
             <div class="ov-connect-iface-list">
@@ -81,7 +93,7 @@
 
             {# ISP failover footer #}
             <div class="ov-connect-footer">
-                <span class="ov-footer-label">ISP Failover</span>
+                <span class="ov-footer-label">Outage audit</span>
                 <span class="ov-footer-val" data-ov-failover-summary>No data yet</span>
             </div>
         </a>

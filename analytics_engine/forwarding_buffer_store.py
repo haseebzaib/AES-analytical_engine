@@ -41,6 +41,10 @@ _DRAIN_BATCH     = 10        # max messages returned per drain_batch() call
 _RETRY_BACKOFF_MS = [30_000, 60_000, 120_000, 300_000]
 
 
+def _now_ms() -> int:
+    return int(time.time() * 1000)
+
+
 class ForwardingBufferStore:
     def __init__(self, db_path: Path) -> None:
         self._db_path = Path(db_path)
@@ -91,6 +95,40 @@ class ForwardingBufferStore:
                     );
                     CREATE INDEX IF NOT EXISTS idx_pending_profile
                         ON pending_messages (profile_id, status, id);
+
+                    CREATE TABLE IF NOT EXISTS forwarding_events (
+                        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp_ms   INTEGER NOT NULL,
+                        profile_id     TEXT    NOT NULL,
+                        profile_name   TEXT    NOT NULL DEFAULT '',
+                        protocol       TEXT    NOT NULL DEFAULT '',
+                        destination    TEXT    NOT NULL DEFAULT '',
+                        event_type     TEXT    NOT NULL,
+                        severity       TEXT    NOT NULL DEFAULT 'info',
+                        status         TEXT    NOT NULL DEFAULT '',
+                        reason         TEXT    NOT NULL DEFAULT '',
+                        started_at_ms  INTEGER,
+                        ended_at_ms    INTEGER,
+                        duration_ms    INTEGER,
+                        http_status    INTEGER,
+                        pending_count  INTEGER,
+                        message        TEXT    NOT NULL DEFAULT ''
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_forwarding_events_ts
+                        ON forwarding_events (timestamp_ms DESC);
+                    CREATE INDEX IF NOT EXISTS idx_forwarding_events_profile
+                        ON forwarding_events (profile_id, timestamp_ms DESC);
+
+                    CREATE TABLE IF NOT EXISTS forwarding_open_outages (
+                        profile_id     TEXT PRIMARY KEY,
+                        profile_name   TEXT    NOT NULL DEFAULT '',
+                        protocol       TEXT    NOT NULL DEFAULT '',
+                        destination    TEXT    NOT NULL DEFAULT '',
+                        started_at_ms  INTEGER NOT NULL,
+                        reason         TEXT    NOT NULL DEFAULT '',
+                        severity       TEXT    NOT NULL DEFAULT 'error',
+                        status         TEXT    NOT NULL DEFAULT 'down'
+                    );
                 """)
             logger.info("ForwardingBufferStore ready at %s", self._db_path)
         except Exception as exc:
@@ -141,6 +179,16 @@ class ForwardingBufferStore:
                         )
                         self._session_evicted[profile_id] = \
                             self._session_evicted.get(profile_id, 0) + evict_n
+                        self._insert_event_conn(conn, {
+                            "profile_id": profile_id,
+                            "protocol": protocol,
+                            "event_type": "buffer_eviction",
+                            "severity": "error",
+                            "status": "evicted",
+                            "reason": "Forwarding buffer full; oldest pending messages evicted.",
+                            "pending_count": count,
+                            "message": f"Evicted {evict_n} oldest pending message(s).",
+                        })
                         logger.warning(
                             "Buffer full for profile '%s' — evicted %d oldest entries (ring-buffer)",
                             profile_id, evict_n,
@@ -298,12 +346,222 @@ class ForwardingBufferStore:
             "replayed":             replayed,          # successfully sent from buffer
             "dropped":              evicted,           # evicted because buffer was full
             "success_rate":         rate,
+            "oldest_pending_ms":    oldest,
             "oldest_pending_age_s": round((now_ms - oldest) / 1000) if oldest else None,
             "level_history":        self.get_level_history(profile_id),
         }
 
     def get_all_stats(self, profile_ids: list[str]) -> dict[str, dict]:
         return {pid: self.get_stats(pid) for pid in profile_ids}
+
+    # ── Audit events / outages ────────────────────────────────────────────────
+
+    def _insert_event_conn(self, conn: sqlite3.Connection, event: dict) -> int:
+        now_ms = int(event.get("timestamp_ms") or _now_ms())
+        cur = conn.execute(
+            """
+            INSERT INTO forwarding_events
+                (timestamp_ms, profile_id, profile_name, protocol, destination,
+                 event_type, severity, status, reason, started_at_ms, ended_at_ms,
+                 duration_ms, http_status, pending_count, message)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                now_ms,
+                str(event.get("profile_id", "")),
+                str(event.get("profile_name", "")),
+                str(event.get("protocol", "")),
+                str(event.get("destination", "")),
+                str(event.get("event_type", "")),
+                str(event.get("severity", "info")),
+                str(event.get("status", "")),
+                str(event.get("reason", "")),
+                event.get("started_at_ms"),
+                event.get("ended_at_ms"),
+                event.get("duration_ms"),
+                event.get("http_status"),
+                event.get("pending_count"),
+                str(event.get("message", "")),
+            ),
+        )
+        return int(cur.lastrowid or 0)
+
+    def record_event(self, event: dict) -> int:
+        """Append one durable forwarding audit event. Returns event id, or 0."""
+        with self._lock:
+            try:
+                with self._conn() as conn:
+                    return self._insert_event_conn(conn, event)
+            except Exception as exc:
+                logger.error("Forwarding audit event insert failed: %s", exc)
+                return 0
+
+    def begin_outage(
+        self,
+        profile_id: str,
+        profile_name: str,
+        protocol: str,
+        destination: str,
+        reason: str,
+        *,
+        severity: str = "error",
+        status: str = "down",
+        http_status: int | None = None,
+        pending_count: int | None = None,
+    ) -> None:
+        """
+        Start one open outage if not already open.
+        Repeated failures update reason but do not spam event history.
+        """
+        if not profile_id:
+            return
+        now = _now_ms()
+        with self._lock:
+            try:
+                with self._conn() as conn:
+                    row = conn.execute(
+                        "SELECT started_at_ms, reason FROM forwarding_open_outages WHERE profile_id=?",
+                        (profile_id,),
+                    ).fetchone()
+                    if row:
+                        if reason and reason != row["reason"]:
+                            conn.execute(
+                                """
+                                UPDATE forwarding_open_outages
+                                SET profile_name=?, protocol=?, destination=?, reason=?, severity=?, status=?
+                                WHERE profile_id=?
+                                """,
+                                (profile_name, protocol, destination, reason, severity, status, profile_id),
+                            )
+                        return
+
+                    conn.execute(
+                        """
+                        INSERT INTO forwarding_open_outages
+                            (profile_id, profile_name, protocol, destination,
+                             started_at_ms, reason, severity, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (profile_id, profile_name, protocol, destination, now, reason, severity, status),
+                    )
+                    self._insert_event_conn(conn, {
+                        "timestamp_ms": now,
+                        "profile_id": profile_id,
+                        "profile_name": profile_name,
+                        "protocol": protocol,
+                        "destination": destination,
+                        "event_type": "outage_started",
+                        "severity": severity,
+                        "status": status,
+                        "reason": reason,
+                        "started_at_ms": now,
+                        "http_status": http_status,
+                        "pending_count": pending_count,
+                        "message": "Forwarding delivery outage started.",
+                    })
+            except Exception as exc:
+                logger.error("Forwarding outage begin failed for profile '%s': %s", profile_id, exc)
+
+    def resolve_outage(
+        self,
+        profile_id: str,
+        profile_name: str,
+        protocol: str,
+        destination: str,
+        *,
+        pending_count: int | None = None,
+    ) -> None:
+        """Close any open outage and write recovery event with duration."""
+        if not profile_id:
+            return
+        now = _now_ms()
+        with self._lock:
+            try:
+                with self._conn() as conn:
+                    row = conn.execute(
+                        "SELECT * FROM forwarding_open_outages WHERE profile_id=?",
+                        (profile_id,),
+                    ).fetchone()
+                    if not row:
+                        return
+                    started = int(row["started_at_ms"])
+                    duration = max(0, now - started)
+                    reason = row["reason"] or ""
+                    conn.execute(
+                        "DELETE FROM forwarding_open_outages WHERE profile_id=?",
+                        (profile_id,),
+                    )
+                    self._insert_event_conn(conn, {
+                        "timestamp_ms": now,
+                        "profile_id": profile_id,
+                        "profile_name": profile_name or row["profile_name"],
+                        "protocol": protocol or row["protocol"],
+                        "destination": destination or row["destination"],
+                        "event_type": "outage_recovered",
+                        "severity": "info",
+                        "status": "recovered",
+                        "reason": reason,
+                        "started_at_ms": started,
+                        "ended_at_ms": now,
+                        "duration_ms": duration,
+                        "pending_count": pending_count,
+                        "message": "Forwarding delivery recovered.",
+                    })
+            except Exception as exc:
+                logger.error("Forwarding outage resolve failed for profile '%s': %s", profile_id, exc)
+
+    def get_open_outage(self, profile_id: str) -> dict | None:
+        try:
+            with self._conn() as conn:
+                row = conn.execute(
+                    "SELECT * FROM forwarding_open_outages WHERE profile_id=?",
+                    (profile_id,),
+                ).fetchone()
+                return dict(row) if row else None
+        except Exception:
+            return None
+
+    def get_events(
+        self,
+        *,
+        profile_id: str | None = None,
+        severity: str | None = None,
+        since_ms: int | None = None,
+        limit: int = 200,
+    ) -> list[dict]:
+        """Return durable forwarding audit events, newest first."""
+        conditions: list[str] = []
+        params: list = []
+        if profile_id:
+            conditions.append("profile_id = ?")
+            params.append(profile_id)
+        if severity:
+            sev_order = {"info": 0, "warning": 1, "error": 2, "critical": 3}
+            min_sev = sev_order.get(severity, 0)
+            allowed = [k for k, v in sev_order.items() if v >= min_sev]
+            conditions.append(f"severity IN ({','.join('?' for _ in allowed)})")
+            params.extend(allowed)
+        if since_ms:
+            conditions.append("timestamp_ms >= ?")
+            params.append(since_ms)
+        where = "WHERE " + " AND ".join(conditions) if conditions else ""
+        params.append(max(1, min(1000, int(limit))))
+        try:
+            with self._conn() as conn:
+                rows = conn.execute(
+                    f"""
+                    SELECT *
+                    FROM forwarding_events
+                    {where}
+                    ORDER BY timestamp_ms DESC, id DESC
+                    LIMIT ?
+                    """,
+                    params,
+                ).fetchall()
+                return [dict(r) for r in rows]
+        except Exception as exc:
+            logger.error("Forwarding audit event query failed: %s", exc)
+            return []
 
     def clear_delivered(self) -> None:
         """Housekeeping: no-op (pending messages stay until delivered or evicted by ring-buffer)."""

@@ -125,8 +125,46 @@ class HttpsForwarder:
             s = client.get_status()
             if self._buffer_store:
                 s["buffer"] = self._buffer_store.get_stats(pid)
+                s["open_outage"] = self._buffer_store.get_open_outage(pid)
             statuses.append(s)
         return statuses
+
+    def _audit_outage(
+        self,
+        profile: dict,
+        client: HttpsProfileClient,
+        reason: str,
+        *,
+        http_status: int | None = None,
+    ) -> None:
+        if not self._buffer_store:
+            return
+        pid = profile.get("id", "")
+        st = client.get_status()
+        self._buffer_store.begin_outage(
+            pid,
+            profile.get("name", st.get("profile_name", "")),
+            "https",
+            st.get("endpoint", ""),
+            reason,
+            severity="error",
+            status="down",
+            http_status=http_status,
+            pending_count=self._buffer_store.pending_count(pid),
+        )
+
+    def _audit_recovered(self, profile: dict, client: HttpsProfileClient) -> None:
+        if not self._buffer_store:
+            return
+        pid = profile.get("id", "")
+        st = client.get_status()
+        self._buffer_store.resolve_outage(
+            pid,
+            profile.get("name", st.get("profile_name", "")),
+            "https",
+            st.get("endpoint", ""),
+            pending_count=self._buffer_store.pending_count(pid),
+        )
 
     def _drain_buffer(self, client: HttpsProfileClient, profile: dict) -> None:
         """Drain buffered POST payloads before sending new data."""
@@ -144,6 +182,7 @@ class HttpsForwarder:
                 ok = client.post(msg["path"], payload)
                 if ok:
                     self._buffer_store.mark_sent(msg["id"], pid)
+                    self._audit_recovered(profile, client)
                     drained += 1
                 else:
                     self._buffer_store.mark_failed(msg["id"], pid)
@@ -475,8 +514,27 @@ class HttpsForwarder:
             body_str = json.dumps(payload, ensure_ascii=False, indent=2)
             ok = client.post(path, payload)
             if ok:
+                self._audit_recovered({"id": profile_id}, client)
                 self._log.debug("POST %s [%s]  bytes=%d\n%s", path, label, len(body_str), body_str)
             elif self._buffer_store and profile_id:
+                st = client.get_status()
+                http_code = st.get("last_status_code")
+                reason = (
+                    f"Server rejected delivery with HTTP {http_code}."
+                    if http_code and http_code >= 400
+                    else st.get("last_error") or "HTTPS POST failed; payload buffered locally."
+                )
+                self._buffer_store.begin_outage(
+                    profile_id,
+                    st.get("profile_name", ""),
+                    "https",
+                    st.get("endpoint", ""),
+                    reason,
+                    severity="error",
+                    status="down",
+                    http_status=http_code,
+                    pending_count=self._buffer_store.pending_count(profile_id),
+                )
                 self._buffer_store.enqueue(profile_id, "https", path, body_str)
                 self._log.debug("Buffered POST %s [%s] for profile '%s'", path, label, profile_id)
         except (TypeError, ValueError) as exc:

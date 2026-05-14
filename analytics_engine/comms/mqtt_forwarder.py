@@ -123,8 +123,45 @@ class MqttForwarder:
             s = client.get_status()
             if self._buffer_store:
                 s["buffer"] = self._buffer_store.get_stats(pid)
+                s["open_outage"] = self._buffer_store.get_open_outage(pid)
             statuses.append(s)
         return statuses
+
+    def _audit_outage(
+        self,
+        profile: dict,
+        client: MqttProfileClient,
+        reason: str,
+        *,
+        status: str = "down",
+    ) -> None:
+        if not self._buffer_store:
+            return
+        pid = profile.get("id", "")
+        st = client.get_status()
+        self._buffer_store.begin_outage(
+            pid,
+            profile.get("name", st.get("profile_name", "")),
+            "mqtt",
+            st.get("broker", ""),
+            reason,
+            severity="warning" if status == "connecting" else "error",
+            status=status,
+            pending_count=self._buffer_store.pending_count(pid),
+        )
+
+    def _audit_recovered(self, profile: dict, client: MqttProfileClient) -> None:
+        if not self._buffer_store:
+            return
+        pid = profile.get("id", "")
+        st = client.get_status()
+        self._buffer_store.resolve_outage(
+            pid,
+            profile.get("name", st.get("profile_name", "")),
+            "mqtt",
+            st.get("broker", ""),
+            pending_count=self._buffer_store.pending_count(pid),
+        )
 
     def _drain_buffer(self, client: MqttProfileClient, profile: dict) -> None:
         """Drain buffered messages for a profile before publishing new data."""
@@ -142,6 +179,7 @@ class MqttForwarder:
                 ok = client.publish(msg["path"], msg["payload_json"], qos=qos, retain=retain)
                 if ok:
                     self._buffer_store.mark_sent(msg["id"], pid)
+                    self._audit_recovered(profile, client)
                     drained += 1
                 else:
                     self._buffer_store.mark_failed(msg["id"], pid)
@@ -251,6 +289,17 @@ class MqttForwarder:
             if not profile:
                 continue
 
+            if client.is_connected:
+                self._audit_recovered(profile, client)
+            else:
+                st = client.get_status()
+                self._audit_outage(
+                    profile,
+                    client,
+                    st.get("last_error") or "MQTT client not connected.",
+                    status=st.get("state", "down"),
+                )
+
             interval = profile["mqtt"].get("interval_seconds", 5)
             if now - self._last_publish.get(pid, 0) < interval:
                 # Check events even when data interval hasn't elapsed
@@ -263,6 +312,14 @@ class MqttForwarder:
                 self._log.debug(
                     "Profile '%s' interval elapsed but not connected yet — skipping",
                     profile.get("name"),
+                )
+                st = client.get_status()
+                reason = st.get("last_error") or "MQTT client not connected."
+                self._audit_outage(
+                    profile,
+                    client,
+                    reason,
+                    status=st.get("state", "down"),
                 )
                 continue
 
@@ -492,12 +549,31 @@ class MqttForwarder:
             body = json.dumps(payload, ensure_ascii=False, indent=2)
             ok   = client.publish(topic, body, qos=qos, retain=retain)
             if ok:
+                if self._buffer_store and profile_id:
+                    self._buffer_store.resolve_outage(
+                        profile_id,
+                        client.get_status().get("profile_name", ""),
+                        "mqtt",
+                        client.get_status().get("broker", ""),
+                        pending_count=self._buffer_store.pending_count(profile_id),
+                    )
                 self._log.info(
                     "PUBLISH  topic=%s  qos=%d  retain=%s  bytes=%d",
                     topic, qos, retain, len(body),
                 )
                 self._log.debug("PAYLOAD  %s\n%s", topic, body)
             elif self._buffer_store and profile_id:
+                st = client.get_status()
+                self._buffer_store.begin_outage(
+                    profile_id,
+                    st.get("profile_name", ""),
+                    "mqtt",
+                    st.get("broker", ""),
+                    st.get("last_error") or "MQTT publish failed; message buffered locally.",
+                    severity="error",
+                    status=st.get("state", "down"),
+                    pending_count=self._buffer_store.pending_count(profile_id),
+                )
                 # Not connected or publish queue full — buffer for later
                 self._buffer_store.enqueue(
                     profile_id, "mqtt", topic, body, qos=qos, retain=retain,

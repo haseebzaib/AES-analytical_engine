@@ -61,9 +61,12 @@ class HttpsProfileClient:
         self._last_error:     str        = ""
         self._post_count:     int        = 0
         self._last_post_at:   float | None = None   # monotonic
+        self._last_post_at_ms:int | None = None
         self._last_status_code: int | None = None
         self._tunnel_restarts: int       = 0
         self._down_at:        float | None = None   # monotonic; set on first failure, cleared on success
+        self._down_at_ms:     int | None = None
+        self._last_error_at_ms:int | None = None
 
         self._log = logging.getLogger("comms.https_client")
 
@@ -82,10 +85,13 @@ class HttpsProfileClient:
             "tunnel_alive":     alive,
             "tunnel_restarts":  self._tunnel_restarts,
             "last_error":       self._last_error,
+            "last_error_at_ms": self._last_error_at_ms,
             "last_status_code": self._last_status_code,
             "last_post_ago":    round(now - self._last_post_at) if self._last_post_at else None,
+            "last_post_at_ms":  self._last_post_at_ms,
             "post_count":       self._post_count,
             "down_since_ago":   round(now - self._down_at) if self._down_at else None,
+            "down_since_ms":    self._down_at_ms,
         }
 
     # ── Public lifecycle ──────────────────────────────────────────────────────
@@ -129,11 +135,15 @@ class HttpsProfileClient:
             ok = self._post_tls(path, payload) if self._tls else self._post_plain(path, payload)
         except Exception as exc:
             self._log.error("[%s] POST %s unexpected: %s", self._name, path, exc)
+            self._last_error = str(exc)
+            self._last_error_at_ms = int(time.time() * 1000)
             ok = False
         if ok:
             self._down_at = None
+            self._down_at_ms = None
         elif self._down_at is None:
             self._down_at = time.monotonic()
+            self._down_at_ms = int(time.time() * 1000)
         return ok
 
     # ── TLS path ──────────────────────────────────────────────────────────────
@@ -157,6 +167,7 @@ class HttpsProfileClient:
             msg = "Failed to start TLS tunnel"
             self._log.error("[%s] %s", self._name, msg)
             self._last_error = msg
+            self._last_error_at_ms = int(time.time() * 1000)
             return False
 
         try:
@@ -165,6 +176,7 @@ class HttpsProfileClient:
         except OSError as exc:
             self._log.warning("[%s] Write to tunnel failed: %s — will restart", self._name, exc)
             self._last_error = f"Tunnel write error: {exc}"
+            self._last_error_at_ms = int(time.time() * 1000)
             with self._lock:
                 self._kill_tunnel()
             return False
@@ -174,6 +186,7 @@ class HttpsProfileClient:
         except (TimeoutError, EOFError, ValueError, OSError) as exc:
             self._log.warning("[%s] Response read error: %s — will restart tunnel", self._name, exc)
             self._last_error = f"Response error: {exc}"
+            self._last_error_at_ms = int(time.time() * 1000)
             with self._lock:
                 self._kill_tunnel()
             return False
@@ -186,6 +199,7 @@ class HttpsProfileClient:
         ok = 200 <= code < 300
         self._last_status_code = code
         self._last_post_at     = time.monotonic()
+        self._last_post_at_ms  = int(time.time() * 1000)
         if ok:
             self._post_count  += 1
             self._last_error   = ""
@@ -194,6 +208,7 @@ class HttpsProfileClient:
             )
         else:
             self._last_error = f"HTTP {code}"
+            self._last_error_at_ms = int(time.time() * 1000)
             self._log.warning(
                 "[%s] POST %s  status=%d  bytes=%d", self._name, path, code, len(body),
             )
@@ -357,6 +372,7 @@ class HttpsProfileClient:
                 ok = 200 <= resp.status < 300
                 self._last_status_code = resp.status
                 self._last_post_at     = time.monotonic()
+                self._last_post_at_ms  = int(time.time() * 1000)
                 if ok:
                     self._post_count += 1
                     self._last_error  = ""
@@ -366,6 +382,7 @@ class HttpsProfileClient:
                     )
                 else:
                     self._last_error = f"HTTP {resp.status}"
+                    self._last_error_at_ms = int(time.time() * 1000)
                     self._log.warning(
                         "[%s] POST %s  status=%d", self._name, path, resp.status,
                     )
