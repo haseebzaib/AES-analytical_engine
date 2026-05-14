@@ -623,14 +623,22 @@ document.addEventListener("DOMContentLoaded", () => {
                         : activeUplink === "none" ? "No active uplink detected" : "";
                 }
             }
-            // Internet reachability — only show "Unavailable" if monitor explicitly tested and failed.
-            // If internet_ok is missing from state.json entirely, the monitor hasn't run → show "—".
-            const eth0 = state?.eth0 ?? {};
-            const eth1 = state?.eth1 ?? {};
-            const monitorTestedInternet = "internet_ok" in eth0 || "internet_ok" in eth1;
-            const internetOk = eth0.internet_ok || eth1.internet_ok || Boolean(state?.cellular?.connected);
+            // Internet reachability — cross-reference all interfaces (eth0, eth1, wifi_client, cellular).
+            // Only show "Unavailable" if the monitor explicitly tested and failed.
+            // If internet_ok is absent from all interfaces, monitor hasn't tested yet → show "Not checked".
+            const eth0    = state?.eth0         ?? {};
+            const eth1    = state?.eth1         ?? {};
+            const wifi    = state?.wifi_client  ?? {};
+            const cel     = state?.cellular     ?? {};
+            const monitorTestedInternet = "internet_ok" in eth0
+                || "internet_ok" in eth1
+                || "internet_ok" in wifi
+                || "internet_ok" in cel;
+            const internetOk = eth0.internet_ok || eth1.internet_ok
+                || wifi.internet_ok || cel.internet_ok
+                || Boolean(cel.connected);
             if (nsInternet) {
-                if (!monitorTestedInternet && !state?.cellular?.connected) {
+                if (!monitorTestedInternet) {
                     nsInternet.textContent = "Not checked";
                     nsInternet.style.color = "var(--muted)";
                 } else {
