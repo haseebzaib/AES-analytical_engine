@@ -1036,7 +1036,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             String(formData.get("uplink_priority_4") || "cellular"),
                         ],
                         failback_enabled: formData.get("uplink_failback_enabled") === "on",
-                        stable_seconds_before_switch: Number.parseInt(String(formData.get("uplink_stable_seconds_before_switch") || "5"), 10),
+                        stable_seconds_before_switch: Number.parseInt(String(formData.get("uplink_stable_seconds_before_switch") || "0"), 10),
                         require_connectivity_check: formData.get("uplink_require_connectivity_check") === "on",
                         fail_count_threshold: Number.parseInt(String(formData.get("uplink_fail_count_threshold") || "1"), 10),
                         recover_count_threshold: Number.parseInt(String(formData.get("uplink_recover_count_threshold") || "1"), 10),

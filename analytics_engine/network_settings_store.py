@@ -84,7 +84,7 @@ def _default_network_document() -> dict[str, object]:
             "uplink": {
                 "uplink_priority": ["eth0", "eth1", "wifi_client", "cellular"],
                 "failback_enabled": True,
-                "stable_seconds_before_switch": 5,
+                "stable_seconds_before_switch": 0,
                 "require_connectivity_check": True,
                 "fail_count_threshold": 1,
                 "recover_count_threshold": 1,
