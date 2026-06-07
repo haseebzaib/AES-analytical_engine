@@ -1,4 +1,5 @@
 :root {
+    color-scheme: dark;
     --bg: #08141a;
     --bg-2: #0f242f;
     --surface: rgba(11, 23, 29, 0.78);
@@ -18,6 +19,38 @@
 
 * {
     box-sizing: border-box;
+}
+
+html {
+    color-scheme: dark;
+}
+
+input,
+select,
+textarea,
+button {
+    color-scheme: dark;
+}
+
+select {
+    background-color: rgba(13, 33, 42, 0.96);
+    color: var(--text);
+}
+
+select option,
+select optgroup {
+    background-color: #0d212a;
+    color: var(--text);
+}
+
+select option:checked {
+    background-color: #173d47;
+    color: #ffffff;
+}
+
+select:disabled,
+select option:disabled {
+    color: rgba(157, 179, 187, 0.55);
 }
 
 html,
